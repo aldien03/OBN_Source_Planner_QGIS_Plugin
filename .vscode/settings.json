@@ -1,0 +1,26 @@
+{
+    "python.defaultInterpreterPath": "C:\\Program Files\\QGIS 3.34.9\\apps\\Python312\\python.exe",
+    "python.analysis.extraPaths": [
+        "C:\\Program Files\\QGIS 3.34.9\\apps\\qgis-ltr\\python",
+        "C:\\Program Files\\QGIS 3.34.9\\apps\\Python312\\Lib\\site-packages"
+    ],
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.pylintPath": "C:\\Program Files\\QGIS 3.34.9\\apps\\Python312\\Scripts\\pylint.exe",
+    "python.autoComplete.extraPaths": [
+        "C:\\Program Files\\QGIS 3.34.9\\apps\\qgis-ltr\\python",
+        "C:\\Program Files\\QGIS 3.34.9\\apps\\Python312\\Lib\\site-packages"
+    ],
+    "editor.formatOnSave": true,
+    "python.formatting.provider": "autopep8",
+    "python.formatting.autopep8Path": "C:\\Program Files\\QGIS 3.34.9\\apps\\Python312\\Scripts\\autopep8.exe",
+    "python.terminal.activateEnvironment": false,
+    "python.terminal.executeInFileDir": true,
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "C:\\Program Files\\QGIS 3.34.9\\apps\\qgis-ltr\\python;C:\\Program Files\\QGIS 3.34.9\\apps\\Python312\\Lib\\site-packages",
+        "QGIS_PREFIX_PATH": "C:\\Program Files\\QGIS 3.34.9\\apps\\qgis-ltr",
+        "QT_QPA_PLATFORM_PLUGIN_PATH": "C:\\Program Files\\QGIS 3.34.9\\apps\\Qt5\\plugins",
+        "PATH": "C:\\Program Files\\QGIS 3.34.9\\bin;C:\\Program Files\\QGIS 3.34.9\\apps\\qgis-ltr\\bin;C:\\Program Files\\QGIS 3.34.9\\apps\\Qt5\\bin;${env:PATH}",
+        "PROJ_LIB": "C:\\Program Files\\QGIS 3.34.9\\share\\proj"
+    }
+}

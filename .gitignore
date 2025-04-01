@@ -1,0 +1,40 @@
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+.venv/
+.env/
+venv/
+env/
+
+# IDE specific files
+.idea/
+.vscode/launch.json
+*.swp
+*.swo
+
+# QGIS generated files
+*.qm
+*_rc.py
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary test files
+qgis_test.py
+qgis_real_test.py
+simple_test.py
+env_test.py
+plugin_test.py
