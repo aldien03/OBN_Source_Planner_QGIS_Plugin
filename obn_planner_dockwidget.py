@@ -12,7 +12,7 @@
         email                : aldien03@gmail.com
  ***************************************************************************/
 
-/***************************************************************************
+ ***************************************************************************
  * *
  * This program is free software; you can redistribute it and/or modify  *
  * it under the terms of the GNU General Public License as published by  *
@@ -23,6 +23,11 @@
 """
 
 import os
+import traceback
+import logging
+import math # Import math for calculations
+import time # For performance measurement
+# import sys # No longer needed if basicConfig works okay for now
 
 # --- QGIS Imports ---
 from qgis.core import (
@@ -34,156 +39,195 @@ from qgis.core import (
     QgsField,
     QgsFeature,
     QgsPointXY,
-    QgsGeometry, # Added QgsGeometry import for clarity
+    QgsGeometry,
     QgsProject,
     QgsCoordinateReferenceSystem,
-    QgsWkbTypes # For geometry type
+    QgsWkbTypes,
+    QgsFeatureRequest,
+    QgsExpression,
+    QgsExpressionContext,
+    QgsExpressionContextUtils,
+    QgsSymbol,
+    QgsRendererCategory,
+    QgsCategorizedSymbolRenderer,
+    QgsSingleSymbolRenderer,
+    QgsLineSymbol
 )
+from qgis.gui import QgsMapLayerComboBox
+from qgis.core import QgsMapLayerProxyModel
+
 from qgis.PyQt import QtWidgets, uic
-from qgis.PyQt.QtCore import pyqtSignal, QVariant # QVariant for field types
-from qgis.PyQt.QtWidgets import QFileDialog
+from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt
+from qgis.PyQt.QtWidgets import QProgressDialog, QApplication
+from qgis.PyQt.QtWidgets import QFileDialog, QComboBox, QMessageBox, QListWidget, QTableWidget, QAbstractItemView, QListWidgetItem
+from qgis.PyQt.QtGui import QColor
 
 # --- Compiled UI Import ---
-from .obn_planner_dockwidget_ui import Ui_OBNPlannerDockWidgetBase
+# Assumes the compiled file is obn_planner_dockwidget_base_ui.py
+from .obn_planner_dockwidget_base_ui import Ui_OBNPlannerDockWidgetBase
+
+# Define NULL constant for QGIS NULL values
+NULL = QVariant()
+
+# --- Set up logging ---
+log = logging.getLogger(__name__)
+# Ensure basicConfig is only called once, maybe move to main plugin file later
+if not log.handlers:
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    log.info("Logger initialized using basicConfig.")
 
 
 class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
     closingPlugin = pyqtSignal()
 
-    # Store the last used directory path
     last_sps_dir = os.path.expanduser("~")
-    last_gpkg_dir = os.path.expanduser("~") # For saving the layer
+    last_gpkg_dir = os.path.expanduser("~")
+    generated_lines_layer = None
 
     def __init__(self, parent=None):
         """Constructor."""
         super(OBNPlannerDockWidget, self).__init__(parent)
         self.setupUi(self)
 
+        # --- Replace Placeholder ComboBoxes ---
+        self.sps_layer_combo = self._replace_combo_with_map_layer_combo(
+            self.spsLayerComboBox, self.horizontalLayout, QgsMapLayerProxyModel.PointLayer
+        )
+        self.nogo_zone_combo = self._replace_combo_with_map_layer_combo(
+            self.noGoZoneLayerComboBox, self.horizontalLayout_5, QgsMapLayerProxyModel.PolygonLayer
+        )
+        self.closepass_combo = self._replace_combo_with_map_layer_combo(
+            self.closePassLayerComboBox, self.horizontalLayout_6, QgsMapLayerProxyModel.PolygonLayer
+        )
+
+        # --- Populate Status Filter ComboBox ---
+        self.statusFilterComboBox.clear()
+        self.statusFilterComboBox.addItems(["To Be Acquired", "Acquired", "All"])
+        self.statusFilterComboBox.setCurrentIndex(0)
+
         # --- Connect Signals to Slots ---
         self.importSpsButton.clicked.connect(self.handle_sps_import_button)
+        self.applyFilterButton.clicked.connect(self.handle_apply_filter)
+        # Status buttons
+        if hasattr(self, 'markAcquiredButton'): self.markAcquiredButton.clicked.connect(self.handle_mark_acquired)
+        else: log.warning("UI Warning: markAcquiredButton not found.")
+        if hasattr(self, 'markTbaButton'): self.markTbaButton.clicked.connect(self.handle_mark_tba)
+        else: log.warning("UI Warning: markTbaButton not found.")
+        # Generate Lines button
+        if hasattr(self, 'generateLinesButton'): self.generateLinesButton.clicked.connect(self.handle_generate_lines)
+        else: log.warning("UI Warning: generateLinesButton not found.")
+        # Connect Calculate Headings button
+        if hasattr(self, 'calculateHeadingsButton'):
+            self.calculateHeadingsButton.clicked.connect(self.handle_calculate_headings) # Connect new button
+        else:
+            log.warning("UI Warning: calculateHeadingsButton not found.")
+
+
+        # --- Initialize Line List Widget ---
+        if hasattr(self, 'lineListWidget'): self.lineListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        else: log.warning("UI Warning: lineListWidget not found.")
+
+        log.info("OBNPlannerDockWidget initialized.")
+
+
+    def _replace_combo_with_map_layer_combo(self, placeholder_combo, layout, layer_filter):
+        """Helper function to replace a placeholder QComboBox with a QgsMapLayerComboBox."""
+        layout.removeWidget(placeholder_combo)
+        placeholder_combo.deleteLater()
+        new_combo = QgsMapLayerComboBox(self)
+        new_combo.setObjectName(f"{placeholder_combo.objectName()}_qgs")
+        new_combo.setFilters(layer_filter)
+        new_combo.setAllowEmptyLayer(True)
+        new_combo.setLayer(None)
+        layout.addWidget(new_combo)
+        log.debug(f"Replaced {placeholder_combo.objectName()} with QgsMapLayerComboBox.")
+        return new_combo
 
 
     # --- Slot Methods ---
     def handle_sps_import_button(self):
-        """
-        Handles the 'Import SPS File...' button click. Opens a file dialog
-        and then calls the parsing/loading function if a file is selected.
-        """
-        QgsMessageLog.logMessage("Attempting to open file dialog for SPS import.", "OBN Planner Plugin", level=Qgis.Info)
-
+        """ Imports SPS data """
+        log.info("Attempting to open file dialog for SPS import.")
         sps_file_filter = "SPS Files (*.sps *.s00 *.s01 *.txt);;All Files (*)"
-        sps_file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select SPS Pre-plot File", self.last_sps_dir, sps_file_filter
-        )
-
+        sps_file_path, _ = QFileDialog.getOpenFileName(self, "Select SPS Pre-plot File", self.last_sps_dir, sps_file_filter)
         if sps_file_path:
-            QgsMessageLog.logMessage(f"User selected SPS file: {sps_file_path}", "OBN Planner Plugin", level=Qgis.Info)
+            log.info(f"User selected SPS file: {sps_file_path}")
             self.last_sps_dir = os.path.dirname(sps_file_path)
-
-            # --- Call the function to parse the file and create the layer ---
-            self.parse_and_load_sps(sps_file_path) # Pass the selected file path
-
+            self.parse_and_load_sps(sps_file_path)
         else:
-            QgsMessageLog.logMessage("User cancelled SPS file selection.", "OBN Planner Plugin", level=Qgis.Info)
+            log.info("User cancelled SPS file selection.")
 
     def parse_and_load_sps(self, sps_file_path):
-        """
-        Parses the selected SPS file and loads the data into a new
-        QGIS GeoPackage layer.
-
-        :param sps_file_path: Full path to the SPS file to parse.
-        :type sps_file_path: str
-        """
-        QgsMessageLog.logMessage(f"Starting SPS parsing for: {sps_file_path}", "OBN Planner Plugin", level=Qgis.Info)
-
+        """ Parses SPS file and creates layer """
+        log.info(f"Starting SPS parsing for: {sps_file_path}")
         parsed_data = []
         error_log = []
         line_count = 0
-        skip_headers = 36 # As per PRD [F-DH-01]
-
-        # --- 1. Parse the SPS File ---
+        skip_headers = 36
         try:
-            # Specify encoding='latin-1'
             with open(sps_file_path, 'r', encoding='latin-1') as f:
                 for line in f:
                     line_count += 1
-                    if line_count <= skip_headers:
-                        continue # Skip header lines
-
-                    line = line.rstrip() # Remove trailing whitespace
-
+                    if line_count <= skip_headers: continue
+                    line = line.rstrip()
                     if len(line) < 65:
+                        log.debug(f"Line {line_count}: Skipped short line.")
                         error_log.append(f"Line {line_count}: Skipped short line.")
                         continue
-
                     try:
-                        # Extract data based on fixed-width columns
                         line_num_str = line[1:5].strip()
                         sp_str = line[21:25].strip()
                         easting_str = line[48:56].strip()
                         northing_str = line[57:65].strip()
-
                         if not line_num_str or not sp_str or not easting_str or not northing_str:
                             raise ValueError("Missing required field(s)")
-
                         line_num = int(line_num_str)
                         sp = int(sp_str)
                         easting = float(easting_str)
                         northing = float(northing_str)
-
-                        parsed_data.append({
-                            'line': line_num, 'sp': sp,
-                            'e': easting, 'n': northing
-                        })
-
+                        parsed_data.append({'line': line_num, 'sp': sp, 'e': easting, 'n': northing})
                     except (ValueError, IndexError) as e:
+                        log.warning(f"Line {line_count}: Error parsing '{line[:70]}...' - {e}")
                         error_log.append(f"Line {line_count}: Error parsing '{line[:70]}...' - {e}")
-
         except UnicodeDecodeError as ude:
              error_msg = f"Encoding Error: Could not read file with 'latin-1'. Try another encoding? Error: {ude}"
-             QgsMessageLog.logMessage(error_msg, "OBN Planner Plugin", level=Qgis.Critical)
+             log.error(error_msg)
              QtWidgets.QMessageBox.critical(self, "File Encoding Error", error_msg)
              return
         except FileNotFoundError:
-            QgsMessageLog.logMessage(f"Error: SPS file not found at {sps_file_path}", "OBN Planner Plugin", level=Qgis.Critical)
+            error_msg = f"Error: SPS file not found at {sps_file_path}"
+            log.error(error_msg)
             QtWidgets.QMessageBox.critical(self, "File Not Found", f"Could not find the specified SPS file:\n{sps_file_path}")
             return
         except Exception as e:
-            QgsMessageLog.logMessage(f"Error reading SPS file: {e}", "OBN Planner Plugin", level=Qgis.Critical)
+            log.exception(f"Error reading SPS file: {e}")
             QtWidgets.QMessageBox.critical(self, "File Read Error", f"An error occurred while reading the SPS file:\n{e}")
             return
 
         if error_log:
-            QgsMessageLog.logMessage(f"SPS Parsing completed with {len(error_log)} errors/warnings.", "OBN Planner Plugin", level=Qgis.Warning)
-            for err in error_log[:10]:
-                 QgsMessageLog.logMessage(err, "OBN Planner Plugin", level=Qgis.Warning)
-            if len(error_log) > 10:
-                 QgsMessageLog.logMessage("... (further errors truncated in log)", "OBN Planner Plugin", level=Qgis.Warning)
+            log.warning(f"SPS Parsing completed with {len(error_log)} errors/warnings.")
+            for i, err in enumerate(error_log):
+                 if i < 10: log.debug(err)
+                 else: break
+            if len(error_log) > 10: log.debug("... (further parsing errors truncated in debug log)")
 
         if not parsed_data:
-            QgsMessageLog.logMessage("No valid data points parsed from the SPS file.", "OBN Planner Plugin", level=Qgis.Critical)
+            log.error("No valid data points parsed from the SPS file.")
             QtWidgets.QMessageBox.warning(self, "Parsing Failed", "Could not parse any valid data points from the selected SPS file.")
             return
 
-        QgsMessageLog.logMessage(f"Successfully parsed {len(parsed_data)} data points.", "OBN Planner Plugin", level=Qgis.Info)
+        log.info(f"Successfully parsed {len(parsed_data)} data points.")
 
-        # --- 2. Get Output Layer Path ---
         gpkg_filter = "GeoPackage (*.gpkg)"
-        output_path, _ = QFileDialog.getSaveFileName(
-            self, "Save SPS Data as GeoPackage Layer", self.last_gpkg_dir, gpkg_filter
-        )
-
+        output_path, _ = QFileDialog.getSaveFileName(self, "Save SPS Data as GeoPackage Layer", self.last_gpkg_dir, gpkg_filter)
         if not output_path:
-            QgsMessageLog.logMessage("User cancelled saving the output layer.", "OBN Planner Plugin", level=Qgis.Info)
+            log.info("User cancelled saving the output layer.")
             return
-
-        if not output_path.lower().endswith(".gpkg"):
-            output_path += ".gpkg"
-
+        if not output_path.lower().endswith(".gpkg"): output_path += ".gpkg"
         self.last_gpkg_dir = os.path.dirname(output_path)
+        log.debug(f"Output GeoPackage path set to: {output_path}")
 
-        # --- 3. Define Layer Fields and CRS ---
         fields = QgsFields()
         fields.append(QgsField("LineNum", QVariant.Int, "Integer"))
         fields.append(QgsField("SP", QVariant.Int, "Integer"))
@@ -191,68 +235,655 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         fields.append(QgsField("Northing", QVariant.Double, "Double"))
         fields.append(QgsField("Status", QVariant.String, "String", 20))
         fields.append(QgsField("Heading", QVariant.Double, "Double"))
-
         crs = QgsProject.instance().crs()
         if not crs.isValid():
-            QgsMessageLog.logMessage("Project CRS is invalid. Cannot create layer.", "OBN Planner Plugin", level=Qgis.Critical)
+            log.error("Project CRS is invalid. Cannot create layer.")
             QtWidgets.QMessageBox.critical(self, "Invalid CRS", "The current QGIS project CRS is invalid. Please set a valid project CRS before importing.")
             return
+        log.debug(f"Using CRS: {crs.authid()} for output layer.")
 
-        # --- 4. Create and Populate the GeoPackage Layer ---
-        writer = QgsVectorFileWriter(
-            output_path, "UTF-8", fields, QgsWkbTypes.Point, crs, "GPKG"
-        )
-
+        writer = QgsVectorFileWriter(output_path, "UTF-8", fields, QgsWkbTypes.Point, crs, "GPKG")
         if writer.hasError() != QgsVectorFileWriter.NoError:
             error_msg = f"Error creating GeoPackage file: {writer.errorMessage()}"
-            QgsMessageLog.logMessage(error_msg, "OBN Planner Plugin", level=Qgis.Critical)
+            log.error(error_msg)
             QtWidgets.QMessageBox.critical(self, "Layer Creation Error", error_msg)
             return
 
         feature = QgsFeature(fields)
         points_added = 0
         for point_data in parsed_data:
-            # Create QgsPointXY from coordinates
             point_xy = QgsPointXY(point_data['e'], point_data['n'])
-            # *** MODIFIED PART: Create QgsGeometry from QgsPointXY ***
             geometry = QgsGeometry.fromPointXY(point_xy)
-            # Set the QgsGeometry on the feature
             feature.setGeometry(geometry)
-
-            # Set attributes
-            feature.setAttribute("LineNum", point_data['line'])
-            feature.setAttribute("SP", point_data['sp'])
-            feature.setAttribute("Easting", point_data['e'])
-            feature.setAttribute("Northing", point_data['n'])
-            feature.setAttribute("Status", "To Be Acquired")
-            feature.setAttribute("Heading", None)
-
+            feature.setAttributes([ point_data['line'], point_data['sp'], point_data['e'], point_data['n'], "To Be Acquired", None ])
             if writer.addFeature(feature) == False:
                  error_msg = f"Error adding feature for Line {point_data['line']}, SP {point_data['sp']}: {writer.errorMessage()}"
-                 QgsMessageLog.logMessage(error_msg, "OBN Planner Plugin", level=Qgis.Warning)
-            else:
-                points_added += 1
-
+                 log.warning(error_msg)
+            else: points_added += 1
         del writer
+        log.info(f"Finished writing GeoPackage. {points_added}/{len(parsed_data)} points added.")
 
-        QgsMessageLog.logMessage(f"Finished writing GeoPackage. {points_added}/{len(parsed_data)} points added.", "OBN Planner Plugin", level=Qgis.Info)
-
-        # --- 5. Add the Layer to QGIS Project ---
         layer_name = os.path.splitext(os.path.basename(output_path))[0]
         layer = QgsVectorLayer(output_path, layer_name, "ogr")
-
         if not layer.isValid():
             error_msg = f"Failed to load the created layer: {output_path}"
-            QgsMessageLog.logMessage(error_msg, "OBN Planner Plugin", level=Qgis.Critical)
+            log.error(error_msg)
             QtWidgets.QMessageBox.critical(self, "Layer Load Error", error_msg)
         else:
             QgsProject.instance().addMapLayer(layer)
-            QgsMessageLog.logMessage(f"Layer '{layer_name}' added to project.", "OBN Planner Plugin", level=Qgis.Success)
+            log.info(f"Layer '{layer_name}' added to project.")
+
+
+    def handle_apply_filter(self):
+        """ Reads filter settings, applies them, populates list and returns matching line numbers. """
+        log.debug("Handling Apply Filter button click.")
+        selected_sps_layer = self.sps_layer_combo.currentLayer()
+        start_line = self.startLineSpinBox.value()
+        end_line = self.endLineSpinBox.value()
+        selected_status = self.statusFilterComboBox.currentText()
+
+        if hasattr(self, 'lineListWidget'): self.lineListWidget.clear()
+
+        if not selected_sps_layer:
+            log.warning("Apply filter called with no SPS Layer selected.")
+            QMessageBox.warning(self, "Input Error", "Please select an SPS Point Layer.")
+            return None
+        if selected_sps_layer.geometryType() != QgsWkbTypes.PointGeometry:
+             log.warning(f"Apply filter called with non-point layer: {selected_sps_layer.name()}")
+             QMessageBox.warning(self, "Input Error", "The selected SPS layer must be a point layer.")
+             return None
+        if start_line > end_line:
+             log.warning(f"Apply filter called with invalid range: Start={start_line}, End={end_line}")
+             QMessageBox.warning(self, "Input Error", "Start Line cannot be greater than End Line.")
+             return None
+
+        log.info(f"Applying filters: Layer='{selected_sps_layer.name()}', Range={start_line}-{end_line}, Status='{selected_status}'")
+
+        filter_parts = []
+        filter_parts.append(f'"LineNum" >= {start_line}')
+        filter_parts.append(f'"LineNum" <= {end_line}')
+        if selected_status == "To Be Acquired":
+            filter_parts.append(f'"Status" = \'To Be Acquired\'')
+        elif selected_status == "Acquired":
+            filter_parts.append(f'"Status" = \'Acquired\'')
+        filter_expression = " AND ".join(filter_parts)
+        log.info(f"Constructed Filter Expression: {filter_expression}")
+
+        matching_line_nums = set()
+        try:
+            request = QgsFeatureRequest()
+            request.setFilterExpression(filter_expression)
+            log.debug(f"Executing getFeatures with expression: {filter_expression}")
+            feature_count = 0
+            for feature in selected_sps_layer.getFeatures(request):
+                feature_count += 1
+                line_num = feature.attribute("LineNum")
+                if line_num is not None:
+                    try: matching_line_nums.add(int(line_num))
+                    except (ValueError, TypeError): log.warning(f"Could not convert LineNum '{line_num}' to int for feature ID {feature.id()}")
+            log.debug(f"getFeatures returned {feature_count} features.")
+
+        except Exception as e:
+            log.exception(f"Error applying filter or getting features: {e}")
+            QMessageBox.critical(self, "Filter Error", f"An error occurred while filtering features:\n{e}")
+            return None
+
+        if hasattr(self, 'lineListWidget'):
+            if matching_line_nums:
+                sorted_lines = sorted(list(matching_line_nums))
+                self.lineListWidget.addItems([str(ln) for ln in sorted_lines])
+                log.info(f"Populated list with {len(sorted_lines)} unique lines.")
+            else:
+                log.info("No lines found matching the specified filter criteria. List is empty.")
+
+        return matching_line_nums
+
+
+    # --- Status Update Methods ---
+    def handle_mark_acquired(self):
+        """ Marks selected lines as 'Acquired'. """
+        log.debug("Handling Mark Acquired button click.")
+        self._update_selected_lines_status("Acquired")
+
+    def handle_mark_tba(self):
+        """ Marks selected lines as 'To Be Acquired'. """
+        log.debug("Handling Mark To Be Acquired button click.")
+        self._update_selected_lines_status("To Be Acquired")
+
+    def _update_selected_lines_status(self, new_status):
+        """ Helper function to update Status attribute. """
+        log.info(f"Attempting to update status to '{new_status}'.")
+        if not hasattr(self, 'lineListWidget'):
+            log.warning("Cannot update status: lineListWidget not found.")
+            return
+
+        selected_items = self.lineListWidget.selectedItems()
+        if not selected_items:
+            log.info("No lines selected in the list for status update.")
+            QMessageBox.information(self, "No Selection", "Please select one or more lines from the list to update.")
+            return
+        log.debug(f"{len(selected_items)} items selected in list.")
+
+        target_layer = self.sps_layer_combo.currentLayer()
+        if not target_layer:
+            log.warning("Cannot update status: No target SPS layer selected.")
+            QMessageBox.warning(self, "No Layer", "Please select a valid SPS Point Layer first.")
+            return
+        log.debug(f"Target layer for status update: {target_layer.name()}")
+
+        status_field_idx = target_layer.fields().lookupField("Status")
+        if status_field_idx == -1:
+             log.error(f"Cannot find 'Status' field in layer '{target_layer.name()}'.")
+             QMessageBox.critical(self, "Field Error", f"Cannot find the 'Status' field in layer '{target_layer.name()}'.")
+             return
+        log.debug(f"'Status' field index: {status_field_idx}")
+
+        selected_line_nums = []
+        for item in selected_items:
+            try: selected_line_nums.append(int(item.text()))
+            except (ValueError, TypeError): log.warning(f"Could not convert selected item '{item.text()}' to integer LineNum.")
+        if not selected_line_nums:
+             log.warning("Could not identify valid line numbers from selection.")
+             QMessageBox.warning(self, "Selection Error", "Could not identify valid line numbers from selection.")
+             return
+        log.debug(f"Line numbers selected for status update: {selected_line_nums}")
+
+        edit_started_here = False
+        if not target_layer.isEditable():
+            log.debug(f"Starting editing on layer '{target_layer.name()}'.")
+            if not target_layer.startEditing():
+                 log.error(f"Could not start editing on layer '{target_layer.name()}'. Check permissions.")
+                 QMessageBox.critical(self, "Edit Error", f"Could not start editing on layer '{target_layer.name()}'. Check layer permissions.")
+                 return
+            edit_started_here = True
+
+        updated_feature_count = 0
+        try:
+            if len(selected_line_nums) == 1: line_filter_expr = f'"LineNum" = {selected_line_nums[0]}'
+            else: line_filter_expr = f'"LineNum" IN {tuple(selected_line_nums)}'
+            log.debug(f"Filter expression for update: {line_filter_expr}")
+
+            request = QgsFeatureRequest().setFilterExpression(line_filter_expr)
+            feature_ids_to_update = {}
+            feature_ids = [f.id() for f in target_layer.getFeatures(request)]
+            log.debug(f"Found {len(feature_ids)} feature IDs matching lines {selected_line_nums}.")
+
+            if not feature_ids:
+                 log.warning(f"No features found for selected lines: {selected_line_nums}")
+                 if edit_started_here: target_layer.rollBack(); log.debug("Rolled back edit session (no features found).")
+                 return
+
+            for fid in feature_ids:
+                feature_ids_to_update[fid] = {status_field_idx: new_status}
+                updated_feature_count += 1
+
+            if feature_ids_to_update:
+                log.debug(f"Attempting changeAttributeValues for {len(feature_ids_to_update)} features.")
+                success = target_layer.dataProvider().changeAttributeValues(feature_ids_to_update)
+                if not success:
+                     provider_error = target_layer.dataProvider().lastError()
+                     log.error(f"changeAttributeValues failed. Provider error: {provider_error}")
+                     raise Exception(f"changeAttributeValues failed. Provider error: {provider_error}")
+                log.debug("changeAttributeValues successful.")
+
+            if edit_started_here:
+                log.debug("Attempting to commit changes.")
+                if not target_layer.commitChanges():
+                    commit_error = target_layer.dataProvider().lastError()
+                    log.error(f"Failed to commit changes: {commit_error}")
+                    raise Exception(f"Failed to commit changes: {commit_error}")
+                edit_started_here = False
+                log.info("Committed changes successfully.")
+            else:
+                 target_layer.triggerRepaint()
+                 log.debug("Editing was already active, triggering repaint.")
+
+            log.info(f"Successfully updated status to '{new_status}' for LineNum(s): {selected_line_nums} ({updated_feature_count} points affected).")
+            QMessageBox.information(self, "Success", f"Status updated to '{new_status}' for LineNum(s): {selected_line_nums}.")
+
+            current_filter_status = self.statusFilterComboBox.currentText()
+            log.debug(f"Current status filter is '{current_filter_status}'. Refreshing list.")
+            self.handle_apply_filter()
+
+        except Exception as e:
+            log.exception(f"Failed to update status: {e}")
+            if edit_started_here: target_layer.rollBack(); log.debug("Rolled back edit session due to error.")
+            QMessageBox.critical(self, "Update Error", f"Failed to update status.\n{e}")
+        finally:
+             if target_layer.isEditable():
+                 target_layer.triggerRepaint()
+
+
+    # --- Generate Lines Method ---
+    def handle_generate_lines(self):
+        """ Generates straight line geometries for the currently filtered lines. """
+        log.info("Handling Generate Straight Lines button click.")
+        matching_line_nums = self.handle_apply_filter() # Re-run filter to get current lines
+
+        if matching_line_nums is None: return
+        if not matching_line_nums:
+             QMessageBox.warning(self, "No Lines", "No lines match the current filter criteria to generate lines.")
+             return
+
+        source_layer = self.sps_layer_combo.currentLayer()
+        if not source_layer:
+             QMessageBox.critical(self, "Layer Error", "Cannot find the source SPS layer.")
+             return
+
+        lines_to_process = sorted(list(matching_line_nums))
+        log.debug(f"Will generate lines for: {lines_to_process}")
+
+        layer_name = "Generated_Survey_Lines"
+        project = QgsProject.instance()
+        layers_to_remove = project.mapLayersByName(layer_name)
+        for layer_to_remove in layers_to_remove:
+            project.removeMapLayer(layer_to_remove.id())
+            log.info(f"Removed existing layer: {layer_name}")
+
+        line_fields = QgsFields()
+        line_fields.append(QgsField("LineNum", QVariant.Int, "Integer"))
+        line_fields.append(QgsField("Status", QVariant.String, "String", 20))
+        line_fields.append(QgsField("Length_m", QVariant.Double, "Double", 10, 2))
+        log.debug("Defined fields for line layer.")
+
+        uri = f"LineString?crs={source_layer.crs().authid()}&index=yes"
+        log.debug(f"Memory layer URI: {uri}")
+        self.generated_lines_layer = QgsVectorLayer(uri, layer_name, "memory")
+
+        if not self.generated_lines_layer.isValid():
+            log.error("Failed to create memory layer for generated lines.")
+            QMessageBox.critical(self, "Layer Error", "Could not create temporary layer for lines.")
+            self.generated_lines_layer = None
+            return
+
+        provider = self.generated_lines_layer.dataProvider()
+        provider.addAttributes(line_fields)
+        self.generated_lines_layer.updateFields()
+        log.debug(f"Created memory layer '{layer_name}' with fields.")
+
+        lines_generated = 0
+        request = QgsFeatureRequest()
+        sp_field_name = "SP"
+        sp_field_index = source_layer.fields().lookupField(sp_field_name)
+        if sp_field_index == -1:
+            log.error(f"Field '{sp_field_name}' not found in source layer '{source_layer.name()}'. Cannot order points.")
+            QMessageBox.critical(self, "Field Error", f"Field '{sp_field_name}' not found in source layer. Cannot generate lines correctly.")
+            if self.generated_lines_layer: project.removeMapLayer(self.generated_lines_layer.id())
+            self.generated_lines_layer = None
+            return
+        log.debug(f"Ordering points by field: '{sp_field_name}' (Index: {sp_field_index})")
+        request.setOrderBy(QgsFeatureRequest.OrderBy([QgsFeatureRequest.OrderByClause(sp_field_name)]))
+        request.setFlags(QgsFeatureRequest.NoFlags)
+
+        self.generated_lines_layer.startEditing()
+        log.debug("Started editing memory layer.")
+        try:
+            for line_num in lines_to_process:
+                log.debug(f"Processing LineNum: {line_num}")
+                request.setFilterExpression(f'"LineNum" = {line_num}')
+
+                points_xy_list = []
+                line_status = None
+                log.debug(f"Fetching features for LineNum {line_num}...")
+                feature_count_this_line = 0
+                for feature in source_layer.getFeatures(request):
+                    feature_count_this_line += 1
+                    point_geom = feature.geometry()
+                    log.debug(f"Processing feature ID {feature.id()}, geometry type: {point_geom.type() if point_geom else 'None'}")
+                    if point_geom and not point_geom.isNull() and point_geom.type() == QgsWkbTypes.PointGeometry:
+                        point_xy = point_geom.asPoint()
+                        log.debug(f"Found valid point: ({point_xy.x()}, {point_xy.y()}) for feature ID {feature.id()}")
+                        points_xy_list.append(point_xy)
+                        if line_status is None: line_status = feature.attribute("Status")
+                    else:
+                         geom_type = point_geom.type() if point_geom and not point_geom.isNull() else 'Null/Invalid'
+                         log.warning(f"Invalid or non-point geometry found for feature ID {feature.id()} on LineNum {line_num}. Geometry type: {geom_type}")
+
+                log.debug(f"Fetched {feature_count_this_line} features, got {len(points_xy_list)} valid points for LineNum {line_num}.")
+
+                if len(points_xy_list) >= 2:
+                    log.debug(f"Attempting to create polyline for LineNum {line_num}...")
+                    line_geometry = QgsGeometry.fromPolylineXY(points_xy_list)
+                    if line_geometry and not line_geometry.isNull():
+                        log.debug(f"Polyline created for LineNum {line_num}, length: {line_geometry.length()}")
+                        line_feature = QgsFeature(line_fields)
+                        line_feature.setGeometry(line_geometry)
+                        line_feature.setAttributes([line_num, line_status if line_status is not None else "Unknown", line_geometry.length()])
+                        log.debug(f"Adding feature for LineNum {line_num} to memory layer provider.")
+                        provider.addFeature(line_feature)
+                        lines_generated += 1
+                    else:
+                        log.warning(f"Failed to create valid line geometry for LineNum {line_num} from {len(points_xy_list)} points.")
+                else:
+                    log.warning(f"Skipping LineNum {line_num}: Found only {len(points_xy_list)} valid points (requires >= 2).")
+
+            log.debug("Finished processing all lines. Attempting commit.")
+            if not self.generated_lines_layer.commitChanges():
+                 commit_error = self.generated_lines_layer.dataProvider().lastError()
+                 log.error(f"Failed to commit generated lines to memory layer: {commit_error}")
+                 raise Exception(f"Commit failed for memory layer: {commit_error}")
+            log.debug("Committed lines to memory layer successfully.")
+
+        except Exception as e:
+             log.exception(f"Error generating line geometries: {e}")
+             self.generated_lines_layer.rollBack()
+             log.debug("Rolled back memory layer edits due to error.")
+             QMessageBox.critical(self, "Generation Error", f"An error occurred while generating lines:\n{e}")
+             if self.generated_lines_layer and self.generated_lines_layer.id() in project.mapLayers():
+                  project.removeMapLayer(self.generated_lines_layer.id())
+             self.generated_lines_layer = None
+             return
+        finally:
+             if self.generated_lines_layer and self.generated_lines_layer.isEditable():
+                  log.warning("Rolling back memory layer edits in finally block (commit might have failed silently).")
+                  self.generated_lines_layer.rollBack()
+
+        log.debug("Step 4: Adding layer to project and styling.")
+        if lines_generated > 0 and self.generated_lines_layer:
+            if self.generated_lines_layer.isValid():
+                log.debug("Updating extents for generated lines layer.")
+                self.generated_lines_layer.updateExtents()
+                log.debug("Adding generated lines layer to project.")
+                project.addMapLayer(self.generated_lines_layer)
+                log.info(f"Generated {lines_generated} lines and added layer '{layer_name}' to project.")
+
+                try:
+                    log.debug("Applying basic blue style to generated lines layer.")
+                    symbol = QgsLineSymbol.createSimple({'color': 'blue', 'width': '0.5', 'width_unit':'MM'})
+                    renderer = QgsSingleSymbolRenderer(symbol)
+                    self.generated_lines_layer.setRenderer(renderer)
+                    self.generated_lines_layer.triggerRepaint()
+                    log.debug("Style applied.")
+                except Exception as e:
+                     log.warning(f"Could not apply default style to generated lines layer: {e}")
+
+                QMessageBox.information(self, "Success", f"Generated {lines_generated} straight survey lines.")
+            else:
+                log.error(f"Generated lines layer '{layer_name}' is invalid after creation.")
+                QMessageBox.critical(self, "Layer Error", "The generated lines layer is invalid.")
+                self.generated_lines_layer = None
+
+        elif self.generated_lines_layer:
+             log.warning("No valid lines were generated. Removing empty layer.")
+             if self.generated_lines_layer.id() in project.mapLayers():
+                  project.removeMapLayer(self.generated_lines_layer.id())
+             self.generated_lines_layer = None
+             QMessageBox.warning(self, "No Lines Generated", "No valid lines could be generated for the selected criteria.")
+        else:
+              log.warning("No lines generated as memory layer creation failed.")
+
+
+    def handle_calculate_headings(self):
+        """
+        Calculates default headings for all unique lines in the selected SPS layer
+        and updates the 'Heading' attribute. Implements PRD Section 5.2.
+        Optimized for large datasets by finding first/last points per line in a single pass.
+        """
+        log.info("Handling Calculate Default Headings button click.")
+        start_time = time.time()
+
+        # --- 1. Get and Validate Input Layer ---
+        source_layer = self.sps_layer_combo.currentLayer()
+        if not source_layer:
+            QMessageBox.warning(self, "Input Error", "Please select an SPS Point Layer.")
+            return
+            
+        fields = source_layer.fields()
+        line_num_idx = fields.lookupField("LineNum")
+        sp_idx = fields.lookupField("SP")
+        heading_idx = fields.lookupField("Heading")
+        
+        if line_num_idx == -1 or sp_idx == -1 or heading_idx == -1 or not fields.at(heading_idx).isNumeric():
+            error_message = "Missing required fields: "
+            if line_num_idx == -1: error_message += "'LineNum' "
+            if sp_idx == -1: error_message += "'SP' "
+            if heading_idx == -1: error_message += "'Heading' "
+            elif not fields.at(heading_idx).isNumeric(): error_message += "'Heading' must be numeric."
+            QMessageBox.warning(self, "Input Error", error_message)
+            return
+
+        log.debug(f"Calculating headings for layer: {source_layer.name()}")
+
+        # --- 2. Optimize: Collect First and Last Points in a Single Pass ---
+        log.debug("Collecting first and last points for each line in a single pass...")
+        
+        line_endpoints = {}
+        total_features = source_layer.featureCount()
+        
+        # Progress dialog for large datasets
+        progress = QProgressDialog("Calculating line headings...", "Cancel", 0, 100, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0 if total_features > 10000 else 1000)  # Show immediately for large datasets
+        
+        # Create a request that sorts points by LineNum and SP
+        request = QgsFeatureRequest()
+        request.setOrderBy(QgsFeatureRequest.OrderBy([
+            QgsFeatureRequest.OrderByClause("LineNum"),
+            QgsFeatureRequest.OrderByClause("SP")
+        ]))
+        
+        try:
+            # Use a simpler approach that's more robust for large datasets
+            # Track the min and max SP values for each line
+            min_sp_features = {}  # {line_num: (min_sp, feature)}
+            max_sp_features = {}  # {line_num: (max_sp, feature)}
+            
+            processed = 0
+            # Process all features in one pass
+            for feature in source_layer.getFeatures(request):
+                # Check for cancel button
+                if progress.wasCanceled():
+                    raise Exception("Operation canceled by user")
+                    
+                processed += 1
+                if processed % 10000 == 0:
+                    progress.setValue(min(int(processed / total_features * 100), 99))
+                    log.debug(f"Processed {processed:,} of {total_features:,} features")
+                    QApplication.processEvents()
+                
+                # Get line number and SP value
+                line_num = feature.attribute("LineNum")
+                if line_num is None or line_num == NULL:
+                    continue
+                
+                sp_val = feature.attribute("SP")
+                if sp_val is None or sp_val == NULL:
+                    continue
+                
+                try:
+                    line_num = int(line_num)
+                    sp_val = int(sp_val)
+                except (ValueError, TypeError):
+                    continue
+                
+                # Track min SP feature for this line
+                if line_num not in min_sp_features or sp_val < min_sp_features[line_num][0]:
+                    min_sp_features[line_num] = (sp_val, feature)
+                
+                # Track max SP feature for this line
+                if line_num not in max_sp_features or sp_val > max_sp_features[line_num][0]:
+                    max_sp_features[line_num] = (sp_val, feature)
+            
+            # Now create endpoints for each line where we have both min and max values
+            for line_num, (min_sp, min_feature) in min_sp_features.items():
+                if line_num in max_sp_features and min_sp != max_sp_features[line_num][0]:
+                    max_sp, max_feature = max_sp_features[line_num]
+                    first_point = min_feature.geometry().asPoint()
+                    last_point = max_feature.geometry().asPoint()
+                    line_endpoints[line_num] = (first_point, last_point)
+        
+        except Exception as e:
+            progress.cancel()
+            log.exception("Error processing features.")
+            QMessageBox.critical(self, "Error", f"Error calculating headings: {e}")
+            return
+            
+        progress.setValue(100)
+        
+        # --- 3. Calculate Headings ---
+        log.debug("Calculating headings from collected endpoints...")
+        line_headings = {}
+        calculation_failures = 0
+        
+        for line_num, endpoints in line_endpoints.items():
+            first_point, last_point = endpoints
+            
+            # Calculate azimuth/bearing (degrees from north, clockwise)
+            dx = last_point.x() - first_point.x()
+            dy = last_point.y() - first_point.y()
+            
+            # Avoid division by zero
+            if dx == 0:
+                calculated_heading = 0 if dy > 0 else 180
+            else:
+                # Convert to degrees and adjust to North=0 (clockwise)
+                calculated_heading = math.degrees(math.atan2(dx, dy))
+                # Ensure positive value 0-360
+                calculated_heading = (calculated_heading + 360) % 360
+            
+            line_headings[line_num] = calculated_heading
+            log.debug(f"Line {line_num}: Calculated heading = {calculated_heading:.1f}°")
+        
+        if not line_headings:
+            log.warning("No headings could be calculated.")
+            QMessageBox.warning(self, "No Results", "Could not calculate headings for any lines.")
+            return
+            
+        # --- 4. Update Heading Attribute in Layer using Data Provider ---
+        log.info("Updating 'Heading' attribute in the source layer...")
+        
+        # Start editing the layer
+        source_layer.startEditing()
+        
+        # Progress dialog for updates
+        progress = QProgressDialog("Preparing bulk update...", "Cancel", 0, 100, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)  # Show immediately
+        progress.show()
+        
+        try:
+            # More efficient approach: Collect all feature IDs first, then do bulk update
+            log.info(f"Preparing bulk update for {len(line_headings)} lines")
+            progress.setLabelText("Collecting feature IDs by line...")
+            QApplication.processEvents()
+            
+            # Step 1: Collect feature IDs by line number
+            feature_ids_by_line = {}
+            batch_size = 100000  # Process in large batches
+            processed = 0
+            request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoGeometry)
+            
+            for feature in source_layer.getFeatures(request):
+                processed += 1
+                if processed % 50000 == 0:
+                    progress.setValue(min(int(processed / total_features * 50), 50))  # First 50% of progress
+                    progress.setLabelText(f"Collecting features: {processed:,} of {total_features:,}")
+                    QApplication.processEvents()
+                    
+                if progress.wasCanceled():
+                    raise Exception("Operation canceled by user")
+                    
+                # Get line number
+                line_num = feature.attribute("LineNum")
+                if line_num is None or line_num == NULL:
+                    continue
+                    
+                try:
+                    line_num = int(line_num)
+                except (ValueError, TypeError):
+                    continue
+                    
+                # Only track lines that have calculated headings
+                if line_num in line_headings:
+                    if line_num not in feature_ids_by_line:
+                        feature_ids_by_line[line_num] = []
+                    feature_ids_by_line[line_num].append(feature.id())
+            
+            # Step 2: Use data provider to perform bulk updates
+            progress.setLabelText("Performing bulk attribute update...")
+            QApplication.processEvents()
+            
+            # Access the data provider for direct updates
+            data_provider = source_layer.dataProvider()
+            update_count = 0
+            progress_counter = 0
+            
+            # Prepare attribute value map for bulk update
+            attr_map = {}
+            for line_num, feature_ids in feature_ids_by_line.items():
+                heading = line_headings[line_num]
+                progress_counter += 1
+                if progress_counter % 10 == 0:  # Update progress every 10 lines
+                    progress_pct = 50 + int(progress_counter / len(feature_ids_by_line) * 50)  # Second 50%
+                    progress.setValue(min(progress_pct, 99))
+                    progress.setLabelText(f"Updating {len(feature_ids)} points for line {line_num}")
+                    QApplication.processEvents()
+                
+                # Add all feature IDs for this line to the update map
+                for fid in feature_ids:
+                    attr_map[fid] = {heading_idx: heading}
+                    update_count += 1
+                    
+                # Apply updates in batches to avoid memory issues
+                if len(attr_map) > batch_size or progress_counter == len(feature_ids_by_line):
+                    # Perform bulk update using the data provider
+                    log.debug(f"Applying bulk update for {len(attr_map)} features")
+                    data_provider.changeAttributeValues(attr_map)
+                    attr_map = {}  # Clear for next batch
+            
+            # Ensure final batch is committed
+            if attr_map:
+                data_provider.changeAttributeValues(attr_map)
+                
+            log.info(f"Completed bulk update: {update_count} points updated across {len(line_headings)} lines")
+            
+            # Set progress to 100% to indicate completion
+            progress.setValue(100)
+            progress.setLabelText("Finalizing changes...")
+            QApplication.processEvents()
+            
+            # Commit the changes
+            if source_layer.commitChanges():
+                log.info(f"Successfully updated {update_count} features with heading values.")
+                elapsed_time = time.time() - start_time
+                # Close progress dialog before showing message box
+                progress.close()
+                QMessageBox.information(self, "Success", 
+                    f"Default headings calculated and updated for {len(line_headings)} lines.\n"
+                    f"Updated {update_count} points in {elapsed_time:.1f} seconds.")
+            else:
+                log.error("Failed to commit changes to layer.")
+                errors = source_layer.commitErrors()
+                error_msg = "\n".join(errors) if errors else "Unknown error"
+                # Close progress dialog before showing error
+                progress.close()
+                QMessageBox.critical(self, "Error", f"Failed to update heading values in the layer:\n{error_msg}")
+                
+        except Exception as e:
+            progress.cancel()
+            progress.close()  # Ensure dialog is closed
+            source_layer.rollBack()
+            log.exception("Error updating heading values.")
+            QMessageBox.critical(self, "Error", f"Error updating heading values: {e}")
+            return
+            
+        # Refresh the layer display
+        source_layer.triggerRepaint()
+        
+
 
 
     # --- END: Slot Methods ---
 
     def closeEvent(self, event):
+        """ Clean up when dock widget is closed """
+        log.debug("Dock widget close event triggered.")
+        if self.generated_lines_layer:
+             project = QgsProject.instance()
+             if self.generated_lines_layer.id() in project.mapLayers():
+                  project.removeMapLayer(self.generated_lines_layer.id())
+                  log.info(f"Removed layer '{self.generated_lines_layer.name()}' on plugin close.")
+             else: log.debug("Generated lines layer reference exists but layer not found in project.")
+             self.generated_lines_layer = None
         self.closingPlugin.emit()
         event.accept()
-

@@ -38,4 +38,4 @@ if __name__ == "__main__":
     compile_ui_files()
     compile_resource_files()
     print("All files compiled successfully!")
-    input("Press Enter to exit...")
+    # Removed input line so the script exits automatically
