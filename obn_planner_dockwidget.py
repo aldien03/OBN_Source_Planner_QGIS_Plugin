@@ -454,15 +454,31 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                  target_layer.triggerRepaint()
 
 
-    # --- Generate Lines Method ---
+    # --- Generate Lines & Run-ins Method ---
     def handle_generate_lines(self):
-        """ Generates straight line geometries for the currently filtered lines. """
-        log.info("Handling Generate Straight Lines button click.")
-        matching_line_nums = self.handle_apply_filter() # Re-run filter to get current lines
+        """
+        Generates straight line and run-in geometries for the currently filtered lines
+        and displays them on temporary memory layers.
+        """
+        log.info("Handling Generate Straight Lines (and Run-ins) button click.")
+
+        # --- 0. Get Parameters and Validate ---
+        if not hasattr(self, 'maxRunInDoubleSpinBox'):
+            QMessageBox.critical(self, "UI Error", "Max Run-in Length input widget not found in UI.")
+            return
+        max_run_in_length = self.maxRunInDoubleSpinBox.value()
+        if max_run_in_length < 0:
+            QMessageBox.warning(self, "Input Error", "Max Run-in Length cannot be negative.")
+            return
+        log.debug(f"Max Run-in Length parameter: {max_run_in_length} m")
+
+        # --- 1. Get Filtered Line Numbers and Source Layer ---
+        log.debug("Step 1: Getting filtered lines and source layer.")
+        matching_line_nums = self.handle_apply_filter()
 
         if matching_line_nums is None: return
         if not matching_line_nums:
-             QMessageBox.warning(self, "No Lines", "No lines match the current filter criteria to generate lines.")
+             QMessageBox.warning(self, "No Lines", "No lines match the current filter criteria to generate.")
              return
 
         source_layer = self.sps_layer_combo.currentLayer()
@@ -470,53 +486,98 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
              QMessageBox.critical(self, "Layer Error", "Cannot find the source SPS layer.")
              return
 
+        # *** Define source layer fields HERE ***
+        fields = source_layer.fields() # Define fields variable for the source layer
+
+        # Check for Heading field needed for run-ins
+        heading_field_idx = fields.lookupField("Heading")
+        if heading_field_idx == -1:
+             QMessageBox.critical(self, "Field Error", "Source layer must contain a 'Heading' field to calculate run-ins.")
+             return
+
         lines_to_process = sorted(list(matching_line_nums))
-        log.debug(f"Will generate lines for: {lines_to_process}")
+        log.debug(f"Will generate lines/run-ins for: {lines_to_process}")
 
-        layer_name = "Generated_Survey_Lines"
+        # --- 2. Prepare Output Memory Layers ---
+        log.debug("Step 2: Preparing output memory layers.")
         project = QgsProject.instance()
-        layers_to_remove = project.mapLayersByName(layer_name)
-        for layer_to_remove in layers_to_remove:
-            project.removeMapLayer(layer_to_remove.id())
-            log.info(f"Removed existing layer: {layer_name}")
+        line_layer_name = "Generated_Survey_Lines"
+        runin_layer_name = "Generated_RunIns"
 
+        self._remove_layer_by_name(line_layer_name)
+        self._remove_layer_by_name(runin_layer_name)
+        self.generated_lines_layer = None
+        self.generated_runins_layer = None
+
+        # Define fields for the line layer
         line_fields = QgsFields()
         line_fields.append(QgsField("LineNum", QVariant.Int, "Integer"))
         line_fields.append(QgsField("Status", QVariant.String, "String", 20))
         line_fields.append(QgsField("Length_m", QVariant.Double, "Double", 10, 2))
-        log.debug("Defined fields for line layer.")
+        line_fields.append(QgsField("Heading", QVariant.Double, "Double", 10, 3))
 
-        uri = f"LineString?crs={source_layer.crs().authid()}&index=yes"
-        log.debug(f"Memory layer URI: {uri}")
-        self.generated_lines_layer = QgsVectorLayer(uri, layer_name, "memory")
+        # Define fields for the run-in layer
+        runin_fields = QgsFields()
+        runin_fields.append(QgsField("LineNum", QVariant.Int, "Integer"))
+        runin_fields.append(QgsField("Length_m", QVariant.Double, "Double", 10, 2))
+        runin_fields.append(QgsField("Position", QVariant.String, "String", 10))
+        runin_fields.append(QgsField("Direction", QVariant.String, "String", 20))
 
-        if not self.generated_lines_layer.isValid():
-            log.error("Failed to create memory layer for generated lines.")
-            QMessageBox.critical(self, "Layer Error", "Could not create temporary layer for lines.")
+        # Create the memory layers
+        line_uri = f"LineString?crs={source_layer.crs().authid()}&index=yes"
+        runin_uri = f"LineString?crs={source_layer.crs().authid()}&index=yes"
+
+        self.generated_lines_layer = QgsVectorLayer(line_uri, line_layer_name, "memory")
+        self.generated_runins_layer = QgsVectorLayer(runin_uri, runin_layer_name, "memory")
+
+        if not self.generated_lines_layer.isValid() or not self.generated_runins_layer.isValid():
+            log.error("Failed to create memory layer(s) for generated lines/run-ins.")
+            QMessageBox.critical(self, "Layer Error", "Could not create temporary layer(s).")
+            self._remove_layer_by_name(line_layer_name)
+            self._remove_layer_by_name(runin_layer_name)
             self.generated_lines_layer = None
+            self.generated_runins_layer = None
             return
 
-        provider = self.generated_lines_layer.dataProvider()
-        provider.addAttributes(line_fields)
+        line_provider = self.generated_lines_layer.dataProvider()
+        line_provider.addAttributes(line_fields)
         self.generated_lines_layer.updateFields()
-        log.debug(f"Created memory layer '{layer_name}' with fields.")
+        log.debug(f"Created memory layer '{line_layer_name}' with fields.")
 
+        runin_provider = self.generated_runins_layer.dataProvider()
+        runin_provider.addAttributes(runin_fields)
+        self.generated_runins_layer.updateFields()
+        log.debug(f"Created memory layer '{runin_layer_name}' with fields.")
+
+        # --- 3. Generate Line & Run-in Geometry for Each Filtered Line ---
+        log.debug("Step 3: Generating line and run-in geometry for each filtered line.")
         lines_generated = 0
+        runins_generated = 0
         request = QgsFeatureRequest()
         sp_field_name = "SP"
-        sp_field_index = source_layer.fields().lookupField(sp_field_name)
+        sp_field_index = fields.lookupField(sp_field_name) # Use fields defined above
         if sp_field_index == -1:
-            log.error(f"Field '{sp_field_name}' not found in source layer '{source_layer.name()}'. Cannot order points.")
-            QMessageBox.critical(self, "Field Error", f"Field '{sp_field_name}' not found in source layer. Cannot generate lines correctly.")
-            if self.generated_lines_layer: project.removeMapLayer(self.generated_lines_layer.id())
+            log.error(f"Field '{sp_field_name}' not found.")
+            QMessageBox.critical(self, "Field Error", f"Field '{sp_field_name}' not found in source layer.")
+            # Clean up layers before returning
+            self._remove_layer_by_name(line_layer_name)
+            self._remove_layer_by_name(runin_layer_name)
             self.generated_lines_layer = None
+            self.generated_runins_layer = None
             return
-        log.debug(f"Ordering points by field: '{sp_field_name}' (Index: {sp_field_index})")
+
         request.setOrderBy(QgsFeatureRequest.OrderBy([QgsFeatureRequest.OrderByClause(sp_field_name)]))
         request.setFlags(QgsFeatureRequest.NoFlags)
+        # Specify needed attributes explicitly for clarity using the 'fields' object
+        needed_field_names = ["LineNum", "Status", "Heading"]
+        attr_indices = [fields.lookupField(f) for f in needed_field_names]
+        valid_attr_indices = [idx for idx in attr_indices if idx != -1]
+        request.setSubsetOfAttributes(valid_attr_indices) # Pass only the indices
+
 
         self.generated_lines_layer.startEditing()
-        log.debug("Started editing memory layer.")
+        self.generated_runins_layer.startEditing()
+        log.debug("Started editing memory layers.")
         try:
             for line_num in lines_to_process:
                 log.debug(f"Processing LineNum: {line_num}")
@@ -524,93 +585,198 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
                 points_xy_list = []
                 line_status = None
+                line_heading = None
                 log.debug(f"Fetching features for LineNum {line_num}...")
                 feature_count_this_line = 0
                 for feature in source_layer.getFeatures(request):
                     feature_count_this_line += 1
                     point_geom = feature.geometry()
                     log.debug(f"Processing feature ID {feature.id()}, geometry type: {point_geom.type() if point_geom else 'None'}")
+
                     if point_geom and not point_geom.isNull() and point_geom.type() == QgsWkbTypes.PointGeometry:
                         point_xy = point_geom.asPoint()
                         log.debug(f"Found valid point: ({point_xy.x()}, {point_xy.y()}) for feature ID {feature.id()}")
                         points_xy_list.append(point_xy)
                         if line_status is None: line_status = feature.attribute("Status")
+                        if line_heading is None: line_heading = feature.attribute("Heading")
                     else:
                          geom_type = point_geom.type() if point_geom and not point_geom.isNull() else 'Null/Invalid'
                          log.warning(f"Invalid or non-point geometry found for feature ID {feature.id()} on LineNum {line_num}. Geometry type: {geom_type}")
 
                 log.debug(f"Fetched {feature_count_this_line} features, got {len(points_xy_list)} valid points for LineNum {line_num}.")
 
+                # --- Generate Straight Line ---
                 if len(points_xy_list) >= 2:
                     log.debug(f"Attempting to create polyline for LineNum {line_num}...")
                     line_geometry = QgsGeometry.fromPolylineXY(points_xy_list)
                     if line_geometry and not line_geometry.isNull():
-                        log.debug(f"Polyline created for LineNum {line_num}, length: {line_geometry.length()}")
                         line_feature = QgsFeature(line_fields)
                         line_feature.setGeometry(line_geometry)
-                        line_feature.setAttributes([line_num, line_status if line_status is not None else "Unknown", line_geometry.length()])
-                        log.debug(f"Adding feature for LineNum {line_num} to memory layer provider.")
-                        provider.addFeature(line_feature)
+                        line_feature.setAttributes([ line_num, line_status if line_status is not None else "Unknown", line_geometry.length(), line_heading ])
+                        line_provider.addFeature(line_feature)
                         lines_generated += 1
-                    else:
-                        log.warning(f"Failed to create valid line geometry for LineNum {line_num} from {len(points_xy_list)} points.")
-                else:
-                    log.warning(f"Skipping LineNum {line_num}: Found only {len(points_xy_list)} valid points (requires >= 2).")
+                        # Convert heading to float if it's a QVariant
+                        heading_value = float(line_heading) if line_heading is not None else None
+                        log.debug(f"Generated line for LineNum {line_num}, Length: {line_geometry.length():.2f}, Heading: {heading_value}")
 
-            log.debug("Finished processing all lines. Attempting commit.")
+                        # --- Generate Run-ins at both Start and End ---
+                        if line_heading is not None and max_run_in_length > 0:
+                            # Convert heading to float if it's a QVariant
+                            heading_value = float(line_heading) if line_heading is not None else 0.0
+                            log.debug(f"Calculating run-ins for LineNum {line_num} with heading {heading_value:.2f}...")
+                            try:
+                                # Determine if the points are ordered by increasing or decreasing SP
+                                # We assume the first point has the lowest SP and the last point has the highest SP
+                                # This means by default we shoot from low SP to high SP
+                                start_point = points_xy_list[0]  # First point (lowest SP)
+                                end_point = points_xy_list[-1]   # Last point (highest SP)
+                                
+                                # --- Generate Start Run-in (for shooting from low SP to high SP) ---
+                                # Calculate vector based on heading
+                                # Ensure line_heading is a Python float for calculations
+                                heading_float = float(line_heading)
+                                start_rad = math.radians(90.0 - heading_float)
+                                start_vx = math.cos(start_rad)
+                                start_vy = math.sin(start_rad)
+                                
+                                # Create start run-in point by moving in the opposite direction of the line
+                                runin_start_x = start_point.x() - start_vx * max_run_in_length
+                                runin_start_y = start_point.y() - start_vy * max_run_in_length
+                                runin_start_point = QgsPointXY(runin_start_x, runin_start_y)
+                                
+                                # Create start run-in geometry
+                                start_runin_geom = QgsGeometry.fromPolylineXY([runin_start_point, start_point])
+                                if start_runin_geom and not start_runin_geom.isNull():
+                                    start_runin_feature = QgsFeature(runin_fields)
+                                    start_runin_feature.setGeometry(start_runin_geom)
+                                    # Direction attribute shows "Low to High SP" for this run-in
+                                    start_runin_feature.setAttributes([line_num, start_runin_geom.length(), "Start", "Low to High SP"])
+                                    runin_provider.addFeature(start_runin_feature)
+                                    runins_generated += 1
+                                    log.debug(f"Generated start run-in for LineNum {line_num}, Length: {start_runin_geom.length():.2f}")
+                                else:
+                                    log.warning(f"Failed to create valid start run-in geometry for LineNum {line_num}.")
+                                
+                                # --- Generate End Run-in (for shooting from high SP to low SP) ---
+                                # Calculate vector based on reciprocal heading (opposite direction)
+                                # Use heading_float from earlier conversion
+                                end_rad = math.radians(90.0 - (heading_float + 180) % 360)
+                                end_vx = math.cos(end_rad)
+                                end_vy = math.sin(end_rad)
+                                
+                                # Create end run-in point by moving in the direction opposite to the reciprocal heading
+                                runin_end_x = end_point.x() - end_vx * max_run_in_length
+                                runin_end_y = end_point.y() - end_vy * max_run_in_length
+                                runin_end_point = QgsPointXY(runin_end_x, runin_end_y)
+                                
+                                # Create end run-in geometry
+                                end_runin_geom = QgsGeometry.fromPolylineXY([runin_end_point, end_point])
+                                if end_runin_geom and not end_runin_geom.isNull():
+                                    end_runin_feature = QgsFeature(runin_fields)
+                                    end_runin_feature.setGeometry(end_runin_geom)
+                                    # Direction attribute shows "High to Low SP" for this run-in
+                                    end_runin_feature.setAttributes([line_num, end_runin_geom.length(), "End", "High to Low SP"])
+                                    runin_provider.addFeature(end_runin_feature)
+                                    runins_generated += 1
+                                    log.debug(f"Generated end run-in for LineNum {line_num}, Length: {end_runin_geom.length():.2f}")
+                                else:
+                                    log.warning(f"Failed to create valid end run-in geometry for LineNum {line_num}.")
+                            except Exception as runin_e:
+                                log.exception(f"Error calculating run-ins for LineNum {line_num}: {runin_e}")
+                        elif line_heading is None:
+                            log.warning(f"Skipping run-ins for LineNum {line_num}: Heading is NULL.")
+                    else: log.warning(f"Failed to create valid line geometry for LineNum {line_num} from {len(points_xy_list)} points.")
+                else: log.warning(f"Skipping LineNum {line_num}: Found only {len(points_xy_list)} valid points (requires >= 2).")
+
+            # --- Commit Changes to Memory Layers ---
+            log.debug("Finished processing all lines. Attempting commit for memory layers.")
+            commit_ok = True
             if not self.generated_lines_layer.commitChanges():
                  commit_error = self.generated_lines_layer.dataProvider().lastError()
                  log.error(f"Failed to commit generated lines to memory layer: {commit_error}")
-                 raise Exception(f"Commit failed for memory layer: {commit_error}")
-            log.debug("Committed lines to memory layer successfully.")
+                 commit_ok = False
+            if not self.generated_runins_layer.commitChanges():
+                 commit_error = self.generated_runins_layer.dataProvider().lastError()
+                 log.error(f"Failed to commit generated run-ins to memory layer: {commit_error}")
+                 commit_ok = False
+            if not commit_ok: raise Exception("Commit failed for one or both memory layers.")
+            log.debug("Committed changes to memory layers successfully.")
 
         except Exception as e:
-             log.exception(f"Error generating line geometries: {e}")
-             self.generated_lines_layer.rollBack()
+             log.exception(f"Error during generation loop or commit: {e}")
+             if self.generated_lines_layer and self.generated_lines_layer.isEditable(): self.generated_lines_layer.rollBack()
+             if self.generated_runins_layer and self.generated_runins_layer.isEditable(): self.generated_runins_layer.rollBack()
              log.debug("Rolled back memory layer edits due to error.")
-             QMessageBox.critical(self, "Generation Error", f"An error occurred while generating lines:\n{e}")
-             if self.generated_lines_layer and self.generated_lines_layer.id() in project.mapLayers():
-                  project.removeMapLayer(self.generated_lines_layer.id())
+             QMessageBox.critical(self, "Generation Error", f"An error occurred during generation:\n{e}")
+             self._remove_layer_by_name(line_layer_name)
+             self._remove_layer_by_name(runin_layer_name)
              self.generated_lines_layer = None
+             self.generated_runins_layer = None
              return
         finally:
-             if self.generated_lines_layer and self.generated_lines_layer.isEditable():
-                  log.warning("Rolling back memory layer edits in finally block (commit might have failed silently).")
-                  self.generated_lines_layer.rollBack()
+             if self.generated_lines_layer and self.generated_lines_layer.isEditable(): self.generated_lines_layer.rollBack()
+             if self.generated_runins_layer and self.generated_runins_layer.isEditable(): self.generated_runins_layer.rollBack()
 
-        log.debug("Step 4: Adding layer to project and styling.")
+        # --- 4. Add Layers to Project and Style ---
+        log.debug("Step 4: Adding layers to project and styling.")
+        layers_added = 0
+        project = QgsProject.instance()
         if lines_generated > 0 and self.generated_lines_layer:
             if self.generated_lines_layer.isValid():
-                log.debug("Updating extents for generated lines layer.")
                 self.generated_lines_layer.updateExtents()
-                log.debug("Adding generated lines layer to project.")
                 project.addMapLayer(self.generated_lines_layer)
-                log.info(f"Generated {lines_generated} lines and added layer '{layer_name}' to project.")
+                layers_added += 1
+                log.info(f"Generated {lines_generated} lines and added layer '{line_layer_name}' to project.")
+                self._apply_basic_style(self.generated_lines_layer, 'blue')
+            else: log.error(f"Generated lines layer '{line_layer_name}' is invalid after creation.")
 
-                try:
-                    log.debug("Applying basic blue style to generated lines layer.")
-                    symbol = QgsLineSymbol.createSimple({'color': 'blue', 'width': '0.5', 'width_unit':'MM'})
-                    renderer = QgsSingleSymbolRenderer(symbol)
-                    self.generated_lines_layer.setRenderer(renderer)
-                    self.generated_lines_layer.triggerRepaint()
-                    log.debug("Style applied.")
-                except Exception as e:
-                     log.warning(f"Could not apply default style to generated lines layer: {e}")
+        if runins_generated > 0 and self.generated_runins_layer:
+             if self.generated_runins_layer.isValid():
+                  self.generated_runins_layer.updateExtents()
+                  project.addMapLayer(self.generated_runins_layer)
+                  layers_added += 1
+                  log.info(f"Generated {runins_generated} run-ins and added layer '{runin_layer_name}' to project.")
+                  self._apply_basic_style(self.generated_runins_layer, 'red')
+             else: log.error(f"Generated run-ins layer '{runin_layer_name}' is invalid after creation.")
 
-                QMessageBox.information(self, "Success", f"Generated {lines_generated} straight survey lines.")
-            else:
-                log.error(f"Generated lines layer '{layer_name}' is invalid after creation.")
-                QMessageBox.critical(self, "Layer Error", "The generated lines layer is invalid.")
-                self.generated_lines_layer = None
-
-        elif self.generated_lines_layer:
-             log.warning("No valid lines were generated. Removing empty layer.")
-             if self.generated_lines_layer.id() in project.mapLayers():
-                  project.removeMapLayer(self.generated_lines_layer.id())
+        # --- 5. Provide Final Feedback ---
+        if layers_added > 0:
+             QMessageBox.information(self, "Success", f"Generated {lines_generated} lines and {runins_generated} run-ins.")
+        elif self.generated_lines_layer or self.generated_runins_layer:
+             self._remove_layer_by_name(line_layer_name)
+             self._remove_layer_by_name(runin_layer_name)
              self.generated_lines_layer = None
-             QMessageBox.warning(self, "No Lines Generated", "No valid lines could be generated for the selected criteria.")
-        else:
-              log.warning("No lines generated as memory layer creation failed.")
+             self.generated_runins_layer = None
+             log.warning("No valid lines or run-ins were generated.")
+             QMessageBox.warning(self, "No Output Generated", "No valid lines or run-ins could be generated for the selected criteria.")
+
+
+
+    # --- Helper method for styling ---
+    def _apply_basic_style(self, layer, color_name):
+        """Applies a simple single symbol line style to the layer."""
+        try:
+            symbol = QgsLineSymbol.createSimple({
+                'color': color_name,
+                'width': '0.5',
+                'width_unit': 'MM'
+            })
+            renderer = QgsSingleSymbolRenderer(symbol)
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+            log.debug(f"Applied basic {color_name} style to layer '{layer.name()}'.")
+        except Exception as e:
+            log.warning(f"Could not apply default style to layer '{layer.name()}': {e}")
+
+    # --- Helper method to remove layer by name ---
+    def _remove_layer_by_name(self, layer_name):
+        """Removes layers with a given name from the project."""
+        project = QgsProject.instance()
+        layers = project.mapLayersByName(layer_name)
+        ids_to_remove = [layer.id() for layer in layers]
+        if ids_to_remove:
+             project.removeMapLayers(ids_to_remove)
+             log.debug(f"Removed {len(ids_to_remove)} layer(s) named '{layer_name}'.")
 
 
     def handle_calculate_headings(self):
