@@ -27,7 +27,7 @@ import traceback
 import logging
 import math # Import math for calculations
 import time # For performance measurement
-# import sys # No longer needed if basicConfig works okay for now
+from datetime import datetime, timedelta # Added for timing calculations
 
 # --- QGIS Imports ---
 from qgis.core import (
@@ -51,12 +51,14 @@ from qgis.core import (
     QgsRendererCategory,
     QgsCategorizedSymbolRenderer,
     QgsSingleSymbolRenderer,
-    QgsLineSymbol
+    QgsLineSymbol,
+    QgsDistanceArea, # Added for distance calculations if needed
+    QgsSpatialIndex # Added for potential use later
 )
+
 from qgis.gui import QgsMapLayerComboBox
 from qgis.core import QgsMapLayerProxyModel
-
-from qgis.PyQt import QtWidgets, uic
+from qgis.PyQt import QtWidgets, uic, QtCore # Added QtCore
 from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt
 from qgis.PyQt.QtWidgets import QProgressDialog, QApplication
 from qgis.PyQt.QtWidgets import QFileDialog, QComboBox, QMessageBox, QListWidget, QTableWidget, QAbstractItemView, QListWidgetItem
@@ -68,6 +70,7 @@ from .obn_planner_dockwidget_base_ui import Ui_OBNPlannerDockWidgetBase
 
 # Define NULL constant for QGIS NULL values
 NULL = QVariant()
+KNOTS_TO_MPS = 0.514444 # Conversion factor
 
 # --- Set up logging ---
 log = logging.getLogger(__name__)
@@ -84,6 +87,10 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     last_sps_dir = os.path.expanduser("~")
     last_gpkg_dir = os.path.expanduser("~")
     generated_lines_layer = None
+    generated_runins_layer = None # Add reference for run-in layer
+    generated_turns_layer = None # Add reference for turns layer
+    # Add reference for the new optimized path layer
+    optimized_path_layer = None
 
     def __init__(self, parent=None):
         """Constructor."""
@@ -109,27 +116,51 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # --- Connect Signals to Slots ---
         self.importSpsButton.clicked.connect(self.handle_sps_import_button)
         self.applyFilterButton.clicked.connect(self.handle_apply_filter)
+
         # Status buttons
         if hasattr(self, 'markAcquiredButton'): self.markAcquiredButton.clicked.connect(self.handle_mark_acquired)
         else: log.warning("UI Warning: markAcquiredButton not found.")
         if hasattr(self, 'markTbaButton'): self.markTbaButton.clicked.connect(self.handle_mark_tba)
         else: log.warning("UI Warning: markTbaButton not found.")
+
         # Generate Lines button
         if hasattr(self, 'generateLinesButton'): self.generateLinesButton.clicked.connect(self.handle_generate_lines)
         else: log.warning("UI Warning: generateLinesButton not found.")
+
         # Connect Calculate Headings button
         if hasattr(self, 'calculateHeadingsButton'):
             self.calculateHeadingsButton.clicked.connect(self.handle_calculate_headings) # Connect new button
         else:
             log.warning("UI Warning: calculateHeadingsButton not found.")
 
-
         # --- Initialize Line List Widget ---
         if hasattr(self, 'lineListWidget'): self.lineListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         else: log.warning("UI Warning: lineListWidget not found.")
 
+        # --- Connect Simulation/Lookahead Buttons ---
+        # Connect Run Simulation Button
+        if hasattr(self, 'runSimulationButton'):
+            self.runSimulationButton.clicked.connect(self.handle_run_simulation)
+            log.debug("Connected runSimulationButton signal.")
+        else:
+            log.warning("UI Warning: runSimulationButton not found.")
+
+        # Connect Generate Lookahead Plan Button
+        if hasattr(self, 'generatePlanButton'):
+            self.generatePlanButton.clicked.connect(self.handle_generate_lookahead)
+            log.debug("Connected generatePlanButton signal.")
+        else:
+            log.warning("UI Warning: generatePlanButton not found.")
+
+
         log.info("OBNPlannerDockWidget initialized.")
 
+    # ... (Keep existing methods like _replace_combo_with_map_layer_combo, handle_sps_import, etc.) ...
+    # ... (Keep handle_apply_filter, handle_mark_acquired, handle_mark_tba) ...
+    # ... (Keep handle_generate_lines, _calculate_turn_geometry helpers, _apply_basic_style, _remove_layer_by_name) ...
+    # ... (Keep handle_calculate_headings) ...
+
+    # --- Simulation / Lookahead Handlers ---
 
     def _replace_combo_with_map_layer_combo(self, placeholder_combo, layout, layer_filter):
         """Helper function to replace a placeholder QComboBox with a QgsMapLayerComboBox."""
@@ -143,7 +174,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         layout.addWidget(new_combo)
         log.debug(f"Replaced {placeholder_combo.objectName()} with QgsMapLayerComboBox.")
         return new_combo
-
 
     # --- Slot Methods ---
     def handle_sps_import_button(self):
@@ -1036,20 +1066,422 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # Refresh the layer display
         source_layer.triggerRepaint()
         
+    def handle_run_simulation(self):
+        """
+        Handles the click event for the 'Run Simulation' button.
+        Orchestrates the data gathering, sequencing, timing, and visualization.
+        """
+        log.info("Run Simulation button clicked. Starting process...")
+        QApplication.setOverrideCursor(Qt.WaitCursor) # Indicate processing
+
+        try:
+            # == Step 1: Core Data Gathering & Prep ==
+            log.debug("Running Step 1: Data Gathering & Preparation...")
+            sim_params = self._gather_simulation_parameters()
+            if not sim_params: return # Error handled within the function
+
+            line_data, required_layers = self._prepare_line_data(sim_params)
+            if not line_data: return # Error handled within the function
+            log.info(f"Successfully prepared data for {len(line_data)} lines.")
+
+            # == Step 2: Sequencing Logic (NN) ==
+            log.debug("Running Step 2: Sequencing Logic (Nearest Neighbor)...")
+            # --- TODO: Implement NN Sequencing (using line_data, sim_params) ---
+            # sequence, path_segments_data, total_time_estimate = self._run_nn_sequencing(line_data, sim_params, required_layers['runins'])
+            # For now, just use the order from the list as a placeholder sequence
+            if hasattr(self, 'lineListWidget') and self.lineListWidget.count() > 0:
+                placeholder_sequence = [int(self.lineListWidget.item(i).text()) for i in range(self.lineListWidget.count())]
+                # Ensure first line is actually first if it's in the list
+                if sim_params['first_line_num'] in placeholder_sequence:
+                     placeholder_sequence.remove(sim_params['first_line_num'])
+                     placeholder_sequence.insert(0, sim_params['first_line_num'])
+                else:
+                     # If first line wasn't in the filtered list, raise error? Or just prepend? Prepend for now.
+                     log.warning(f"Specified first line {sim_params['first_line_num']} not found in filtered list. Prepending.")
+                     placeholder_sequence.insert(0, sim_params['first_line_num'])
+
+                sequence = placeholder_sequence # Use placeholder
+                log.warning("Using placeholder sequence from list widget - NN not implemented.")
+            else:
+                 QMessageBox.warning(self, "Sequencing Error", "Cannot determine line sequence (List widget empty).")
+                 return
+
+            # == Step 3: Accurate Turn Calculation (Dubins) ==
+            log.debug("Running Step 3: Accurate Turn Calculation (Dubins)...")
+            # --- TODO: Implement Dubins Path calculation ---
+            # This step would typically be integrated within the NN loop (if using direct Dubins)
+            # OR run *after* the NN sequence is found (if using phased calculation).
+            # For now, we don't have the turn geometries.
+            log.warning("Dubins path calculation not yet implemented.")
+            path_segments = [] # Placeholder for final geometries
+
+            # == Step 4: Integration & Timing ==
+            log.debug("Running Step 4: Integration & Timing...")
+            # --- TODO: Calculate accurate total time using Dubins results ---
+            # For now, calculate based on line lengths only
+            total_time_seconds = 0
+            temp_current_time = sim_params['start_datetime']
+            for i, line_num in enumerate(sequence):
+                 line_info = line_data.get(line_num)
+                 if not line_info: continue
+                 line_time = line_info['length'] / sim_params['avg_shooting_speed_mps']
+                 total_time_seconds += line_time
+                 # Add placeholder turn time if not the first line
+                 if i > 0: total_time_seconds += 300 # Placeholder 5 min turn
+
+            total_time_hours = total_time_seconds / 3600.0
+            log.warning(f"Timing calculation is approximate (lines only + placeholder turns). Total: {total_time_hours:.2f} hours")
 
 
+            # == Step 5: Visualization ==
+            log.debug("Running Step 5: Visualization...")
+            # --- TODO: Generate visualization layer using actual path_segments ---
+            # self._visualize_optimized_path(sequence, path_segments, sim_params['start_datetime'])
+            log.warning("Visualization step skipped - requires path segments.")
 
-    # --- END: Slot Methods ---
+            QMessageBox.information(self, "Simulation (Partial)",
+                                    f"Data gathered for {len(line_data)} lines.\n"
+                                    f"Sequencing / Dubins / Timing / Visualization not fully implemented.\n"
+                                    f"Placeholder Sequence: {sequence}\n"
+                                    f"Approximate Line Time: {total_time_hours:.2f} hours (excluding turns)")
+
+        except Exception as e:
+            log.exception("Error during Run Simulation process.")
+            QMessageBox.critical(self, "Simulation Error", f"An unexpected error occurred:\n{e}")
+        finally:
+            QApplication.restoreOverrideCursor() # Restore cursor
+
+
+    def _gather_simulation_parameters(self):
+        """Reads simulation parameters from the UI."""
+        log.debug("Gathering simulation parameters from UI...")
+        params = {}
+        try:
+            # Use object names defined in Qt Designer / previous steps
+            params['first_line_num'] = self.firstLineSpinBox.value()
+            params['first_heading_option'] = self.firstHeadingComboBox.currentText()
+
+            # Handle different speed input possibilities (check which widgets exist)
+            if hasattr(self, 'avgShootingSpeedDoubleSpinBox'): # Check if the single average speed box exists
+                 params['avg_shooting_speed_knots'] = self.avgShootingSpeedDoubleSpinBox.value()
+                 # If only average is provided, use it for both directions
+                 params['avg_shooting_speed_mps'] = params['avg_shooting_speed_knots'] * KNOTS_TO_MPS
+            elif hasattr(self, 'acqSpeedPrimaryDoubleSpinBox') and hasattr(self, 'acqSpeedReciprocalDoubleSpinBox'):
+                 # If primary/reciprocal exist (handle this case if UI changes)
+                 params['acq_speed_primary_knots'] = self.acqSpeedPrimaryDoubleSpinBox.value()
+                 params['acq_speed_reciprocal_knots'] = self.acqSpeedReciprocalDoubleSpinBox.value()
+                 # For NN cost, might need an average or use direction-specific logic later
+                 params['avg_shooting_speed_mps'] = (params['acq_speed_primary_knots'] + params['acq_speed_reciprocal_knots']) / 2.0 * KNOTS_TO_MPS
+                 log.warning("Using average of primary/reciprocal speeds for line time calculation.") # TODO: Refine timing calc later
+            elif hasattr(self, 'acqSpeedPrimaryDoubleSpinBox'):
+                 # If only primary speed exists, use it for both directions
+                 primary_speed = self.acqSpeedPrimaryDoubleSpinBox.value()
+                 params['acq_speed_primary_knots'] = primary_speed
+                 params['acq_speed_reciprocal_knots'] = primary_speed  # Use same speed for reciprocal
+                 params['avg_shooting_speed_mps'] = primary_speed * KNOTS_TO_MPS
+                 log.info("Using primary acquisition speed for both directions.")
+            else:
+                 raise AttributeError("Suitable acquisition speed input widget(s) not found.")
+
+            params['avg_turn_speed_knots'] = self.turnSpeedDoubleSpinBox.value()
+            params['turn_radius_meters'] = self.turnRadiusDoubleSpinBox.value()
+            params['run_in_length_meters'] = self.maxRunInDoubleSpinBox.value() # Still needed to interpret run-in layer
+            params['start_datetime'] = self.startDateTimeEdit.dateTime().toPyDateTime() # Convert QDateTime to Python datetime
+
+            # Unit Conversions
+            params['avg_turn_speed_mps'] = params['avg_turn_speed_knots'] * KNOTS_TO_MPS
+
+            # Basic Validation
+            if params['avg_shooting_speed_mps'] <= 0 or params['avg_turn_speed_mps'] <= 0 or params['turn_radius_meters'] <= 0:
+                raise ValueError("Speeds and turn radius must be positive.")
+
+            log.debug(f"Parameters gathered: {params}")
+            return params
+
+        except AttributeError as ae:
+             log.error(f"UI element not found when reading simulation parameters: {ae}")
+             QMessageBox.critical(self, "UI Error", f"Could not find expected UI element: {ae}")
+             return None
+        except ValueError as ve:
+             log.error(f"Invalid parameter value: {ve}")
+             QMessageBox.critical(self, "Input Error", f"Invalid parameter value: {ve}")
+             return None
+        except Exception as e:
+             log.exception(f"Error gathering simulation parameters: {e}")
+             QMessageBox.critical(self, "Error", f"Error reading parameters: {e}")
+             return None
+
+
+    def _prepare_line_data(self, sim_params):
+        """
+        Verifies temporary layers and loads required data into a dictionary.
+        Returns tuple: (line_data_dict, required_layers_dict) or (None, None) on error.
+        """
+        log.debug("Preparing line data from temporary layers...")
+        project = QgsProject.instance()
+        line_layer_name = "Generated_Survey_Lines"
+        runin_layer_name = "Generated_RunIns"
+
+        # 1. Verify Layers
+        lines_layer = project.mapLayersByName(line_layer_name)
+        runins_layer = project.mapLayersByName(runin_layer_name)
+
+        if not lines_layer:
+            QMessageBox.critical(self, "Layer Error", f"Temporary layer '{line_layer_name}' not found.\nPlease run 'Generate Straight Lines' first.")
+            return None, None
+        if not runins_layer:
+             QMessageBox.critical(self, "Layer Error", f"Temporary layer '{runin_layer_name}' not found.\nPlease run 'Generate Straight Lines' first.")
+             return None, None
+
+        lines_layer = lines_layer[0] # Get the layer object
+        runins_layer = runins_layer[0] # Get the layer object
+
+        if not lines_layer.isValid() or not runins_layer.isValid():
+             QMessageBox.critical(self, "Layer Error", "Required temporary layers are invalid.")
+             return None, None
+
+        log.debug(f"Found valid temporary layers: '{lines_layer.name()}', '{runins_layer.name()}'")
+        required_layers = {'lines': lines_layer, 'runins': runins_layer}
+
+        # Get filter range from main UI controls
+        start_line_filter = self.startLineSpinBox.value()
+        end_line_filter = self.endLineSpinBox.value()
+        # Status filter 'To Be Acquired' is assumed for lines in the simulation
+
+        line_data = {}
+        processed_line_nums = set()
+
+        # 3. Gather Line Data
+        log.debug(f"Gathering data from '{lines_layer.name()}'...")
+        line_fields = lines_layer.fields()
+        line_num_idx = line_fields.lookupField("LineNum")
+        length_idx = line_fields.lookupField("Length_m")
+        heading_idx = line_fields.lookupField("Heading")
+        # Status might need to be read from original layer if not added to Generated_Survey_Lines
+        # status_idx = line_fields.lookupField("Status") # Assuming it exists
+
+        if any(idx == -1 for idx in [line_num_idx, length_idx, heading_idx]):
+            QMessageBox.critical(self, "Layer Error", f"Missing required fields (LineNum, Length_m, Heading) in '{lines_layer.name()}'.")
+            return None, None
+
+        request = QgsFeatureRequest()
+        # Apply filter directly if possible (might need status check separately)
+        request.setFilterExpression(f'"LineNum" >= {start_line_filter} AND "LineNum" <= {end_line_filter}') # Add status if available
+
+        for feature in lines_layer.getFeatures(request):
+            line_num = feature.attribute(line_num_idx)
+            length = feature.attribute(length_idx)
+            heading = feature.attribute(heading_idx)
+            # status = feature.attribute(status_idx) # Read status if field exists
+
+            # Validate data
+            if line_num is None or length is None or heading is None:
+                log.warning(f"Skipping line feature FID {feature.id()} due to missing attributes.")
+                continue
+            # Add status check here if the field exists and is reliable
+            # if status != 'To Be Acquired': continue
+
+            try:
+                line_num = int(line_num)
+                length = float(length)
+                heading = float(heading)
+                if length < 0: raise ValueError("Negative length")
+            except (ValueError, TypeError) as val_err:
+                 log.warning(f"Skipping line feature FID {feature.id()} due to invalid attribute value: {val_err}")
+                 continue
+
+            line_geom = feature.geometry()
+            if not line_geom or line_geom.isNull() or line_geom.type() != QgsWkbTypes.LineGeometry:
+                 log.warning(f"Skipping line feature FID {feature.id()} due to invalid geometry.")
+                 continue
+
+            line_data[line_num] = {
+                'length': length,
+                'heading': heading,
+                'line_geom': line_geom, # Store geometry for visualization later
+                'start_runin_pt': None, # Initialize run-in points
+                'end_runin_pt': None
+            }
+            processed_line_nums.add(line_num)
+
+        log.debug(f"Gathered initial data for {len(line_data)} lines from '{lines_layer.name()}'.")
+
+        # 4. Gather Run-in Data
+        log.debug(f"Gathering run-in endpoints from '{runins_layer.name()}'...")
+        runin_fields = runins_layer.fields()
+        ri_line_num_idx = runin_fields.lookupField("LineNum")
+        ri_pos_idx = runin_fields.lookupField("Position")
+
+        if ri_line_num_idx == -1 or ri_pos_idx == -1:
+            QMessageBox.critical(self, "Layer Error", f"Missing required fields (LineNum, Position) in '{runins_layer.name()}'.")
+            return None, None
+
+        runin_count = 0
+        for feature in runins_layer.getFeatures():
+            line_num = feature.attribute(ri_line_num_idx)
+            position = feature.attribute(ri_pos_idx)
+            runin_geom = feature.geometry()
+
+            if line_num is None or position is None or not runin_geom or runin_geom.isNull() or runin_geom.type() != QgsWkbTypes.LineGeometry:
+                log.warning(f"Skipping invalid run-in feature FID {feature.id()}.")
+                continue
+
+            try: line_num = int(line_num)
+            except: continue
+
+            # Only process run-ins for lines we care about
+            if line_num in line_data:
+                # Get the two vertices of the run-in line segment
+                vertices = list(runin_geom.vertices())
+                if len(vertices) != 2:
+                    log.warning(f"Run-in geometry for LineNum {line_num}, FID {feature.id()} is not a simple 2-point line. Skipping.")
+                    continue
+
+                # Identify the far end point (assume the other point is on the main line)
+                # This requires comparing run-in vertices to line start/end points.
+                # A simpler approach (if run-ins are always generated correctly):
+                # Assume the first vertex is the far end for 'Start' run-in,
+                # and the last vertex is the far end for 'End' run-in.
+                # This depends heavily on how handle_generate_lines creates them.
+
+                # Robust approach: Find line start/end points
+                # Get start and end points in a way that works across QGIS versions
+                line_geom = line_data[line_num]['line_geom']
+                line_points = line_geom.asPolyline()
+                if not line_points:
+                    # Try as multi-part linestring if simple polyline fails
+                    line_points = line_geom.asMultiPolyline()
+                    if line_points and line_points[0]:
+                        line_points = line_points[0]
+                    else:
+                        log.warning(f"Could not extract points from line geometry for LineNum {line_num}")
+                        continue
+                
+                line_start_pt = line_points[0]
+                line_end_pt = line_points[-1]
+
+                # Determine which run-in vertex is the 'far' one using distance calculation
+                far_endpoint = None
+                tolerance = 1e-6  # Same tolerance as would be used with compare
+                
+                # Helper function to check if points are close enough to be considered the same
+                def points_match(pt1, pt2, tol):
+                    dx = pt1.x() - pt2.x()
+                    dy = pt1.y() - pt2.y()
+                    return (dx*dx + dy*dy) < tol*tol
+                
+                if points_match(vertices[0], line_start_pt, tolerance) or points_match(vertices[0], line_end_pt, tolerance):
+                    far_endpoint = vertices[1]  # Vertex 0 is near the line
+                elif points_match(vertices[1], line_start_pt, tolerance) or points_match(vertices[1], line_end_pt, tolerance):
+                    far_endpoint = vertices[0]  # Vertex 1 is near the line
+                else:
+                    log.warning(f"Could not determine far endpoint for run-in FID {feature.id()}, LineNum {line_num}. Vertices might not match line ends.")
+                    # Fallback: Use the documented assumption if necessary
+                    if position == 'Start': far_endpoint = vertices[0]
+                    elif position == 'End': far_endpoint = vertices[1]
+
+
+                if far_endpoint:
+                    if position == 'Start':
+                        line_data[line_num]['start_runin_pt'] = far_endpoint
+                        runin_count += 1
+                    elif position == 'End':
+                        line_data[line_num]['end_runin_pt'] = far_endpoint
+                        runin_count += 1
+
+        log.debug(f"Associated {runin_count} run-in endpoints.")
+
+        # Handle lines with missing run-ins (e.g., if run-in length was 0)
+        for line_num, data in line_data.items():
+            if data['start_runin_pt'] is None:
+                log.warning(f"Using line start point as run-in start point for LineNum {line_num} (Run-in likely missing/zero length).")
+                # Get start point in a compatible way
+                line_points = data['line_geom'].asPolyline()
+                if not line_points:
+                    # Try as multi-part linestring if simple polyline fails
+                    line_points = data['line_geom'].asMultiPolyline()
+                    if line_points and line_points[0]:
+                        line_points = line_points[0]
+                    else:
+                        log.warning(f"Could not extract start point from line geometry for LineNum {line_num}")
+                        line_points = [QgsPointXY(0, 0)]  # Fallback to prevent errors
+                data['start_runin_pt'] = line_points[0]
+            if data['end_runin_pt'] is None:
+                log.warning(f"Using line end point as run-in end point for LineNum {line_num} (Run-in likely missing/zero length).")
+                # Get end point in a compatible way
+                if not 'line_points' in locals() or not line_points:
+                    line_points = data['line_geom'].asPolyline()
+                    if not line_points:
+                        # Try as multi-part linestring if simple polyline fails
+                        line_points = data['line_geom'].asMultiPolyline()
+                        if line_points and line_points[0]:
+                            line_points = line_points[0]
+                        else:
+                            log.warning(f"Could not extract end point from line geometry for LineNum {line_num}")
+                            line_points = [QgsPointXY(0, 0), QgsPointXY(1, 1)]  # Fallback to prevent errors
+                data['end_runin_pt'] = line_points[-1]
+
+
+        # 5. Validate First Line
+        if sim_params['first_line_num'] not in line_data:
+            QMessageBox.critical(self, "Input Error", f"Selected First Line ({sim_params['first_line_num']}) not found in the filtered 'To Be Acquired' lines within the specified range.")
+            return None, None
+
+        log.debug("Data preparation completed successfully.")
+        return line_data, required_layers
+
+
+    def handle_generate_lookahead(self):
+        """Handles the click event for the 'Generate Lookahead Plan' button."""
+        log.info("Generate Lookahead Plan button clicked.")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            # --- TODO: Implement Sequencing, Timing Calculation, and Excel Export Logic ---
+            # This would likely call parts of the simulation logic first
+            # (e.g., _gather_simulation_parameters, _prepare_line_data, _run_nn_sequencing)
+            # then calculate detailed timings, and finally call an export function.
+
+            QMessageBox.information(self, "Not Implemented",
+                                    "Generate Lookahead: Reading parameters.\nSequencing, timing, and Excel export not yet implemented.")
+
+        except Exception as e:
+             log.exception(f"Error during lookahead generation: {e}")
+             QMessageBox.critical(self, "Error", f"Error generating lookahead plan: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+
+    # --- Helper Functions (Keep existing helpers) ---
+    # ... _replace_combo_with_map_layer_combo ...
+    # ... _calculate_dubins_turn (placeholder or implementation) ...
+    # ... _apply_basic_style ...
+    # ... _remove_layer_by_name ...
+
+    # --- END: Simulation / Lookahead Handlers ---
 
     def closeEvent(self, event):
         """ Clean up when dock widget is closed """
         log.debug("Dock widget close event triggered.")
-        if self.generated_lines_layer:
-             project = QgsProject.instance()
-             if self.generated_lines_layer.id() in project.mapLayers():
-                  project.removeMapLayer(self.generated_lines_layer.id())
-                  log.info(f"Removed layer '{self.generated_lines_layer.name()}' on plugin close.")
-             else: log.debug("Generated lines layer reference exists but layer not found in project.")
-             self.generated_lines_layer = None
+        # Clean up temporary layers
+        self._remove_layer_by_name("Generated_Survey_Lines")
+        self._remove_layer_by_name("Generated_RunIns")
+        self._remove_layer_by_name("Generated_Turns")
+        self._remove_layer_by_name("Optimized_Path") # Remove the new layer
+        self.generated_lines_layer = None
+        self.generated_runins_layer = None
+        self.generated_turns_layer = None
+        self.optimized_path_layer = None
+
         self.closingPlugin.emit()
         event.accept()
+
+    # --- Placeholder for Dubins Calculation ---
+    # Needs proper implementation or import from a library
+    def _calculate_dubins_turn(p_exit, h_exit, p_entry, h_entry, radius):
+        """
+        Placeholder for Dubins path calculation.
+        Returns (None, None) indicating failure until implemented.
+        """
+        log.warning(f"Dubins path calculation between ({p_exit.x():.1f},{p_exit.y():.1f} @ {h_exit:.1f}) and ({p_entry.x():.1f},{p_entry.y():.1f} @ {h_entry:.1f}) with radius {radius} is not implemented.")
+        # In a real implementation, this would return (QgsGeometry, length)
+        return None, None
