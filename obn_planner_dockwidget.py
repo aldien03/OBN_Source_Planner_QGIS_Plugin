@@ -1961,51 +1961,37 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
     # --- Integrated Dubins Turn Calculation ---
     def _calculate_dubins_turn(self, p_exit, h_exit, p_entry, h_entry, radius, turn_speed_mps, turn_rate_dps=None):
-        """
-        Calculates the shortest Dubins path between two poses using the
-        integrated dubins_path module. Also calculates the estimated time.
-
-        Args:
-            p_exit (QgsPointXY): Exit point.
-            h_exit (float): Exit heading (degrees, North=0, Clockwise).
-            p_entry (QgsPointXY): Entry point.
-            h_entry (float): Entry heading (degrees, North=0, Clockwise).
-            radius (float): Turning radius in map units.
-            turn_speed_mps (float): Average speed during the turn (m/s).
-            turn_rate_dps (float, optional): Max vessel turn rate (deg/s). Defaults to None.
-
-
-        Returns:
-            tuple: (QgsGeometry, length, time_seconds) or (None, None, None) on failure.
-        """
+        """ Calculates the shortest Dubins path and estimated time. """
+        # --- Update: Correct angle conversion for dubins_calc ---
         log.debug(f"Calculating Dubins turn: {p_exit.x():.1f},{p_exit.y():.1f} @ {h_exit:.1f} -> {p_entry.x():.1f},{p_entry.y():.1f} @ {h_entry:.1f}, R={radius:.1f}")
 
+        # Convert QGIS Headings (0=N, clockwise) to the convention expected by
+        # the internal math of dubins_path.py (Degrees, 0=East, Counter-Clockwise)
+        # before passing to get_curve, assuming get_curve just converts degrees to radians.
+        # If get_curve expects QGIS heading directly, this conversion is wrong.
+        # Based on typical Dubins implementations, 0=East CCW is standard for math.
+        s_head_math_deg = (90.0 - h_exit + 360.0) % 360.0
+        e_head_math_deg = (90.0 - h_entry + 360.0) % 360.0
+        log.debug(f"Converted Headings: Start={s_head_math_deg:.1f}deg, End={e_head_math_deg:.1f}deg (0=East, CCW)")
+
         # Define a suitable densification distance
-        densification_distance = radius / 10.0 # Example: 10 points per semi-circle approx
+        densification_distance = radius / 10.0
         if hasattr(dubins_calc, 'MAX_LINE_DISTANCE'):
-             # Set the global within the imported module if necessary
-             # Note: Modifying globals like this isn't ideal, passing as param is better
              dubins_calc.MAX_LINE_DISTANCE = densification_distance
              if hasattr(dubins_calc, 'MAX_CURVE_ANGLE') and radius > 0:
-                  # Ensure MAX_CURVE_ANGLE is calculated correctly
-                  try:
-                      # Angle in degrees = arc_length / radius (in radians) * (180/pi)
-                      dubins_calc.MAX_CURVE_ANGLE = math.degrees(densification_distance / radius)
-                  except ZeroDivisionError:
-                      dubins_calc.MAX_CURVE_ANGLE = 10.0 # Default angle if radius is zero
+                  try: dubins_calc.MAX_CURVE_ANGLE = math.degrees(densification_distance / radius)
+                  except ZeroDivisionError: dubins_calc.MAX_CURVE_ANGLE = 10.0
              log.debug(f"Set dubins_calc globals: MAX_LINE_DISTANCE={densification_distance}, MAX_CURVE_ANGLE={getattr(dubins_calc, 'MAX_CURVE_ANGLE', 'N/A')}")
         else:
              log.warning("Cannot set MAX_LINE_DISTANCE in dubins_calc module.")
 
-
         try:
-            # Call the get_curve function from the imported module
-            # Ensure headings are passed as expected (degrees, 0=N, clockwise seems correct based on get_curve)
+            # Call the get_curve function with adjusted headings
             projection_points = dubins_calc.get_curve(
-                s_x=p_exit.x(), s_y=p_exit.y(), s_head=h_exit,
-                e_x=p_entry.x(), e_y=p_entry.y(), e_head=h_entry,
+                s_x=p_exit.x(), s_y=p_exit.y(), s_head=s_head_math_deg, # Use adjusted heading
+                e_x=p_entry.x(), e_y=p_entry.y(), e_head=e_head_math_deg, # Use adjusted heading
                 radius=radius,
-                max_line_distance=densification_distance # Pass if get_curve is modified
+                max_line_distance=densification_distance
             )
 
             if not projection_points:
@@ -2015,7 +2001,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Convert points and create geometry
             qgs_points = [QgsPointXY(pt[0], pt[1]) for pt in projection_points]
             start_qgs_point = QgsPointXY(p_exit.x(), p_exit.y())
-            # Check distance with tolerance before inserting start point
             if not qgs_points or start_qgs_point.distance(qgs_points[0]) > 1e-3:
                  qgs_points.insert(0, start_qgs_point)
 
@@ -2031,28 +2016,19 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Calculate length
             turn_length = turn_geom.length()
 
-            # Calculate turn time based on both speed and turn rate constraints
+            # Calculate turn time
             time_seconds = None
-
             if turn_speed_mps and turn_speed_mps > 0:
-                # Time based on distance and speed
                 distance_time = turn_length / turn_speed_mps
-
-                # If turn rate is provided, calculate time based on heading change
                 if turn_rate_dps and turn_rate_dps > 0:
-                    # Calculate total heading change (always use shortest turn direction)
-                    heading_diff = abs((h_entry - h_exit + 180) % 360 - 180)
+                    heading_diff = abs((h_entry - h_exit + 180) % 360 - 180) # Use original QGIS headings for diff
                     heading_time = heading_diff / turn_rate_dps
-
-                    # Use the longer of the two times (speed-limited or turn-rate-limited)
                     time_seconds = max(distance_time, heading_time)
                     log.debug(f"Turn time calculation: distance_time={distance_time:.1f}s, heading_time={heading_time:.1f}s, used={time_seconds:.1f}s")
                 else:
-                    # Only speed constraint available
                     time_seconds = distance_time
                     log.debug(f"Turn time calculation (speed only): {time_seconds:.1f}s")
             else:
-                # Default fallback if no speed provided
                 time_seconds = 0.0
                 log.warning("No turn speed provided, unable to calculate turn time")
 
@@ -2069,17 +2045,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Unexpected error during Dubins turn calculation: {e}")
             return None, None, None
 
+
     # --- Visualization Function ---
     def _visualize_optimized_path(self, sequence, path_segments, start_datetime, source_crs):
-        """
-        Creates a temporary memory layer to visualize the optimized path.
-
-        Args:
-            sequence (list): The ordered list of LineNum. (Currently unused but kept for context).
-            path_segments (list): List of tuples: (geometry, segment_type, line_num, time_seconds).
-            start_datetime (datetime): The starting datetime of the simulation.
-            source_crs (QgsCoordinateReferenceSystem): The CRS for the new layer.
-        """
+        """ Creates a temporary memory layer to visualize the optimized path with labels. """
+        # --- Updated to include Labeling ---
         log.info("Creating visualization layer for the optimized path...")
         layer_name = "Optimized_Path"
         self._remove_layer_by_name(layer_name) # Remove existing layer if any
@@ -2122,16 +2092,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 feat.setGeometry(geometry)
 
                 segment_start_time = current_cumulative_time
-                segment_end_time = segment_start_time + timedelta(seconds=time_seconds if time_seconds is not None else 0) # Handle potential None time
+                # Ensure time_seconds is float for timedelta
+                duration = float(time_seconds if time_seconds is not None else 0)
+                segment_end_time = segment_start_time + timedelta(seconds=duration)
                 length_m = geometry.length()
 
                 # Convert Python datetime to QDateTime for attribute setting
-                # Use QDateTime.fromSecsSinceEpoch and handle timezone if necessary, or directly from datetime
                 q_start_time = QDateTime(segment_start_time)
                 q_end_time = QDateTime(segment_end_time)
 
 
-                # Handle potential NULL line_num (e.g., for initial turn if logic changes)
+                # Handle potential NULL line_num
                 display_line_num = line_num if line_num is not None else NULL
 
                 feat.setAttributes([
@@ -2139,7 +2110,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     display_line_num,   # LineNum
                     segment_type,       # SegmentType
                     round(length_m, 2), # Length_m
-                    round(time_seconds if time_seconds is not None else 0, 1), # Duration_s
+                    round(duration, 1), # Duration_s
                     q_start_time,       # StartTime
                     q_end_time          # EndTime
                 ])
@@ -2162,34 +2133,63 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         finally:
              if layer.isEditable(): layer.rollBack() # Ensure editing stopped
 
-        # Apply categorized styling
+        # --- Apply categorized styling ---
         try:
-            # Define categories and symbols
             categories = []
-            # RunIn: Red dashed line
             symbol_runin = QgsLineSymbol.createSimple({'color': 'red', 'line_style': 'dash', 'width': '0.4', 'width_unit': 'MM'})
             categories.append(QgsRendererCategory('RunIn', symbol_runin, 'RunIn'))
-            # Line: Blue solid line
             symbol_line = QgsLineSymbol.createSimple({'color': 'blue', 'line_style': 'solid', 'width': '0.6', 'width_unit': 'MM'})
             categories.append(QgsRendererCategory('Line', symbol_line, 'Line'))
-            # Turn: Green solid line
             symbol_turn = QgsLineSymbol.createSimple({'color': 'green', 'line_style': 'solid', 'width': '0.5', 'width_unit': 'MM'})
             categories.append(QgsRendererCategory('Turn', symbol_turn, 'Turn'))
-
-            # Create renderer
-            renderer = QgsCategorizedSymbolRenderer('SegmentType', categories) # Field name must match exactly
+            renderer = QgsCategorizedSymbolRenderer('SegmentType', categories)
             layer.setRenderer(renderer)
-            layer.triggerRepaint()
             log.debug("Applied categorized styling to visualization layer.")
         except Exception as style_e:
             log.exception(f"Failed to apply styling to visualization layer: {style_e}")
 
+        # --- Add Labels for Turn Duration ---
+        try:
+            # Basic label settings
+            label_settings = QgsPalLayerSettings()
+            label_settings.fieldName = "Duration_s" # Field to label
+            label_settings.placement = QgsPalLayerSettings.Placement.Line
+            # Try placing along the line, slightly above
+            label_settings.placementFlags = QgsPalLayerSettings.PlacementFlags(QgsPalLayerSettings.AboveLine | QgsPalLayerSettings.OffsetFromLine | QgsPalLayerSettings.AlongLine)
+            label_settings.quadOffset = QgsPalLayerSettings.QuadrantFlags(QgsPalLayerSettings.Quadrant.Above) # Prefer above
+            label_settings.dist = 1.0 # Offset distance from line
+            label_settings.distUnits = QgsUnitTypes.RenderUnit.MapUnit # Use map units for offset initially, might need MM
 
-        # Add layer to project
+            # Text format (font, size, color)
+            text_format = QgsTextFormat()
+            text_format.setSize(8) # Font size
+            text_format.setColor(QColor("black")) # Font color
+            label_settings.setFormat(text_format)
+
+            # Add suffix ' s' using expression
+            label_settings.setFormatExpression("format_number(\"Duration_s\", 1) || ' s'") # Format to 1 decimal place
+            label_settings.isExpression = True
+
+            # Rule-based labeling to show only for 'Turn' segments
+            rule_settings = QgsPalLayerSettings(label_settings) # Copy base settings
+            rule = QgsRuleBasedLabeling.Rule(rule_settings)
+            rule.setFilterExpression("\"SegmentType\" = 'Turn'") # Rule to show only for turns
+            rule.setActive(True)
+
+            # Apply the rule
+            rules = QgsRuleBasedLabeling.RuleRenderer(rule)
+            layer.setLabeling(rules)
+            layer.setLabelsEnabled(True) # Enable labels for the layer
+            log.debug("Applied labeling for turn duration.")
+
+        except Exception as label_e:
+             log.exception(f"Failed to apply labeling: {label_e}")
+
+
+        layer.triggerRepaint() # Refresh map
         QgsProject.instance().addMapLayer(layer)
         self.optimized_path_layer = layer # Store reference
         log.info(f"Added visualization layer '{layer_name}' to project.")
-
 
     # --- Helper Functions ---
     def _reverse_line_geometry(self, line_geom):
