@@ -41,7 +41,7 @@
          <enum>Qt::LeftToRight</enum>
         </property>
         <property name="text">
-         <string>SPS Point Layer:</string>
+         <string>Sail Line Point Layer:</string>
         </property>
        </widget>
       </item>
@@ -175,7 +175,7 @@
     <item>
      <widget class="QPushButton" name="generateLinesButton">
       <property name="text">
-       <string>Generate Straight Lines</string>
+       <string>Generate Lookahead Lines</string>
       </property>
      </widget>
     </item>
@@ -237,6 +237,33 @@
         </property>
         <property name="value">
          <double>900.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_11">
+      <item>
+       <widget class="QLabel" name="label_8">
+        <property name="text">
+         <string>Rate of Turn</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QDoubleSpinBox" name="vesselTurnRateDoubleSpinBox">
+        <property name="suffix">
+         <string> deg</string>
+        </property>
+        <property name="decimals">
+         <number>0</number>
+        </property>
+        <property name="maximum">
+         <double>360.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>30.000000000000000</double>
         </property>
        </widget>
       </item>
