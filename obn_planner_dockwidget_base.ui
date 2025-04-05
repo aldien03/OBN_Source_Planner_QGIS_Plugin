@@ -180,6 +180,31 @@
      </widget>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_18">
+      <item>
+       <widget class="QLabel" name="label_15">
+        <property name="text">
+         <string>Acqusition Mode</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="acquisitionModeComboBox">
+        <item>
+         <property name="text">
+          <string>Racetrack</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Teardrop</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="horizontalLayout_10">
       <item>
        <widget class="QLabel" name="label_7">
