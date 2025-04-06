@@ -29,6 +29,8 @@ import math # Import math for calculations
 import time # For performance measurement
 from datetime import datetime, timedelta # Added for timing calculations
 import sys # For float('inf')
+from collections import Counter, defaultdict # <--- Added defaultdict import
+import copy
 
 # --- Set up logging early ---
 # (Logging setup remains the same)
@@ -71,44 +73,36 @@ else:
     log.debug("Logger already initialized, using existing configuration.")
 
 
+# --- Set up logging early ---
+# (Logging setup remains the same)
+log = logging.getLogger(__name__)
+root_logger = logging.getLogger("obn_planner")
+if not root_logger.handlers:
+    log_dir = os.path.dirname(__file__); log_file = os.path.join(log_dir, 'obn_planner_debug.log')
+    file_handler = logging.FileHandler(log_file, mode='w')
+    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(file_formatter); file_handler.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_formatter); console_handler.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler); root_logger.addHandler(console_handler)
+    root_logger.setLevel(logging.DEBUG); log.setLevel(logging.DEBUG)
+    log.info(f"Logger initialized. Debug log file: {log_file}")
+else: log.debug("Logger already initialized.")
+
 # --- QGIS Imports ---
 from qgis.core import (
-    QgsMessageLog,
-    Qgis,
-    QgsVectorLayer,
-    QgsVectorFileWriter,
-    QgsFields,
-    QgsField,
-    QgsFeature,
-    QgsPointXY,
-    QgsGeometry,
-    QgsProject,
-    QgsCoordinateReferenceSystem,
-    QgsWkbTypes,
-    QgsFeatureRequest,
-    QgsExpression,
-    QgsExpressionContext,
-    QgsExpressionContextUtils,
-    QgsSymbol,
-    QgsRendererCategory,
-    QgsCategorizedSymbolRenderer, # Added for styling
-    QgsSingleSymbolRenderer,
-    QgsLineSymbol,
-    QgsDistanceArea, # Added for distance calculations if needed
-    QgsSpatialIndex, # Added for potential use later
-    QgsPoint, # Added for spatial index points
-    QgsRectangle, # Added for spatial queries
-    QgsPalLayerSettings, # Added for labeling
-    QgsTextFormat, # Added for label formatting
-    # QgsVectorLayerSimpleLabeling, # Using RuleBased instead
-    QgsRuleBasedLabeling, # Added for rule-based labeling
-    QgsUnitTypes # Added for label units
+    QgsMessageLog, Qgis, QgsVectorLayer, QgsVectorFileWriter, QgsFields, QgsField, QgsFeature,
+    QgsPointXY, QgsGeometry, QgsProject, QgsCoordinateReferenceSystem, QgsWkbTypes, QgsFeatureRequest,
+    QgsExpression, QgsExpressionContext, QgsExpressionContextUtils, QgsSymbol, QgsRendererCategory,
+    QgsCategorizedSymbolRenderer, QgsSingleSymbolRenderer, QgsLineSymbol, QgsDistanceArea,
+    QgsSpatialIndex, QgsPoint, QgsRectangle, QgsPalLayerSettings, QgsTextFormat, QgsRuleBasedLabeling,
+    QgsUnitTypes
 )
-
 from qgis.gui import QgsMapLayerComboBox
 from qgis.core import QgsMapLayerProxyModel
-from qgis.PyQt import QtWidgets, uic, QtCore # Added QtCore
-from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt, QDateTime # Added QVariant, QDateTime
+from qgis.PyQt import QtWidgets, uic, QtCore
+from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt, QDateTime
 from qgis.PyQt.QtWidgets import QProgressDialog, QApplication, QFileDialog, QComboBox, QMessageBox, QListWidget, QTableWidget, QAbstractItemView, QListWidgetItem, QDialog
 from qgis.PyQt.QtGui import QColor
 
@@ -152,49 +146,36 @@ NULL = QVariant()
 KNOTS_TO_MPS = 0.514444 # Conversion factor
 MAX_FLOAT = sys.float_info.max # Use for infinity
 
-
 class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
-    """
-    Main QGIS Dock Widget class for the OBN Source Line Planner & Optimisation plugin.
-
-    Provides the user interface and orchestrates the core functionalities including
-    SPS data import, line filtering, status management, heading calculation,
-    line/run-in generation, and simulation of optimized acquisition paths.
-    """
+    """ Main QGIS Dock Widget class... """
     # (Class variables remain the same)
     closingPlugin = pyqtSignal()
-    last_sps_dir = os.path.expanduser("~")
-    last_gpkg_dir = os.path.expanduser("~")
-    generated_lines_layer = None
-    generated_runins_layer = None
-    generated_turns_layer = None # Although turns aren't generated separately now
-    optimized_path_layer = None
+    last_sps_dir = os.path.expanduser("~"); last_gpkg_dir = os.path.expanduser("~")
+    generated_lines_layer = None; generated_runins_layer = None
+    generated_turns_layer = None; optimized_path_layer = None
+    line_data_cache = None # Add a class variable to cache line_data
 
     def __init__(self, parent=None):
         """ Constructor: Initializes UI, connects signals, sets defaults. """
         super(OBNPlannerDockWidget, self).__init__(parent)
         self.setupUi(self)
-        self.sps_layer_combo = self._replace_combo_with_map_layer_combo(
-            self.spsLayerComboBox, self.horizontalLayout, QgsMapLayerProxyModel.PointLayer
-        )
-        self.nogo_zone_combo = self._replace_combo_with_map_layer_combo(
-            self.noGoZoneLayerComboBox, self.horizontalLayout_5, QgsMapLayerProxyModel.PolygonLayer
-        )
-        self.closepass_combo = self._replace_combo_with_map_layer_combo(
-            self.closePassLayerComboBox, self.horizontalLayout_6, QgsMapLayerProxyModel.PolygonLayer
-        )
-        self.statusFilterComboBox.clear()
-        self.statusFilterComboBox.addItems(["To Be Acquired", "Acquired", "All"])
-        self.statusFilterComboBox.setCurrentIndex(0)
-        # --- Add Acquisition Mode ComboBox setup ---
+        # Replace placeholders with QgsMapLayerComboBoxes
+        self.sps_layer_combo = self._replace_combo_with_map_layer_combo(self.spsLayerComboBox, self.horizontalLayout, QgsMapLayerProxyModel.PointLayer)
+        self.nogo_zone_combo = self._replace_combo_with_map_layer_combo(self.noGoZoneLayerComboBox, self.horizontalLayout_5, QgsMapLayerProxyModel.PolygonLayer)
+        self.closepass_combo = self._replace_combo_with_map_layer_combo(self.closePassLayerComboBox, self.horizontalLayout_6, QgsMapLayerProxyModel.PolygonLayer)
+        # Setup Status Filter ComboBox
+        self.statusFilterComboBox.clear(); self.statusFilterComboBox.addItems(["To Be Acquired", "Acquired", "All"]); self.statusFilterComboBox.setCurrentIndex(0)
+
+        # --- Setup Acquisition Mode ComboBox (with Racetrack) ---
         if hasattr(self, 'acquisitionModeComboBox'):
             self.acquisitionModeComboBox.clear()
-            self.acquisitionModeComboBox.addItems(["Bi-Directional (NN)", "Teardrop"]) # Added Teardrop
-            self.acquisitionModeComboBox.setCurrentIndex(0) # Default to Bi-Directional
-            log.debug("Populated Acquisition Mode ComboBox.")
+            self.acquisitionModeComboBox.addItems(["Racetrack", "Teardrop"]) 
+            self.acquisitionModeComboBox.setCurrentIndex(0) # Default to Racetrack
+            log.debug("Populated Acquisition Mode ComboBox (Racetrack, Teardrop).")
         else:
             log.warning("UI Warning: acquisitionModeComboBox not found.")
-        # (Rest of the __init__ connections remain the same)
+
+        # Connect signals to slots (Connections remain the same)
         self.importSpsButton.clicked.connect(self.handle_sps_import_button)
         self.applyFilterButton.clicked.connect(self.handle_apply_filter)
         if hasattr(self, 'markAcquiredButton'): self.markAcquiredButton.clicked.connect(self.handle_mark_acquired)
@@ -203,24 +184,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         else: log.warning("UI Warning: markTbaButton not found.")
         if hasattr(self, 'generateLinesButton'): self.generateLinesButton.clicked.connect(self.handle_generate_lines)
         else: log.warning("UI Warning: generateLinesButton not found.")
-        if hasattr(self, 'calculateHeadingsButton'):
-            self.calculateHeadingsButton.clicked.connect(self.handle_calculate_headings)
+        if hasattr(self, 'calculateHeadingsButton'): self.calculateHeadingsButton.clicked.connect(self.handle_calculate_headings)
         else: log.warning("UI Warning: calculateHeadingsButton not found.")
         if hasattr(self, 'lineListWidget'): self.lineListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         else: log.warning("UI Warning: lineListWidget not found.")
-        if hasattr(self, 'runSimulationButton'):
-            self.runSimulationButton.clicked.connect(self.handle_run_simulation)
-            log.debug("Connected runSimulationButton signal.")
+        if hasattr(self, 'runSimulationButton'): self.runSimulationButton.clicked.connect(self.handle_run_simulation)
         else: log.warning("UI Warning: runSimulationButton not found.")
-        if hasattr(self, 'generatePlanButton'):
-            self.generatePlanButton.clicked.connect(self.handle_generate_lookahead)
-            log.debug("Connected generatePlanButton signal.")
+        if hasattr(self, 'generatePlanButton'): self.generatePlanButton.clicked.connect(self.handle_generate_lookahead)
         else: log.warning("UI Warning: generatePlanButton not found.")
         if hasattr(self, 'startDateTimeEdit'):
-            current_datetime = datetime.now()
-            qdt = QtCore.QDateTime(current_datetime)
-            self.startDateTimeEdit.setDateTime(qdt)
-            log.debug(f"Set Start DateTime to current time: {current_datetime}")
+            current_datetime = datetime.now(); qdt = QtCore.QDateTime(current_datetime)
+            self.startDateTimeEdit.setDateTime(qdt); log.debug(f"Set Start DateTime to {current_datetime}")
         log.info("OBNPlannerDockWidget initialized.")
 
     # --- Helper Methods ---
@@ -420,7 +394,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             QgsProject.instance().addMapLayer(layer)
             log.info(f"Layer '{layer_name}' added to project.")
 
-
     def handle_apply_filter(self):
         """ Reads filter settings and populates the line list widget. """
         log.debug("Handling Apply Filter button click.")
@@ -480,8 +453,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 log.info("No lines found matching the specified filter criteria. List is empty.")
         return matching_line_nums
 
-
     # --- Status Update Methods ---
+
     def handle_mark_acquired(self):
         """ Handles the 'Mark Selected as Acquired' button click. """
         log.debug("Handling Mark Acquired button click.")
@@ -583,8 +556,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
              if edit_started_here and target_layer.isEditable(): target_layer.rollBack()
              elif target_layer.isEditable(): target_layer.triggerRepaint()
 
-
     # --- Generate Lines & Run-ins Method ---
+    
     def handle_generate_lines(self):
         """ Generates straight lines and run-ins based on UI filters. """
         log.info("Handling Generate Straight Lines (and Run-ins) button click.")
@@ -859,7 +832,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
              log.warning("No valid lines or run-ins were generated.")
              QMessageBox.warning(self, "No Output Generated", "No valid lines or run-ins could be generated for the selected criteria.")
 
-
     def handle_calculate_headings(self):
         """ Calculates default headings for lines in the selected SPS layer. """
         # --- No changes in this method ---
@@ -1063,387 +1035,103 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         source_layer.triggerRepaint()
 
     # --- Simulation / Lookahead Handlers ---
-    def handle_run_simulation(self):
-        """ Handles the click event for the 'Run Simulation' button. """
-        log.info("Run Simulation button clicked. Starting process...")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        progress = None
-        try:
-            log.debug("Running Step 1: Data Gathering & Preparation...")
-            sim_params = self._gather_simulation_parameters()
-            if not sim_params: raise ValueError("Failed to gather parameters")
 
-            # --- Determine Simulation Mode ---
-            is_teardrop = (sim_params.get('acquisition_mode') == "Teardrop")
-            log.info(f"Simulation Mode: {'Teardrop' if is_teardrop else 'Bi-Directional (NN)'}")
+    def _calculate_most_common_interval_from_lines(self, lines_layer):
+        """ Calculates the most common interval between adjacent lines. """
+        log.debug(f"Calculating most common interval for layer: {lines_layer.name()}")
+        if not lines_layer or not lines_layer.isValid():
+            log.error("Invalid lines layer provided for interval calculation.")
+            return None
 
-            line_data, required_layers = self._prepare_line_data(sim_params)
-            if not line_data: raise ValueError("Failed to prepare line data")
-            log.info(f"Successfully prepared data for {len(line_data)} lines.")
+        line_midpoints = {} # Store {line_num: midpoint_QgsPointXY}
+        request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoGeometry) # We need geometry
+        request.setFilterExpression("\"Status\" = 'To Be Acquired'") # Only consider lines we might use
 
+        line_num_idx = lines_layer.fields().lookupField("LineNum")
+        if line_num_idx == -1:
+            log.error("Lines layer is missing 'LineNum' field.")
+            return None
 
-            log.debug("Running Step 2: Sequencing Logic...")
-            sequence = []
-            path_segments = [] # Stores (geometry, type, line_num, time_seconds) tuples
-            total_time_seconds = 0.0
-            turn_cache = {}
-            remaining_lines = set(line_data.keys())
-            current_line_num = sim_params['first_line_num']
-            start_datetime = sim_params['start_datetime']
-
-            if current_line_num not in remaining_lines:
-                 raise ValueError(f"First line {current_line_num} not found in prepared data.")
-
-            # --- Handle First Line ---
-            sequence.append(current_line_num)
-            remaining_lines.remove(current_line_num)
-            first_line_info = line_data[current_line_num]
-
-            # Determine the actual initial direction based on UI choice
-            current_direction_is_reciprocal = (sim_params['first_heading_option'] == "High to Low SP (Reciprocal)")
-            line_time = first_line_info['length'] / sim_params['avg_shooting_speed_mps']
-
-            # Initialize current exit point and heading based on the first line's direction
-            if not current_direction_is_reciprocal: # Low to High SP (Normal)
-                line_data[current_line_num]['direction'] = "low_to_high" # Store direction
-                # Add Start Run-in
-                start_runin_geom = self._find_runin_geom(required_layers['runins'], current_line_num, "Start")
-                if start_runin_geom:
-                    runin_time = self._calculate_runin_time(start_runin_geom, sim_params)
-                    path_segments.append((start_runin_geom, 'RunIn', current_line_num, runin_time))
-                    total_time_seconds += runin_time # Add run-in time
-                # Add Line
-                path_segments.append((first_line_info['line_geom'], 'Line', current_line_num, line_time))
-                # Set Exit Point & Heading for the *next* turn calculation
-                pt = first_line_info.get('end_runin_point') # Exit is at end run-in point
-                current_exit_pt = self._ensure_point_xy(pt)
-                current_exit_hdg = first_line_info['heading'] # Exit heading is the line heading
-                log.debug(f"First line {current_line_num} (Low->High): Added RunIn, Line. ExitPt={current_exit_pt}, ExitHdg={current_exit_hdg:.1f}")
-            else: # High to Low SP (Reciprocal)
-                line_data[current_line_num]['direction'] = "high_to_low" # Store direction
-                # Add End Run-in (used as entry for reciprocal)
-                end_runin_geom = self._find_runin_geom(required_layers['runins'], current_line_num, "End")
-                if end_runin_geom:
-                    runin_time = self._calculate_runin_time(end_runin_geom, sim_params)
-                    path_segments.append((end_runin_geom, 'RunIn', current_line_num, runin_time))
-                    total_time_seconds += runin_time # Add run-in time
-                # Add Reversed Line
-                line_geom_rev = self._reverse_line_geometry(first_line_info['line_geom'])
-                path_segments.append((line_geom_rev, 'Line', current_line_num, line_time))
-                # Set Exit Point & Heading for the *next* turn calculation
-                pt = first_line_info.get('start_runin_point') # Exit is at start run-in point
-                current_exit_pt = self._ensure_point_xy(pt)
-                current_exit_hdg = (first_line_info['heading'] + 180) % 360 # Exit heading is reciprocal
-                log.debug(f"First line {current_line_num} (High->Low): Added RunIn, Line. ExitPt={current_exit_pt}, ExitHdg={current_exit_hdg:.1f}")
-
-            total_time_seconds += line_time # Add first line shooting time
-
-            # --- Build Spatial Index (Only needed for NN mode) ---
-            spatial_index = None
-            feature_id_map = None
-            if not is_teardrop:
-                spatial_index = QgsSpatialIndex()
-                feature_id_map = {}
-                pt_id_counter = 1
-                log.debug(f"Building spatial index for {len(remaining_lines)} remaining lines (NN Mode)...")
-                for line_num in remaining_lines:
-                    info = line_data[line_num]
-                    # Index both potential entry points (start run-in for High->Low, end run-in for Low->High)
-                    start_runin_pt = self._ensure_point_xy(info.get('start_runin_point'))
-                    if start_runin_pt:
-                        pt_geom = QgsGeometry.fromPointXY(start_runin_pt)
-                        if pt_geom and not pt_geom.isNull():
-                            feat = QgsFeature(); feat.setId(pt_id_counter); feat.setGeometry(pt_geom)
-                            spatial_index.insertFeature(feat)
-                            # Store line num and the *direction it implies* (High->Low)
-                            feature_id_map[pt_id_counter] = (line_num, True) # True means reciprocal
-                            pt_id_counter += 1
-                        else: log.warning(f"Invalid start run-in point geometry for LineNum {line_num} (NN index)")
-
-                    end_runin_pt = self._ensure_point_xy(info.get('end_runin_point'))
-                    if end_runin_pt:
-                        pt_geom = QgsGeometry.fromPointXY(end_runin_pt)
-                        if pt_geom and not pt_geom.isNull():
-                            feat = QgsFeature(); feat.setId(pt_id_counter); feat.setGeometry(pt_geom)
-                            spatial_index.insertFeature(feat)
-                            # Store line num and the *direction it implies* (Low->High)
-                            feature_id_map[pt_id_counter] = (line_num, False) # False means normal
-                            pt_id_counter += 1
-                        else: log.warning(f"Invalid end run-in point geometry for LineNum {line_num} (NN index)")
-                log.debug(f"Spatial index built with {pt_id_counter-1} potential entry points.")
-
-            # --- Main Sequencing Loop ---
-            progress = QProgressDialog(f"Running {sim_params.get('acquisition_mode')} Simulation...", "Cancel", 0, len(line_data), self) # Max includes first line
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setMinimumDuration(500)
-            progress.setValue(1) # Start at 1 since first line is done
-
-            seq_step = 1 # Start counting from the second line
-
-            while remaining_lines:
-                if progress.wasCanceled(): raise Exception("Simulation cancelled by user.")
-                progress.setValue(seq_step)
-                QApplication.processEvents()
-
-                log.debug(f"\n--- Step {seq_step+1}: Finding next line after {current_line_num} ---")
-                log.debug(f"  Exiting from: Pt=({current_exit_pt.x():.1f},{current_exit_pt.y():.1f}), Hdg={current_exit_hdg:.1f}, PrevRecip={current_direction_is_reciprocal}")
-
-                best_next_line_num = None
-                best_turn_geom = None
-                best_turn_time = 0.0
-                best_next_direction_is_reciprocal = None # Direction of the chosen next line
-
-                # === A: Teardrop Mode ===
-                if is_teardrop:
-                    # 1. Determine the next line sequentially
-                    next_line_num_candidate = self._determine_next_line(current_line_num, remaining_lines, line_data)
-                    if next_line_num_candidate is None:
-                        log.info("Teardrop: No more sequential lines found.")
-                        break # End simulation
-
-                    # 2. Force the direction to be opposite of the current line
-                    required_next_direction_is_reciprocal = not current_direction_is_reciprocal
-                    log.debug(f"Teardrop: Next line candidate: {next_line_num_candidate}. Required direction reciprocal: {required_next_direction_is_reciprocal}")
-
-                    # 3. Get required entry point and heading for the candidate
-                    next_line_info = line_data[next_line_num_candidate]
-                    p_entry = None
-                    h_entry = None
-                    if required_next_direction_is_reciprocal: # Need High->Low entry
-                        pt = next_line_info.get('end_runin_point') # Entry for High->Low is END run-in point
-                        p_entry = self._ensure_point_xy(pt)
-                        h_entry_base = next_line_info.get('heading')
-                        if h_entry_base is not None: h_entry = (h_entry_base + 180) % 360 # Entry heading is reciprocal
-                    else: # Need Low->High entry
-                        pt = next_line_info.get('start_runin_point') # Entry for Low->High is START run-in point
-                        p_entry = self._ensure_point_xy(pt)
-                        h_entry = next_line_info.get('heading') # Entry heading is normal
-
-                    # 4. Calculate the turn
-                    if p_entry and h_entry is not None and current_exit_pt and current_exit_hdg is not None:
-                         log.debug(f"Teardrop: Calculating turn from {current_line_num} to {next_line_num_candidate} ({'High->Low' if required_next_direction_is_reciprocal else 'Low->High'})")
-                         self._log_turn_connection(current_line_num, next_line_num_candidate, "Teardrop", current_exit_pt, current_exit_hdg, p_entry, h_entry)
-                         turn_geom, turn_length, turn_time = self._calculate_dubins_turn(
-                             current_exit_pt, current_exit_hdg, p_entry, h_entry,
-                             sim_params['turn_radius_meters'],
-                             sim_params['avg_turn_speed_mps'],
-                             sim_params.get('vessel_turn_rate_dps')
-                         )
-                         if turn_geom and turn_time is not None:
-                             best_next_line_num = next_line_num_candidate
-                             best_turn_geom = turn_geom
-                             best_turn_time = self._ensure_turn_time(turn_geom, turn_length, turn_time, sim_params)
-                             best_next_direction_is_reciprocal = required_next_direction_is_reciprocal
-                             log.debug(f"Teardrop: Turn calculated. Length={turn_length:.1f}m, Time={best_turn_time:.1f}s")
-                         else:
-                             log.warning(f"Teardrop: Failed to calculate valid turn to {next_line_num_candidate}. Stopping.")
-                             break # Stop if turn fails
-                    else:
-                         log.warning(f"Teardrop: Missing point/heading for turn calculation to {next_line_num_candidate}. Stopping.")
-                         log.debug(f"  p_entry={p_entry}, h_entry={h_entry}, current_exit_pt={current_exit_pt}, current_exit_hdg={current_exit_hdg}")
-                         break # Stop if data is missing
-
-                # === B: Bi-Directional (NN) Mode ===
+        # 1. Get midpoints of relevant lines
+        for feature in lines_layer.getFeatures(request):
+            try:
+                line_num = int(feature.attribute(line_num_idx))
+                geom = feature.geometry()
+                if geom and not geom.isEmpty() and geom.isMultipart(): # Handle multipart explicitly if needed
+                     geom = geom.singlePart() # Try to simplify
+                if geom and not geom.isEmpty() and geom.type() == QgsWkbTypes.LineGeometry and geom.length() > 0:
+                    # Use interpolate which returns QgsPoint
+                    midpoint_geom = geom.interpolate(geom.length() / 2.0).asPoint()
+                    line_midpoints[line_num] = QgsPointXY(midpoint_geom) # Convert to QgsPointXY
                 else:
-                    min_cost = MAX_FLOAT
-                    best_entry_details = {} # Stores {'line_num': ln, 'is_reciprocal': bool, 'entry_pt': pt, 'entry_hdg': hdg}
+                    log.warning(f"Skipping invalid or empty geometry for LineNum {line_num} during interval calc.")
+            except (ValueError, TypeError):
+                log.warning(f"Skipping LineNum {feature.attribute(line_num_idx)} due to invalid number format.")
+            except Exception as e:
+                 log.warning(f"Error processing line {feature.attribute(line_num_idx)} geom: {e}")
 
-                    # 1. Find candidate entry points using spatial index
-                    search_radius = 50 * sim_params['turn_radius_meters'] # Reduced search radius
-                    search_rect = QgsRectangle(
-                        current_exit_pt.x() - search_radius, current_exit_pt.y() - search_radius,
-                        current_exit_pt.x() + search_radius, current_exit_pt.y() + search_radius
-                    )
-                    candidate_entry_ids = spatial_index.intersects(search_rect)
-                    log.debug(f"NN: Found {len(candidate_entry_ids)} potential entry points within {search_radius}m radius.")
 
-                    # 2. Evaluate candidates
-                    processed_candidate_lines = set()
-                    for entry_id in candidate_entry_ids:
-                        line_num_candidate, direction_is_reciprocal = feature_id_map.get(entry_id, (None, None))
+        if len(line_midpoints) < 2:
+            log.warning("Need at least 2 valid lines to calculate intervals.")
+            return None
 
-                        # Skip if not a valid remaining line or already evaluated
-                        if line_num_candidate is None or line_num_candidate not in remaining_lines or line_num_candidate in processed_candidate_lines:
-                            continue
+        # 2. Calculate distances between adjacent line numbers
+        sorted_line_nums = sorted(line_midpoints.keys())
+        intervals = []
+        for i in range(len(sorted_line_nums) - 1):
+            ln1 = sorted_line_nums[i]
+            ln2 = sorted_line_nums[i+1]
+            # Optional: Check if lines are truly adjacent (e.g., ln2 == ln1 + constant_step) if needed
+            p1 = line_midpoints[ln1]
+            p2 = line_midpoints[ln2]
+            distance = p1.distance(p2)
+            if distance > 1.0: # Ignore zero/tiny distances
+                intervals.append(distance)
 
-                        processed_candidate_lines.add(line_num_candidate) # Avoid duplicate checks for the same line
-                        next_line_info = line_data[line_num_candidate]
-                        direction_str = "High->Low" if direction_is_reciprocal else "Low->High"
+        if not intervals:
+            log.warning("Could not calculate any valid intervals between lines.")
+            return None
 
-                        # 3. Get entry point and heading for this specific direction
-                        p_entry = None
-                        h_entry = None
-                        if direction_is_reciprocal: # High->Low entry needed
-                            pt = next_line_info.get('end_runin_point') # Entry for High->Low is END run-in point
-                            p_entry = self._ensure_point_xy(pt)
-                            h_entry_base = next_line_info.get('heading')
-                            if h_entry_base is not None: h_entry = (h_entry_base + 180) % 360
-                        else: # Low->High entry needed
-                            pt = next_line_info.get('start_runin_point') # Entry for Low->High is START run-in point
-                            p_entry = self._ensure_point_xy(pt)
-                            h_entry = next_line_info.get('heading')
+        # 3. Group similar distances and find the most common
+        tolerance_meters = 5.0 # Tolerance for grouping intervals
+        interval_groups = defaultdict(list)
+        for interval in intervals:
+            # Find an existing group it fits into
+            found_group = False
+            for avg_dist in list(interval_groups.keys()): # Iterate over keys copy
+                if abs(interval - avg_dist) <= tolerance_meters:
+                    interval_groups[avg_dist].append(interval)
+                    # Optional: Recalculate average for the group? For now, just group by first encountered average
+                    found_group = True
+                    break
+            # If no group found, start a new one with this interval as its 'key' average
+            if not found_group:
+                interval_groups[interval].append(interval)
 
-                        # 4. Calculate turn cost (time)
-                        if p_entry and h_entry is not None and current_exit_pt and current_exit_hdg is not None:
-                             cache_key = (current_line_num, line_num_candidate, direction_is_reciprocal)
-                             cost = MAX_FLOAT
-                             turn_geom, turn_length, turn_time = None, None, None
+        if not interval_groups:
+            log.warning("Failed to group intervals.")
+            return None
 
-                             if cache_key in turn_cache:
-                                 turn_geom, turn_length, turn_time = turn_cache[cache_key]
-                                 if turn_time is not None: cost = turn_time
-                             else:
-                                 log.debug(f"NN: Calculating turn cost to {line_num_candidate} ({direction_str})...")
-                                 self._log_turn_connection(current_line_num, line_num_candidate, "NN", current_exit_pt, current_exit_hdg, p_entry, h_entry)
-                                 turn_geom, turn_length, turn_time = self._calculate_dubins_turn(
-                                     current_exit_pt, current_exit_hdg, p_entry, h_entry,
-                                     sim_params['turn_radius_meters'],
-                                     sim_params['avg_turn_speed_mps'],
-                                     sim_params.get('vessel_turn_rate_dps')
-                                 )
-                                 turn_cache[cache_key] = (turn_geom, turn_length, turn_time)
-                                 if turn_time is not None: cost = self._ensure_turn_time(turn_geom, turn_length, turn_time, sim_params)
+        # Find the group with the most intervals
+        most_common_group_key = max(interval_groups, key=lambda k: len(interval_groups[k]))
+        most_common_intervals = interval_groups[most_common_group_key]
 
-                             if cost < min_cost:
-                                 min_cost = cost
-                                 best_next_line_num = line_num_candidate
-                                 best_turn_geom = turn_geom
-                                 best_turn_time = cost
-                                 best_next_direction_is_reciprocal = direction_is_reciprocal
-                                 best_entry_details = {'line_num': line_num_candidate, 'is_reciprocal': direction_is_reciprocal, 'entry_pt': p_entry, 'entry_hdg': h_entry}
-                                 log.debug(f"  NN: New best candidate: {line_num_candidate} ({direction_str}), Cost={cost:.1f}s")
-                        else:
-                             log.warning(f"NN: Missing point/heading for turn calculation to {line_num_candidate} ({direction_str}).")
+        # 4. Calculate average of the most common group
+        if not most_common_intervals: # Should not happen if interval_groups exists
+             log.error("Internal error: Most common interval group is empty.")
+             return None
 
-                    # 5. Fallback if spatial index yielded no valid turns
-                    if best_next_line_num is None and remaining_lines:
-                        log.warning(f"NN: No candidates found via spatial index or turns failed. Evaluating ALL remaining lines.")
-                        # Repeat evaluation logic for all remaining lines (more expensive)
-                        for line_num_candidate in remaining_lines:
-                             # Evaluate both directions for this line
-                             for direction_is_reciprocal in [False, True]: # Try Low->High then High->Low
-                                 next_line_info = line_data[line_num_candidate]
-                                 direction_str = "High->Low" if direction_is_reciprocal else "Low->High"
+        common_interval_avg = sum(most_common_intervals) / len(most_common_intervals)
+        log.info(f"Calculated most common line interval: {common_interval_avg:.2f}m (based on {len(most_common_intervals)} intervals in the dominant group).")
+        log.debug(f"  All calculated intervals: {[f'{i:.1f}' for i in intervals]}")
+        log.debug(f"  Interval groups (key is approx avg): { {k: len(v) for k, v in interval_groups.items()} }")
 
-                                 p_entry = None; h_entry = None
-                                 # Get entry point/heading
-                                 if direction_is_reciprocal: pt = next_line_info.get('end_runin_point'); p_entry = self._ensure_point_xy(pt); h_entry_base = next_line_info.get('heading'); h_entry = (h_entry_base + 180) % 360 if h_entry_base else None
-                                 else: pt = next_line_info.get('start_runin_point'); p_entry = self._ensure_point_xy(pt); h_entry = next_line_info.get('heading')
 
-                                 # Calculate turn cost
-                                 if p_entry and h_entry is not None and current_exit_pt and current_exit_hdg is not None:
-                                      cache_key = (current_line_num, line_num_candidate, direction_is_reciprocal)
-                                      cost = MAX_FLOAT; turn_geom=None; turn_length=None; turn_time=None
-                                      if cache_key in turn_cache: turn_geom, turn_length, turn_time = turn_cache[cache_key]; cost = turn_time if turn_time is not None else MAX_FLOAT
-                                      else:
-                                           log.debug(f"NN Fallback: Calculating turn cost to {line_num_candidate} ({direction_str})...")
-                                           self._log_turn_connection(current_line_num, line_num_candidate, "NN Fallback", current_exit_pt, current_exit_hdg, p_entry, h_entry)
-                                           turn_geom, turn_length, turn_time = self._calculate_dubins_turn(current_exit_pt, current_exit_hdg, p_entry, h_entry, sim_params['turn_radius_meters'], sim_params['avg_turn_speed_mps'], sim_params.get('vessel_turn_rate_dps'))
-                                           turn_cache[cache_key] = (turn_geom, turn_length, turn_time)
-                                           if turn_time is not None: cost = self._ensure_turn_time(turn_geom, turn_length, turn_time, sim_params)
-                                      # Check if better
-                                      if cost < min_cost:
-                                           min_cost = cost; best_next_line_num = line_num_candidate; best_turn_geom = turn_geom; best_turn_time = cost; best_next_direction_is_reciprocal = direction_is_reciprocal
-                                           best_entry_details = {'line_num': line_num_candidate, 'is_reciprocal': direction_is_reciprocal, 'entry_pt': p_entry, 'entry_hdg': h_entry}
-                                           log.debug(f"  NN Fallback: New best candidate: {line_num_candidate} ({direction_str}), Cost={cost:.1f}s")
+        # Add a check for reasonableness (e.g., interval > 10m)
+        if common_interval_avg <= 10.0:
+            log.warning(f"Calculated common interval ({common_interval_avg:.2f}m) seems very small. Check line data.")
 
-                # === C: Process Selection (Common to both modes) ===
-                if best_next_line_num is None:
-                    log.error(f"Could not find ANY valid next line after {current_line_num}. Remaining: {len(remaining_lines)}. Stopping simulation.")
-                    QMessageBox.warning(self, "Simulation Error", f"Could not find a valid next line after {current_line_num}. Check line connectivity and parameters.")
-                    break # Exit the while loop
-
-                next_direction_str = "High->Low" if best_next_direction_is_reciprocal else "Low->High"
-                log.info(f"Step {seq_step+1}: Selected Line {best_next_line_num} ({next_direction_str}) with turn time {best_turn_time:.1f}s")
-
-                # == Step 4: Add Segments to Path and Update State ==
-
-                # 1. Add the TURN segment calculated previously
-                if best_turn_geom:
-                    path_segments.append((best_turn_geom, 'Turn', best_next_line_num, best_turn_time))
-                    total_time_seconds += best_turn_time
-                else:
-                    log.warning(f"Missing turn geometry to line {best_next_line_num}. Turn time {best_turn_time:.1f}s still added.")
-                    total_time_seconds += best_turn_time # Add time even if geom missing
-
-                # 2. Add Run-in and Line for the NEWLY selected line
-                best_next_line_info = line_data[best_next_line_num]
-                line_time = best_next_line_info['length'] / sim_params['avg_shooting_speed_mps']
-
-                # Store the chosen direction for the lookahead table
-                line_data[best_next_line_num]['direction'] = "high_to_low" if best_next_direction_is_reciprocal else "low_to_high"
-
-                if not best_next_direction_is_reciprocal: # Low to High SP
-                    # Add Start Run-in
-                    next_runin_geom = self._find_runin_geom(required_layers['runins'], best_next_line_num, "Start")
-                    if next_runin_geom:
-                        runin_time = self._calculate_runin_time(next_runin_geom, sim_params)
-                        path_segments.append((next_runin_geom, 'RunIn', best_next_line_num, runin_time))
-                        total_time_seconds += runin_time
-                    # Add Line
-                    line_geom = best_next_line_info['line_geom']
-                    path_segments.append((line_geom, 'Line', best_next_line_num, line_time))
-                    total_time_seconds += line_time
-                    # Update exit point/heading for NEXT iteration
-                    pt = best_next_line_info.get('end_runin_point') # Exit is at end run-in
-                    current_exit_pt = self._ensure_point_xy(pt)
-                    current_exit_hdg = best_next_line_info['heading'] # Exit heading is normal
-                else: # High to Low SP
-                    # Add End Run-in (used as entry)
-                    next_runin_geom = self._find_runin_geom(required_layers['runins'], best_next_line_num, "End")
-                    if next_runin_geom:
-                        runin_time = self._calculate_runin_time(next_runin_geom, sim_params)
-                        path_segments.append((next_runin_geom, 'RunIn', best_next_line_num, runin_time))
-                        total_time_seconds += runin_time
-                    # Add Reversed Line
-                    line_geom_rev = self._reverse_line_geometry(best_next_line_info['line_geom'])
-                    path_segments.append((line_geom_rev, 'Line', best_next_line_num, line_time))
-                    total_time_seconds += line_time
-                    # Update exit point/heading for NEXT iteration
-                    pt = best_next_line_info.get('start_runin_point') # Exit is at start run-in
-                    current_exit_pt = self._ensure_point_xy(pt)
-                    current_exit_hdg = (best_next_line_info['heading'] + 180) % 360 # Exit heading is reciprocal
-
-                # 3. Update sequence and remaining lines
-                sequence.append(best_next_line_num)
-                remaining_lines.remove(best_next_line_num)
-
-                # 4. Update current state for the next loop iteration
-                current_line_num = best_next_line_num
-                current_direction_is_reciprocal = best_next_direction_is_reciprocal
-
-                seq_step += 1
-                # --- End of Main Sequencing Loop ---
-
-            progress.setValue(len(line_data)) # Complete progress
-
-            # == Final Timing Calculation ==
-            total_time_hours = total_time_seconds / 3600.0
-            log.info(f"Sequencing complete. Sequence: {sequence}")
-            log.info(f"Total Estimated Time: {total_time_hours:.2f} hours ({total_time_seconds:.0f} seconds)")
-
-            # == Step 5: Visualization ==
-            log.debug("Running Step 5: Visualization...")
-            self._visualize_optimized_path(sequence, path_segments, sim_params['start_datetime'], required_layers['lines'].crs())
-            self._generate_lookahead_table(sequence, line_data) # Pass updated line_data with directions
-            log.info("Visualization complete.")
-
-            QMessageBox.information(self, "Simulation Complete",
-                                    f"Mode: {sim_params.get('acquisition_mode')}\n"
-                                    f"Lines Processed: {len(sequence)}\n"
-                                    f"Dubins calculation integrated.\n"
-                                    f"Visualization layer 'Optimized_Path' created.\n"
-                                    f"Sequence: {sequence}\n"
-                                    f"Total Estimated Time: {total_time_hours:.2f} hours")
-
-        except Exception as e:
-            log.exception("Error during Run Simulation process.")
-            QMessageBox.critical(self, "Simulation Error", f"An unexpected error occurred:\n{e}\n\nTraceback:\n{traceback.format_exc()}") # Added traceback
-        finally:
-            if 'progress' in locals() and progress:
-                progress.cancel() # Ensure progress dialog is closed
-            QApplication.restoreOverrideCursor() # Restore cursor
-
+        return common_interval_avg    
 
     def _gather_simulation_parameters(self):
         """Reads simulation parameters from the UI."""
@@ -1452,173 +1140,91 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         try:
             # --- Get Acquisition Mode ---
             if hasattr(self, 'acquisitionModeComboBox'):
-                params['acquisition_mode'] = self.acquisitionModeComboBox.currentText()
+                params['acquisition_mode'] = self.acquisitionModeComboBox.currentText() # Reads "Racetrack" or "Teardrop"
             else:
-                log.warning("Acquisition Mode ComboBox not found, defaulting to Bi-Directional (NN)")
-                params['acquisition_mode'] = "Bi-Directional (NN)" # Default if UI element missing
+                log.warning("Acquisition Mode ComboBox not found, defaulting to Racetrack")
+                params['acquisition_mode'] = "Racetrack" # Default if UI element missing
 
+            # (Rest of parameter gathering remains the same)
             params['first_line_num'] = self.firstLineSpinBox.value()
             params['first_heading_option'] = self.firstHeadingComboBox.currentText()
-
-            # Handle different speed input names if necessary (backward compatibility?)
-            if hasattr(self, 'avgShootingSpeedDoubleSpinBox'):
-                 params['avg_shooting_speed_knots'] = self.avgShootingSpeedDoubleSpinBox.value()
-            elif hasattr(self, 'acqSpeedPrimaryDoubleSpinBox'):
-                 # Assuming primary speed applies to both directions if only one input exists
-                 primary_speed = self.acqSpeedPrimaryDoubleSpinBox.value()
-                 params['avg_shooting_speed_knots'] = primary_speed
-                 log.info("Using 'acqSpeedPrimaryDoubleSpinBox' for average shooting speed.")
-            else:
-                 raise AttributeError("Suitable acquisition speed input widget(s) not found.")
+            if hasattr(self, 'avgShootingSpeedDoubleSpinBox'): params['avg_shooting_speed_knots'] = self.avgShootingSpeedDoubleSpinBox.value()
+            elif hasattr(self, 'acqSpeedPrimaryDoubleSpinBox'): params['avg_shooting_speed_knots'] = self.acqSpeedPrimaryDoubleSpinBox.value(); log.info("Using 'acqSpeedPrimaryDoubleSpinBox'.")
+            else: raise AttributeError("Suitable acquisition speed input widget(s) not found.")
             params['avg_shooting_speed_mps'] = params['avg_shooting_speed_knots'] * KNOTS_TO_MPS
-
             params['avg_turn_speed_knots'] = self.turnSpeedDoubleSpinBox.value()
             params['turn_radius_meters'] = self.turnRadiusDoubleSpinBox.value()
-            params['run_in_length_meters'] = self.maxRunInDoubleSpinBox.value() # Although maybe not directly used if runins layer exists
+            params['run_in_length_meters'] = self.maxRunInDoubleSpinBox.value()
             params['start_datetime'] = self.startDateTimeEdit.dateTime().toPyDateTime()
-
-            if hasattr(self, 'vesselTurnRateDoubleSpinBox'):
-                params['vessel_turn_rate_dps'] = self.vesselTurnRateDoubleSpinBox.value()
-            else:
-                params['vessel_turn_rate_dps'] = 3.0 # Default turn rate
-                log.warning(f"Vessel turn rate UI element not found. Using default: {params['vessel_turn_rate_dps']} deg/sec")
-
+            if hasattr(self, 'vesselTurnRateDoubleSpinBox'): params['vessel_turn_rate_dps'] = self.vesselTurnRateDoubleSpinBox.value()
+            else: params['vessel_turn_rate_dps'] = 3.0; log.warning(f"Vessel turn rate UI not found. Using default: {params['vessel_turn_rate_dps']} deg/sec")
             params['avg_turn_speed_mps'] = params['avg_turn_speed_knots'] * KNOTS_TO_MPS
 
             # Validate parameters
-            if params['avg_shooting_speed_mps'] <= 0: raise ValueError("Average Shooting Speed must be positive.")
-            if params['avg_turn_speed_mps'] <= 0: raise ValueError("Average Turn Speed must be positive.")
+            if params['avg_shooting_speed_mps'] <= 0: raise ValueError("Shooting Speed must be positive.")
+            if params['avg_turn_speed_mps'] <= 0: raise ValueError("Turn Speed must be positive.")
             if params['turn_radius_meters'] <= 0: raise ValueError("Turn Radius must be positive.")
-            if params['vessel_turn_rate_dps'] <= 0: raise ValueError("Vessel Turn Rate must be positive.")
+            if params['vessel_turn_rate_dps'] <= 0: raise ValueError("Turn Rate must be positive.")
 
             log.debug(f"Parameters gathered: {params}")
             return params
-        except AttributeError as ae:
-            log.error(f"UI element not found when reading simulation parameters: {ae}")
-            QMessageBox.critical(self, "UI Error", f"Could not find expected UI element: {ae}")
-            return None
-        except ValueError as ve:
-            log.error(f"Invalid parameter value: {ve}")
-            QMessageBox.critical(self, "Input Error", f"Invalid parameter value: {ve}")
-            return None
-        except Exception as e:
-            log.exception(f"Error gathering simulation parameters: {e}")
-            QMessageBox.critical(self, "Error", f"Error reading parameters: {e}")
-            return None
-
+        except AttributeError as ae: log.error(f"UI element not found: {ae}"); QMessageBox.critical(self, "UI Error", f"Could not find UI element: {ae}"); return None
+        except ValueError as ve: log.error(f"Invalid parameter: {ve}"); QMessageBox.critical(self, "Input Error", f"Invalid parameter value: {ve}"); return None
+        except Exception as e: log.exception(f"Error gathering parameters: {e}"); QMessageBox.critical(self, "Error", f"Error reading parameters: {e}"); return None
 
     def _prepare_line_data(self, sim_params):
-        """ Verifies temporary layers and loads required data into a dictionary. """
+        """ Verifies layers and loads required data into a dictionary. """
+
         log.debug("Preparing line data from temporary layers...")
         project = QgsProject.instance()
         line_layer_name = "Generated_Survey_Lines"; runin_layer_name = "Generated_RunIns"
-
-        # --- Try using the instance variable first ---
-        # Make copies to avoid modifying the class members directly if lookup fails
-        lines_layer = self.generated_lines_layer
-        runins_layer = self.generated_runins_layer
-
-        # --- Fallback to name lookup if instance variables are None or invalid ---
+        lines_layer = self.generated_lines_layer; runins_layer = self.generated_runins_layer
         if not lines_layer or not lines_layer.isValid() or lines_layer.name() != line_layer_name:
-            log.warning(f"Instance variable self.generated_lines_layer is invalid or None. Looking up '{line_layer_name}' by name.")
+            log.warning(f"Instance variable self.generated_lines_layer invalid. Looking up '{line_layer_name}' by name.")
             lines_layer_list = project.mapLayersByName(line_layer_name)
-            if not lines_layer_list:
-                 err_msg = f"Required layer '{line_layer_name}' not found in project."
-                 log.error(err_msg); QMessageBox.critical(self, "Missing Layer", err_msg); return None, None
-            lines_layer = lines_layer_list[0] # Assume first is correct
-            log.debug(f"Found '{line_layer_name}' by name.")
-
-
+            if not lines_layer_list: err_msg = f"Layer '{line_layer_name}' not found."; log.error(err_msg); QMessageBox.critical(self, "Missing Layer", err_msg); return None, None
+            lines_layer = lines_layer_list[0]
         if not runins_layer or not runins_layer.isValid() or runins_layer.name() != runin_layer_name:
-            log.warning(f"Instance variable self.generated_runins_layer is invalid or None. Looking up '{runin_layer_name}' by name.")
+            log.warning(f"Instance variable self.generated_runins_layer invalid. Looking up '{runin_layer_name}' by name.")
             runins_layer_list = project.mapLayersByName(runin_layer_name)
-            if not runins_layer_list:
-                err_msg = f"Required layer '{runin_layer_name}' not found in project."
-                log.error(err_msg); QMessageBox.critical(self, "Missing Layer", err_msg); return None, None
-            runins_layer = runins_layer_list[0] # Assume first is correct
-            log.debug(f"Found '{runin_layer_name}' by name.")
-
-
-        # --- Verify the obtained layers ---
-        if not lines_layer or not lines_layer.isValid():
-            err_msg = f"Failed to obtain a valid layer object for '{line_layer_name}'."
-            log.error(err_msg); QMessageBox.critical(self, "Layer Error", err_msg); return None, None
-        if not runins_layer or not runins_layer.isValid():
-            err_msg = f"Failed to obtain a valid layer object for '{runin_layer_name}'."
-            log.error(err_msg); QMessageBox.critical(self, "Layer Error", err_msg); return None, None
-
-        log.debug(f"Using Lines Layer: {lines_layer.name()} (ID: {lines_layer.id()})")
-        log.debug(f"Using RunIns Layer: {runins_layer.name()} (ID: {runins_layer.id()})")
-
+            if not runins_layer_list: err_msg = f"Layer '{runin_layer_name}' not found."; log.error(err_msg); QMessageBox.critical(self, "Missing Layer", err_msg); return None, None
+            runins_layer = runins_layer_list[0]
+        if not lines_layer or not lines_layer.isValid(): err_msg = f"Failed valid layer for '{line_layer_name}'."; log.error(err_msg); QMessageBox.critical(self, "Layer Error", err_msg); return None, None
+        if not runins_layer or not runins_layer.isValid(): err_msg = f"Failed valid layer for '{runin_layer_name}'."; log.error(err_msg); QMessageBox.critical(self, "Layer Error", err_msg); return None, None
+        log.debug(f"Using Lines Layer: {lines_layer.name()} (ID: {lines_layer.id()})"); log.debug(f"Using RunIns Layer: {runins_layer.name()} (ID: {runins_layer.id()})")
         required_layers = { 'lines': lines_layer, 'runins': runins_layer }
-
-        # --- Field Lookups (as before) ---
+        # Field Lookups
         line_num_field = "LineNum"; heading_field = "Heading"; status_field = "Status"
-        line_fields = lines_layer.fields()
-        line_num_idx = line_fields.lookupField(line_num_field)
-        heading_idx = line_fields.lookupField(heading_field)
-        status_idx = line_fields.lookupField(status_field)
-        if line_num_idx == -1 or heading_idx == -1 or status_idx == -1:
-            missing_f = [f for f, i in zip([line_num_field, heading_field, status_field], [line_num_idx, heading_idx, status_idx]) if i == -1]
-            err_msg = f"Lines layer '{lines_layer.name()}' is missing required field(s): {', '.join(missing_f)}"
-            log.error(err_msg); QMessageBox.critical(self, "Field Error", err_msg); return None, None
-
-        runin_fields = runins_layer.fields()
-        runin_line_num_field = "LineNum"; runin_position_field = "Position"
-        runin_start_x_field = "start_x"; runin_start_y_field = "start_y"
-        runin_end_x_field = "end_x"; runin_end_y_field = "end_y"
-        runin_line_num_idx = runin_fields.lookupField(runin_line_num_field)
-        runin_pos_idx = runin_fields.lookupField(runin_position_field)
-        runin_start_x_idx = runin_fields.lookupField(runin_start_x_field)
-        runin_start_y_idx = runin_fields.lookupField(runin_start_y_field)
-        runin_end_x_idx = runin_fields.lookupField(runin_end_x_field)
-        runin_end_y_idx = runin_fields.lookupField(runin_end_y_field)
-
-        if runin_line_num_idx == -1 or runin_pos_idx == -1:
-             missing_f = [f for f, i in zip([runin_line_num_field, runin_position_field], [runin_line_num_idx, runin_pos_idx]) if i == -1]
-             err_msg = f"RunIns layer '{runins_layer.name()}' is missing required field(s): {', '.join(missing_f)}"
-             log.error(err_msg); QMessageBox.critical(self, "Field Error", err_msg); return None, None
+        line_fields = lines_layer.fields(); line_num_idx = line_fields.lookupField(line_num_field); heading_idx = line_fields.lookupField(heading_field); status_idx = line_fields.lookupField(status_field)
+        if line_num_idx == -1 or heading_idx == -1 or status_idx == -1: missing_f = [f for f, i in zip([line_num_field, heading_field, status_field], [line_num_idx, heading_idx, status_idx]) if i == -1]; err_msg = f"Lines layer '{lines_layer.name()}' missing: {', '.join(missing_f)}"; log.error(err_msg); QMessageBox.critical(self, "Field Error", err_msg); return None, None
+        runin_fields = runins_layer.fields(); runin_line_num_field = "LineNum"; runin_position_field = "Position"; runin_start_x_field = "start_x"; runin_start_y_field = "start_y"; runin_end_x_field = "end_x"; runin_end_y_field = "end_y"
+        runin_line_num_idx = runin_fields.lookupField(runin_line_num_field); runin_pos_idx = runin_fields.lookupField(runin_position_field); runin_start_x_idx = runin_fields.lookupField(runin_start_x_field); runin_start_y_idx = runin_fields.lookupField(runin_start_y_field); runin_end_x_idx = runin_fields.lookupField(runin_end_x_field); runin_end_y_idx = runin_fields.lookupField(runin_end_y_field)
+        if runin_line_num_idx == -1 or runin_pos_idx == -1: missing_f = [f for f, i in zip([runin_line_num_field, runin_position_field], [runin_line_num_idx, runin_pos_idx]) if i == -1]; err_msg = f"RunIns layer '{runins_layer.name()}' missing: {', '.join(missing_f)}"; log.error(err_msg); QMessageBox.critical(self, "Field Error", err_msg); return None, None
         has_runin_coords = (runin_start_x_idx != -1 and runin_start_y_idx != -1 and runin_end_x_idx != -1 and runin_end_y_idx != -1)
-        if not has_runin_coords: log.warning(f"RunIns layer '{runins_layer.name()}' is missing start/end coordinate fields. Will rely on geometry.")
-
-
-        # --- Process Lines Layer (as before) ---
-        line_data = {}
-        log.debug("Processing survey lines layer...")
-        request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoFlags).setSubsetOfAttributes([]) # Get all attributes
+        if not has_runin_coords: log.warning(f"RunIns layer lacks coord fields. Relying on geometry.")
+        # Process Lines
+        line_data = {}; log.debug("Processing survey lines layer..."); request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoFlags).setSubsetOfAttributes([])
         processed_lines = 0; skipped_status = 0; skipped_geom = 0; skipped_attr = 0
         for feature in lines_layer.getFeatures(request):
             line_geom = feature.geometry()
-            if not line_geom or line_geom.isEmpty() or line_geom.type() != QgsWkbTypes.LineGeometry:
-                log.warning(f"Skipping invalid line geometry (feature ID {feature.id()})."); skipped_geom += 1; continue
+            if not line_geom or line_geom.isEmpty() or line_geom.type() != QgsWkbTypes.LineGeometry: skipped_geom += 1; continue
             line_num = feature.attribute(line_num_idx); heading = feature.attribute(heading_idx); status = feature.attribute(status_idx)
             status_str = str(status).strip().upper() if status is not None and status != NULL else ""
-            if status_str != "TO BE ACQUIRED":
-                skipped_status += 1; continue
-            try:
-                line_num = int(line_num); heading = float(heading) if heading is not None and heading != NULL else None
-            except (ValueError, TypeError) as e:
-                log.warning(f"Invalid LineNum/Heading for FID {feature.id()}. LineNum='{line_num}', Heading='{heading}'. Error: {e}. Skipping."); skipped_attr += 1; continue
-            if heading is None:
-                log.warning(f"LineNum {line_num} has NULL heading. Skipping."); skipped_attr += 1; continue
-            vertices = list(line_geom.vertices())
-            if len(vertices) < 2:
-                log.warning(f"LineNum {line_num} (FID {feature.id()}) has < 2 vertices. Skipping."); skipped_geom += 1; continue
+            if status_str != "TO BE ACQUIRED": skipped_status += 1; continue
+            try: line_num = int(line_num); heading = float(heading) if heading is not None and heading != NULL else None
+            except (ValueError, TypeError): skipped_attr += 1; continue
+            if heading is None: skipped_attr += 1; continue
+            vertices = list(line_geom.vertices());
+            if len(vertices) < 2: skipped_geom += 1; continue
             start_pt = vertices[0]; end_pt = vertices[-1]
-            line_data[line_num] = {
-                'line_geom': line_geom, 'heading': heading, 'length': line_geom.length(),
-                'start_point_geom': start_pt, 'end_point_geom': end_pt,
-                'start_runin_point': None, 'end_runin_point': None }
+            line_data[line_num] = {'line_geom': line_geom, 'heading': heading, 'length': line_geom.length(), 'start_point_geom': start_pt, 'end_point_geom': end_pt, 'start_runin_point': None, 'end_runin_point': None }
             processed_lines += 1
-        log.info(f"Processed {processed_lines} 'To Be Acquired' lines from '{lines_layer.name()}'.")
-        log.debug(f"  Skipped {skipped_status} (Status), {skipped_geom} (Geometry), {skipped_attr} (Attributes).")
+        log.info(f"Processed {processed_lines} 'To Be Acquired' lines from '{lines_layer.name()}'."); log.debug(f"  Skipped {skipped_status} (Status), {skipped_geom} (Geometry), {skipped_attr} (Attributes).")
 
-
-        # --- Process Runins Layer ---
+        # Process run-ins layer to get precise run-in start/end points
         log.debug("Processing run-ins layer to find run-in endpoints...")
         runins_processed = 0; runins_matched = 0; runins_skipped_geom = 0; runins_skipped_attr = 0
 
-        # --- Check Feature Count AGAIN just before iterating ---
         runin_count_check = runins_layer.featureCount()
         log.debug(f"Run-in layer '{runins_layer.name()}' feature count (Check before loop): {runin_count_check}")
 
@@ -1655,9 +1261,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                              raise ValueError("NULL coordinate value in attributes")
                         runin_start_pt_xy = QgsPointXY(float(sx), float(sy))
                         runin_end_pt_xy = QgsPointXY(float(ex), float(ey))
-                    except (ValueError, TypeError, AttributeError) as e:
-                        log.warning(f"Failed coord attributes for run-in FID {feature.id()} ({line_num}, {position}). Error: {e}. Falling back to geometry.")
-                        runin_start_pt_xy = None; runin_end_pt_xy = None
+                    except (ValueError, TypeError, AttributeError):
+                        runin_start_pt_xy = None; runin_end_pt_xy = None # Fallback
 
                 if runin_start_pt_xy is None or runin_end_pt_xy is None: # Fallback to geometry
                     if not runin_geom or runin_geom.isEmpty() or runin_geom.type() != QgsWkbTypes.LineGeometry:
@@ -1666,70 +1271,72 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     if len(vertices) >= 2:
                         runin_start_pt_xy = QgsPointXY(vertices[0].x(), vertices[0].y())
                         runin_end_pt_xy = QgsPointXY(vertices[-1].x(), vertices[-1].y())
-                        # log.debug(f"  Run-in FID {feature.id()} ({line_num}, {position}): Using geometry points. Start={runin_start_pt_xy}, End={runin_end_pt_xy}")
                     else:
                          log.warning(f"Skipping run-in FID {feature.id()} ({line_num}, {position}) geom has < 2 vertices."); runins_skipped_geom += 1; continue
 
-                # Assign the outer point
+                # --- Refined Connection Logic ---
                 line_info = line_data[line_num]
-                survey_line_start_pt = line_info['start_point_geom']
-                survey_line_end_pt = line_info['end_point_geom']
-                connect_tolerance_sq = 1.0 * 1.0
+                survey_line_start_pt = line_info['start_point_geom'] # QgsPoint
+                survey_line_end_pt = line_info['end_point_geom']     # QgsPoint
+                connect_tolerance_sq = 1.0 * 1.0 # Tolerance squared
 
-                dist_start_to_line_start_sq = runin_start_pt_xy.sqrDist(survey_line_start_pt.x(), survey_line_start_pt.y())
-                dist_end_to_line_start_sq = runin_end_pt_xy.sqrDist(survey_line_start_pt.x(), survey_line_start_pt.y())
-                dist_start_to_line_end_sq = runin_start_pt_xy.sqrDist(survey_line_end_pt.x(), survey_line_end_pt.y())
-                dist_end_to_line_end_sq = runin_end_pt_xy.sqrDist(survey_line_end_pt.x(), survey_line_end_pt.y())
+                runin_outer_pt = None
+                is_connected = False
+                expected_connection_point = None # QgsPoint
 
-                runin_outer_pt = None; is_connected = False
                 if position == "Start":
-                    if dist_end_to_line_start_sq < connect_tolerance_sq: runin_outer_pt = runin_start_pt_xy; is_connected = True
-                    elif dist_start_to_line_start_sq < connect_tolerance_sq: runin_outer_pt = runin_end_pt_xy; is_connected = True; log.warning(f"Run-in FID {feature.id()} ({line_num}, Start) geom reversed?")
-                    else: log.warning(f"Run-in FID {feature.id()} ({line_num}, Start) doesn't connect closely. MinDistSq: {min(dist_start_to_line_start_sq, dist_end_to_line_start_sq):.2f}")
+                    expected_connection_point = survey_line_start_pt
                 elif position == "End":
-                    if dist_end_to_line_end_sq < connect_tolerance_sq: runin_outer_pt = runin_start_pt_xy; is_connected = True
-                    elif dist_start_to_line_end_sq < connect_tolerance_sq: runin_outer_pt = runin_end_pt_xy; is_connected = True; log.warning(f"Run-in FID {feature.id()} ({line_num}, End) geom reversed?")
-                    else: log.warning(f"Run-in FID {feature.id()} ({line_num}, End) doesn't connect closely. MinDistSq: {min(dist_start_to_line_end_sq, dist_end_to_line_end_sq):.2f}")
+                    expected_connection_point = survey_line_end_pt
 
+                if expected_connection_point:
+                    # Calculate squared distances from run-in ends to the expected survey line connection point
+                    dist_runin_start_to_expected_sq = runin_start_pt_xy.sqrDist(expected_connection_point.x(), expected_connection_point.y())
+                    dist_runin_end_to_expected_sq = runin_end_pt_xy.sqrDist(expected_connection_point.x(), expected_connection_point.y())
+
+                    # Determine which run-in end is closer (this is the connection point)
+                    if dist_runin_end_to_expected_sq < dist_runin_start_to_expected_sq:
+                        # Run-in END vertex connects
+                        if dist_runin_end_to_expected_sq < connect_tolerance_sq:
+                            runin_outer_pt = runin_start_pt_xy # The START vertex is the outer point
+                            is_connected = True
+                        else:
+                             log.warning(f"Run-in FID {feature.id()} ({line_num}, {position}) end vertex not close to line {position} (DistSq: {dist_runin_end_to_expected_sq:.2f}).")
+                    else:
+                        # Run-in START vertex connects
+                        if dist_runin_start_to_expected_sq < connect_tolerance_sq:
+                            runin_outer_pt = runin_end_pt_xy # The END vertex is the outer point
+                            is_connected = True
+                            # This implies the run-in geometry was drawn "away" from the line, which is fine.
+                        else:
+                             log.warning(f"Run-in FID {feature.id()} ({line_num}, {position}) start vertex not close to line {position} (DistSq: {dist_runin_start_to_expected_sq:.2f}).")
+
+                # Store the determined outer point
                 if is_connected and runin_outer_pt:
-                    if position == "Start": line_data[line_num]['start_runin_point'] = runin_outer_pt
-                    elif position == "End": line_data[line_num]['end_runin_point'] = runin_outer_pt
+                    if position == "Start":
+                        line_data[line_num]['start_runin_point'] = runin_outer_pt
+                    elif position == "End":
+                        line_data[line_num]['end_runin_point'] = runin_outer_pt
                     runins_matched += 1
-                elif is_connected and not runin_outer_pt: log.warning(f"Run-in FID {feature.id()} ({line_num}, {position}) connected but failed to identify outer point.")
+                elif is_connected: # Should have outer point if connected
+                    log.error(f"Internal error: Run-in FID {feature.id()} connected but failed to identify outer point.")
+                # else: # Failed connection logged above
 
-            # Log *after* the loop finishes
-            log.info(f"Processed {runins_processed} features from '{runins_layer.name()}'. Matched {runins_matched} run-in points to filtered lines.")
-        else: # Log if loop was skipped
-            log.warning(f"Skipping run-in processing loop as feature count for '{runins_layer.name()}' is 0.")
-            runins_processed = 0; runins_matched = 0 # Ensure counters are 0
-
-        # Log skipped counts outside loop
-        log.debug(f"  Run-in processing stats: Skipped Geom={runins_skipped_geom}, Skipped Attr={runins_skipped_attr}.")
+            # (Logging after loop remains the same)
+            log.info(f"Processed {runins_processed} features from '{runins_layer.name()}'. Matched {runins_matched} run-in points."); log.debug(f"  Run-in skips: Geom={runins_skipped_geom}, Attr={runins_skipped_attr}.")
+        else: log.warning(f"Skipping run-in processing loop as '{runins_layer.name()}' is empty.")
 
 
-        # Final check (as before)
-        final_line_data = {}
-        missing_runin_lines = []
+        ######
+        # Final check
+        final_line_data = {}; missing_runin_lines = []
         for line_num, data in line_data.items():
-            if data.get('start_runin_point') is None or data.get('end_runin_point') is None:
-                missing_runin_lines.append(line_num)
-                log.warning(f"LineNum {line_num} is missing start ({'Yes' if data.get('start_runin_point') else 'No'}) or end ({'Yes' if data.get('end_runin_point') else 'No'}) run-in point. Excluding.")
-            else:
-                final_line_data[line_num] = data
-        if missing_runin_lines:
-             QMessageBox.warning(self, "Missing Run-in Data",
-                                 f"Could not find valid start/end run-in points for {len(missing_runin_lines)} lines: "
-                                 f"{', '.join(map(str, sorted(missing_runin_lines)[:10]))}{'...' if len(missing_runin_lines) > 10 else ''}.\n"
-                                 "These lines will be excluded. Check run-in generation and connections.")
-
-        final_line_nums = sorted(list(final_line_data.keys()))
-        log.info(f"Prepared final data for {len(final_line_nums)} lines with valid run-in points: {final_line_nums}")
-        if not final_line_data:
-            QMessageBox.warning(self, "No Data", "No valid line data with associated run-in points found. Please run 'Generate Lines' first and check run-in connections.")
-            return None, None
-
+            if data.get('start_runin_point') is None or data.get('end_runin_point') is None: missing_runin_lines.append(line_num)
+            else: final_line_data[line_num] = data
+        if missing_runin_lines: log.warning(f"Excluding {len(missing_runin_lines)} lines missing run-in points: {sorted(missing_runin_lines)}"); QMessageBox.warning(self, "Missing Run-in Data", f"Excluding {len(missing_runin_lines)} lines missing run-in points. Check connections.")
+        final_line_nums = sorted(list(final_line_data.keys())); log.info(f"Prepared final data for {len(final_line_nums)} lines: {final_line_nums}")
+        if not final_line_data: QMessageBox.warning(self, "No Data", "No valid lines with run-in points found."); return None, None
         return final_line_data, required_layers
-
 
     def _create_runins_layer(self):
         """Create a memory layer for the run-ins"""
@@ -1811,6 +1418,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             QApplication.restoreOverrideCursor()
 
     # --- Integrated Dubins Turn Calculation ---
+
     def _calculate_dubins_turn(self, p_exit, h_exit, p_entry, h_entry, radius, turn_speed_mps, turn_rate_dps=None):
         """ Calculates the shortest Dubins path using the local dubins_path.py module and estimates time. """
         # Debugging for input parameters
@@ -1950,7 +1558,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             QMessageBox.critical(self, "Dubins Error", f"Unexpected error during local Dubins calculation:\n{e}")
             return None,None,None
 
-
     def _determine_next_line(self, current_line_num, remaining_lines, line_data):
         """ Determines the next line in the sequence for Teardrop mode.
             Selects the numerically closest remaining line number.
@@ -1973,130 +1580,365 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         return closest_line
 
     # --- Visualization Function ---
+
+    def handle_run_simulation(self):
+        """ Main handler for the 'Run Simulation' button click. """
+        log.info("Run Simulation button clicked. Starting process...")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        progress = None
+        try:
+            start_prep_time = time.time()
+            log.debug("Running Step 1: Data Gathering & Preparation...")
+            sim_params = self._gather_simulation_parameters()
+            if not sim_params: raise ValueError("Failed to gather parameters")
+
+            line_data, required_layers = self._prepare_line_data(sim_params)
+            if not line_data: raise ValueError("Failed to prepare line data")
+            self.line_data_cache = line_data # Cache for lookahead table
+            log.info(f"Data preparation complete ({time.time() - start_prep_time:.2f}s). Found {len(line_data)} lines.")
+
+            # --- Start Simulation Logic ---
+            start_sim_time = time.time()
+            simulation_mode = sim_params['acquisition_mode']
+            log.info(f"Starting simulation in {simulation_mode} mode...")
+
+            # Common Initialization
+            path_segments = [] # Stores intermediate path segments during Teardrop
+            turn_cache = {} # Cache Dubins results: key=(from_line, to_line, to_direction_is_reciprocal), value=(geom, length, time)
+            all_remaining_lines = set(line_data.keys())
+            first_line_num = sim_params['first_line_num']
+            start_datetime = sim_params['start_datetime']
+
+            if first_line_num not in all_remaining_lines:
+                 raise ValueError(f"First line {first_line_num} not found in prepared data.")
+
+            # --- Handle First Line ---
+            first_line_info = line_data[first_line_num]
+            current_direction_is_reciprocal = (sim_params['first_heading_option'] == "High to Low SP (Reciprocal)")
+            line_time = first_line_info['length'] / sim_params['avg_shooting_speed_mps']
+            initial_cost = 0.0 # Accumulate cost for the first line + its runin
+            first_line_heading = first_line_info['heading']
+            first_line_path_segments = [] # Store first line segments separately initially
+
+            # Add initial segments and set initial state
+            if not current_direction_is_reciprocal: # Low to High SP (Normal)
+                first_line_info['direction'] = "low_to_high" # Store direction
+                start_runin_geom = self._find_runin_geom(required_layers['runins'], first_line_num, "Start")
+                runin_heading = None
+                if start_runin_geom: runin_time = self._calculate_runin_time(start_runin_geom, sim_params); initial_cost += runin_time; runin_heading = self._calculate_geom_heading(start_runin_geom); first_line_path_segments.append((start_runin_geom, 'RunIn', first_line_num, runin_time, runin_heading))
+                first_line_path_segments.append((first_line_info['line_geom'], 'Line', first_line_num, line_time, first_line_heading))
+                initial_cost += line_time
+                current_exit_pt = self._ensure_point_xy(first_line_info.get('end_runin_point'))
+                current_exit_hdg = first_line_heading
+            else: # High to Low SP (Reciprocal)
+                first_line_info['direction'] = "high_to_low" # Store direction
+                end_runin_geom = self._find_runin_geom(required_layers['runins'], first_line_num, "End")
+                runin_heading = None
+                if end_runin_geom: runin_time = self._calculate_runin_time(end_runin_geom, sim_params); initial_cost += runin_time; runin_heading = self._calculate_geom_heading(end_runin_geom); first_line_path_segments.append((end_runin_geom, 'RunIn', first_line_num, runin_time, runin_heading))
+                line_geom_rev = self._reverse_line_geometry(first_line_info['line_geom']); reciprocal_heading = (first_line_heading + 180) % 360
+                first_line_path_segments.append((line_geom_rev, 'Line', first_line_num, line_time, reciprocal_heading))
+                initial_cost += line_time
+                current_exit_pt = self._ensure_point_xy(first_line_info.get('start_runin_point'))
+                current_exit_hdg = reciprocal_heading
+
+            log.debug(f"First line {first_line_num} ({first_line_info['direction']}) processed. Initial Cost: {initial_cost:.1f}s")
+
+            initial_remaining = all_remaining_lines - {first_line_num}
+            # Initial state includes line directions map
+            initial_state = {
+                'last_line_num': first_line_num, 'exit_pt': current_exit_pt, 'exit_hdg': current_exit_hdg,
+                'is_reciprocal': current_direction_is_reciprocal, 'remaining_lines': initial_remaining,
+                'line_directions': {first_line_num: first_line_info['direction']} # Start directions map
+            }
+
+            # --- Simulation Mode Specific Logic ---
+            best_final_sequence_info = None
+
+            if simulation_mode == "Teardrop":
+                 # --- Teardrop Simulation (Simplified Loop) ---
+                 log.debug("Running Teardrop Sequencing...")
+                 current_state = initial_state
+                 current_seq = [first_line_num]
+                 current_cost = initial_cost
+                 # path_segments list is built progressively in Teardrop mode
+                 path_segments = list(first_line_path_segments)
+
+                 progress = QProgressDialog(f"Running Teardrop Simulation...", "Cancel", 0, len(all_remaining_lines), self)
+                 progress.setWindowModality(Qt.WindowModal); progress.setMinimumDuration(500); progress.setValue(0)
+                 seq_step = 0
+
+                 while current_state['remaining_lines']:
+                     if progress.wasCanceled(): raise Exception("Simulation cancelled.")
+                     progress.setValue(seq_step)
+
+                     last_line_num = current_state['last_line_num']
+                     exit_pt = current_state['exit_pt']
+                     exit_hdg = current_state['exit_hdg']
+                     remaining_lines = current_state['remaining_lines']
+
+                     next_line_num = self._determine_next_line(last_line_num, remaining_lines, line_data)
+                     if next_line_num is None: break # No more lines
+
+                     next_is_reciprocal = not current_state['is_reciprocal'] # Alternate from *previous* step
+                     next_line_info = line_data[next_line_num]
+                     chosen_direction_str = 'high_to_low' if next_is_reciprocal else 'low_to_high'
+                     # Ensure line_data reflects the direction for this path *before* getting entry details
+                     line_data[next_line_num]['direction'] = chosen_direction_str # Modify temporarily for this path
+                     current_state['line_directions'][next_line_num] = chosen_direction_str # Update state map
+
+                     p_entry, h_entry = self._get_entry_details(next_line_info, next_is_reciprocal)
+                     if not p_entry or h_entry is None or not exit_pt or exit_hdg is None: log.error(f"Teardrop: Missing data for turn calculation. Stop."); break
+
+                     turn_geom, turn_length, turn_time = self._get_cached_turn(last_line_num, next_line_num, next_is_reciprocal, exit_pt, exit_hdg, p_entry, h_entry, sim_params, turn_cache)
+                     if turn_geom is None or turn_time is None: log.error(f"Teardrop: Turn calculation failed. Stop."); break
+
+                     turn_entry_heading = h_entry
+                     path_segments.append((turn_geom, 'Turn', next_line_num, turn_time, turn_entry_heading))
+                     current_cost += turn_time
+
+                     # _add_line_segments adds segments to path_segments list directly
+                     new_exit_pt, new_exit_hdg, runin_time, line_time_step = self._add_line_segments(next_line_num, next_is_reciprocal, line_data, required_layers, sim_params, path_segments)
+                     current_cost += runin_time + line_time_step
+
+                     # Update state
+                     current_seq.append(next_line_num)
+                     current_state = {
+                         'last_line_num': next_line_num, 'exit_pt': new_exit_pt, 'exit_hdg': new_exit_hdg,
+                         'is_reciprocal': next_is_reciprocal, # Direction JUST completed
+                         'remaining_lines': remaining_lines - {next_line_num},
+                         'line_directions': current_state['line_directions'] # Pass updated map
+                     }
+                     seq_step += 1
+                     QApplication.processEvents()
+
+                 progress.setValue(len(all_remaining_lines))
+                 best_final_sequence_info = {'seq': current_seq, 'cost': current_cost, 'state': current_state}
+
+
+            elif simulation_mode == "Racetrack":
+                 # --- Racetrack Simulation (Beam Search with Cost Adjustment) ---
+                 log.debug("Running Racetrack Sequencing (Beam Search with Cost Adjustment)...")
+                 beam_width = 3
+                 common_interval = self._calculate_most_common_interval_from_lines(required_layers['lines'])
+                 if common_interval is None or common_interval <= 0:
+                     raise ValueError("Failed to calculate a valid common line interval for Racetrack mode.")
+
+                 ideal_distance = 2.0 * sim_params['turn_radius_meters']
+                 ideal_line_jump_count = max(1, round(ideal_distance / common_interval))
+                 log.info(f"Racetrack: Ideal Turn Distance={ideal_distance:.1f}m, Interval={common_interval:.1f}m, Ideal Jump={ideal_line_jump_count} lines")
+
+                 # Calculate Penalty Factors
+                 avg_line_length = sum(ld['length'] for ld in line_data.values()) / len(line_data) if line_data else 20000
+                 avg_line_time = avg_line_length / sim_params['avg_shooting_speed_mps'] if sim_params['avg_shooting_speed_mps'] > 0 else 3600
+                 deviation_penalty_factor = avg_line_time * 0.5 
+                 direction_switch_penalty = avg_line_time * 20.0 
+                 log.debug(f"Racetrack: Avg Line Time ~{avg_line_time:.0f}s. DevPenFactor: {deviation_penalty_factor:.0f}s/line. DirSwitchPenalty: {direction_switch_penalty:.0f}s")
+
+                 active_sequences = [ {'seq': [first_line_num], 'cost': initial_cost, 'state': initial_state} ]
+                 completed_sequences = []
+                 progress = QProgressDialog(f"Running Racetrack Simulation (Beam={beam_width})...", "Cancel", 0, len(all_remaining_lines), self)
+                 progress.setWindowModality(Qt.WindowModal); progress.setMinimumDuration(500); progress.setValue(0)
+                 steps_processed = 0
+
+                 while active_sequences:
+                     if progress.wasCanceled(): raise Exception("Simulation cancelled.")
+                     if active_sequences: lines_done = len(all_remaining_lines) - len(active_sequences[0]['state']['remaining_lines']); progress.setValue(lines_done)
+
+                     potential_next_sequences = []
+                     log.debug(f"\n--- Racetrack Beam Step {steps_processed+1} (Active Sequences: {len(active_sequences)}) ---")
+
+                     for current_seq_info in active_sequences:
+                         current_state = current_seq_info['state']
+                         last_line_num = current_state['last_line_num']; exit_pt = current_state['exit_pt']; exit_hdg = current_state['exit_hdg']; remaining_lines = current_state['remaining_lines']
+                         last_direction_is_reciprocal = current_state['is_reciprocal']
+
+                         if not remaining_lines: completed_sequences.append(current_seq_info); continue
+
+                         # --- Refined Racetrack Candidate Generation ---
+                         racetrack_search_width = 3
+                         positive_jump_range = range(ideal_line_jump_count - racetrack_search_width, ideal_line_jump_count + racetrack_search_width + 1)
+                         negative_jump_range = range(-ideal_line_jump_count - racetrack_search_width, -ideal_line_jump_count + racetrack_search_width + 1)
+                         log.debug(f"  Racetrack Search: Jumps around +{ideal_line_jump_count} ({list(positive_jump_range)}) and -{ideal_line_jump_count} ({list(negative_jump_range)}) from line {last_line_num}")
+                         candidate_nums_set = set()
+                         for jump in list(positive_jump_range) + list(negative_jump_range):
+                             if jump == 0: continue
+                             target_num = last_line_num + jump
+                             if target_num in remaining_lines: candidate_nums_set.add(target_num)
+                         candidate_lines = sorted(list(candidate_nums_set))
+                         log.debug(f"  Racetrack candidates (from jump ranges): {candidate_lines}")
+                         # --- End Refined Generation ---
+
+                         # Fallback
+                         if not candidate_lines and remaining_lines:
+                             log.warning(f"Racetrack: No candidates found in jump ranges from {last_line_num}. Falling back to closest.")
+                             closest_line = self._find_closest_line(last_line_num, remaining_lines, line_data)
+                             if closest_line: candidate_lines = [closest_line]; log.debug(f"  Fallback Candidate selected: {closest_line}")
+                             else: log.warning(f"  Fallback failed: No closest line found."); continue
+
+                         log.debug(f"    Evaluating {len(candidate_lines)} candidates for step after {last_line_num}...")
+                         candidate_evaluations = []
+
+                         for next_line_num in candidate_lines:
+                             for next_is_reciprocal in [False, True]:
+                                 next_line_info = line_data[next_line_num]
+                                 p_entry, h_entry = self._get_entry_details(next_line_info, next_is_reciprocal)
+                                 if not p_entry or h_entry is None or not exit_pt or exit_hdg is None: continue
+
+                                 turn_geom, turn_length, turn_time = self._get_cached_turn(last_line_num, next_line_num, next_is_reciprocal, exit_pt, exit_hdg, p_entry, h_entry, sim_params, turn_cache)
+                                 if turn_geom is None or turn_time is None: continue
+
+                                 new_exit_pt_sim, new_exit_hdg_sim, runin_time_sim, line_time_sim = self._simulate_add_line(next_line_num, next_is_reciprocal, line_data, required_layers, sim_params)
+                                 step_cost = turn_time + runin_time_sim + line_time_sim
+                                 new_total_cost_unadjusted = current_seq_info['cost'] + step_cost
+
+                                 # --- Apply Penalties ---
+                                 actual_jump = abs(next_line_num - last_line_num); deviation = abs(actual_jump - ideal_line_jump_count)
+                                 racetrack_deviation_penalty = deviation * deviation_penalty_factor
+                                 direction_penalty = 0.0
+                                 if next_is_reciprocal == last_direction_is_reciprocal: direction_penalty = direction_switch_penalty
+                                 cost_for_beam_selection = new_total_cost_unadjusted + racetrack_deviation_penalty + direction_penalty
+                                 # ---
+
+                                 new_seq = current_seq_info['seq'] + [next_line_num]
+                                 current_directions = copy.deepcopy(current_state.get('line_directions', {}))
+                                 current_directions[next_line_num] = 'high_to_low' if next_is_reciprocal else 'low_to_high'
+                                 new_state = { 'last_line_num': next_line_num, 'exit_pt': new_exit_pt_sim, 'exit_hdg': new_exit_hdg_sim, 'is_reciprocal': next_is_reciprocal, 'remaining_lines': remaining_lines - {next_line_num}, 'entry_heading_for_turn': h_entry, 'line_directions': current_directions }
+                                 new_sequence_info = {'seq': new_seq, 'cost': new_total_cost_unadjusted, 'state': new_state}
+                                 candidate_evaluations.append((cost_for_beam_selection, new_sequence_info))
+                                 log.debug(f"    Potential branch: ...->{next_line_num} ({'H->L' if next_is_reciprocal else 'L->H'}). Turn={turn_time:.0f}s, Step={step_cost:.0f}s, DevPen={racetrack_deviation_penalty:.0f}s, DirPen={direction_penalty:.0f}s, AdjBeamCost={cost_for_beam_selection:.0f}s, ActualTotalCost={new_total_cost_unadjusted:.0f}s")
+
+                         potential_next_sequences.extend(candidate_evaluations)
+
+                     # Pruning
+                     potential_next_sequences.sort(key=lambda x: x[0]) # Sort by adjusted cost
+                     active_sequences = [info for cost, info in potential_next_sequences[:beam_width]]
+                     best_adj_cost_str = f"{potential_next_sequences[0][0]:.1f}s" if potential_next_sequences else 'N/A'
+                     log.debug(f"  Beam Step End. Kept {len(active_sequences)} sequences. Best adjusted cost: {best_adj_cost_str}")
+                     steps_processed += 1
+                     if steps_processed > len(all_remaining_lines) * 3 : log.warning("Racetrack beam search exceeded max steps."); break
+                     QApplication.processEvents()
+
+                 # (End of Racetrack beam search loop - Finding best result remains the same)
+                 progress.setValue(len(all_remaining_lines))
+                 all_final_sequences = completed_sequences + active_sequences
+                 best_completed = None; min_completed_cost = MAX_FLOAT
+                 for seq_info in all_final_sequences:
+                     if not seq_info['state']['remaining_lines'] and seq_info['cost'] < min_completed_cost:
+                         min_completed_cost = seq_info['cost']; best_completed = seq_info
+                 if best_completed: log.info(f"Racetrack: Found best completed seq cost {best_completed['cost']:.1f}s"); best_final_sequence_info = best_completed
+                 elif active_sequences: log.warning("Racetrack: No sequence completed fully. Selecting best active based on UNADJUSTED cost."); active_sequences.sort(key=lambda x: x['cost']); best_final_sequence_info = active_sequences[0]
+                 else: log.error("Racetrack: No sequences found."); best_final_sequence_info = None
+
+            else: raise ValueError(f"Unknown simulation mode: {simulation_mode}")
+
+            # --- Post-Simulation Processing ---
+            if best_final_sequence_info:
+                 if not isinstance(best_final_sequence_info, dict): log.error(f"Internal Error: best_final_sequence_info type: {type(best_final_sequence_info)}."); raise TypeError("Invalid result format.")
+                 final_sequence = best_final_sequence_info.get('seq', [])
+                 final_cost_seconds = best_final_sequence_info.get('cost', 0.0) # Unadjusted cost
+                 final_cost_hours = final_cost_seconds / 3600.0
+                 log.info(f"Simulation complete ({time.time() - start_sim_time:.2f}s). Mode: {simulation_mode}")
+                 log.info(f"Final Sequence: {final_sequence}")
+                 log.info(f"Total Estimated Cost: {final_cost_hours:.2f} hours ({final_cost_seconds:.0f} seconds)")
+
+                 log.debug("Reconstructing path segments for visualization...")
+                 path_segments_reconstructed = self._reconstruct_path(best_final_sequence_info, line_data, required_layers, sim_params, turn_cache) # Pass the full dictionary
+
+                 self._visualize_optimized_path(final_sequence, path_segments_reconstructed, start_datetime, required_layers['lines'].crs())
+                 self._generate_lookahead_table(best_final_sequence_info) # Pass the full dictionary
+                 log.info("Visualization complete.")
+                 QMessageBox.information(self, "Simulation Complete", f"Mode: {simulation_mode}\nLines: {len(final_sequence)}\nSequence: {final_sequence}\nEst. Time: {final_cost_hours:.2f} hours")
+            else:
+                 log.error(f"{simulation_mode} simulation failed to produce a result.")
+                 QMessageBox.critical(self, "Simulation Failed", f"{simulation_mode} simulation did not complete successfully. Check logs.")
+
+        except Exception as e:
+            log.exception("Error during Run Simulation process.")
+            QMessageBox.critical(self, "Simulation Error", f"An unexpected error occurred:\n{e}\n\nTraceback:\n{traceback.format_exc()}")
+        finally:
+            if 'progress' in locals() and progress: progress.cancel()
+            QApplication.restoreOverrideCursor()
+
     def _visualize_optimized_path(self, sequence, path_segments, start_datetime, source_crs):
-        """ Creates a temporary memory layer to visualize the optimized path with labels. """
-        # (Validation of path_segments remains the same)
-        if not path_segments:
-            log.error("No path segments to visualize.")
-            QMessageBox.warning(self, "Visualization Error", "No path segments to visualize.")
-            return
-        valid_segments = []
-        for i, segment in enumerate(path_segments):
-            try:
-                if len(segment) != 4: log.warning(f"Skipping segment {i+1} invalid format"); continue
-                geom, _, _, _ = segment
-                if geom and not geom.isNull() and geom.type() == QgsWkbTypes.LineGeometry: valid_segments.append(segment)
-                else: log.warning(f"Skipping segment {i+1} invalid geometry")
-            except Exception as e: log.error(f"Error validating segment {i+1}: {e}")
-        if not valid_segments:
-            log.error("No valid path segments to visualize."); QMessageBox.warning(self, "Visualization Error", "No valid path segments."); return
-        path_segments = valid_segments
+        """ Creates a temporary memory layer to visualize the optimized path with labels and heading. """
+        if not path_segments: log.error("No path segments to visualize."); QMessageBox.warning(self, "Visualization Error", "No path segments."); return
 
         log.info("Creating visualization layer for the optimized path...")
-        layer_name = "Optimized_Path"
-        self._remove_layer_by_name(layer_name)
-        self.optimized_path_layer = None
+        layer_name = "Optimized_Path"; self._remove_layer_by_name(layer_name); self.optimized_path_layer = None
 
-        # Define fields (remains the same)
         fields = QgsFields()
-        fields.append(QgsField("SeqOrder", QVariant.Int, "Integer"))
-        fields.append(QgsField("LineNum", QVariant.Int, "Integer"))
-        fields.append(QgsField("SegmentType", QVariant.String, "String", 10))
-        fields.append(QgsField("Length_m", QVariant.Double, "Double", 10, 2))
-        fields.append(QgsField("Duration_s", QVariant.Double, "Double", 10, 1))
-        fields.append(QgsField("StartTime", QVariant.DateTime, "DateTime"))
-        fields.append(QgsField("EndTime", QVariant.DateTime, "DateTime"))
+        fields.append(QgsField("SeqOrder", QVariant.Int)); fields.append(QgsField("LineNum", QVariant.Int))
+        fields.append(QgsField("SegmentType", QVariant.String, len=10)); fields.append(QgsField("Length_m", QVariant.Double, len=10, prec=2))
+        fields.append(QgsField("Duration_s", QVariant.Double, len=10, prec=1)); fields.append(QgsField("StartTime", QVariant.DateTime))
+        fields.append(QgsField("EndTime", QVariant.DateTime)); fields.append(QgsField("Heading", QVariant.Double, len=5, prec=1))
 
-        # Create layer (remains the same)
-        uri = f"LineString?crs={source_crs.authid()}&index=yes"
-        layer = QgsVectorLayer(uri, layer_name, "memory")
-        if not layer.isValid():
-            log.error(f"Failed to create memory layer '{layer_name}'."); QMessageBox.critical(self, "Layer Error", "Could not create visualization layer."); return
+        uri = f"LineString?crs={source_crs.authid()}&index=yes"; layer = QgsVectorLayer(uri, layer_name, "memory")
+        if not layer.isValid(): log.error(f"Failed layer '{layer_name}'."); QMessageBox.critical(self, "Layer Error", "Could not create viz layer."); return
         provider = layer.dataProvider(); provider.addAttributes(fields); layer.updateFields()
 
-        # Populate features (remains the same)
-        layer.startEditing()
-        current_cumulative_time = start_datetime
+        layer.startEditing(); current_cumulative_time = start_datetime
         try:
             for i, segment_data in enumerate(path_segments):
-                geometry, segment_type, line_num, time_seconds = segment_data
-                if not geometry or geometry.isNull(): log.warning(f"Skipping segment {i+1} ({line_num}, {segment_type}) invalid geometry."); continue
-                feat = QgsFeature(fields); feat.setGeometry(geometry)
-                segment_start_time = current_cumulative_time
-                duration = float(time_seconds if time_seconds is not None else 0)
-                segment_end_time = segment_start_time + timedelta(seconds=duration)
-                length_m = geometry.length()
-                q_start_time = QDateTime(segment_start_time); q_end_time = QDateTime(segment_end_time)
+                # ... (Populate features - remains the same) ...
+                if len(segment_data) == 5: geometry, segment_type, line_num, time_seconds, segment_heading = segment_data
+                elif len(segment_data) == 4: geometry, segment_type, line_num, time_seconds = segment_data; segment_heading = NULL; log.warning(f"Segment {i+1} missing heading.")
+                else: log.error(f"Segment {i+1} bad format. Skip."); continue
+                if not geometry or geometry.isNull(): log.warning(f"Skipping segment {i+1} invalid geometry."); continue
+                feat = QgsFeature(fields); feat.setGeometry(geometry); segment_start_time = current_cumulative_time
+                duration = float(time_seconds if time_seconds is not None else 0); segment_end_time = segment_start_time + timedelta(seconds=duration)
+                length_m = geometry.length(); q_start_time = QDateTime(segment_start_time); q_end_time = QDateTime(segment_end_time)
                 display_line_num = line_num if line_num is not None else NULL
-                feat.setAttributes([i + 1, display_line_num, segment_type, round(length_m, 2), round(duration, 1), q_start_time, q_end_time])
-                provider.addFeature(feat)
-                current_cumulative_time = segment_end_time
-            if not layer.commitChanges():
-                 commit_error = layer.dataProvider().lastError(); log.error(f"Commit failed for visualization layer: {commit_error}"); raise Exception(f"Commit failed for {layer_name}: {commit_error}")
+                display_heading = round(segment_heading, 1) if segment_heading is not None and segment_heading != NULL else NULL
+                feat.setAttributes([ i + 1, display_line_num, segment_type, round(length_m, 2), round(duration, 1), q_start_time, q_end_time, display_heading ])
+                provider.addFeature(feat); current_cumulative_time = segment_end_time
+
+            if not layer.commitChanges(): log.error(f"Commit failed: {layer.dataProvider().lastError()}"); raise Exception("Commit failed")
             log.debug(f"Added {len(path_segments)} features to '{layer_name}'.")
-        except Exception as e:
-            log.exception(f"Error populating visualization layer: {e}"); layer.rollBack(); self._remove_layer_by_name(layer_name); QMessageBox.critical(self, "Visualization Error", f"Could not populate layer:\n{e}"); return
+        except Exception as e: log.exception(f"Error populating viz layer: {e}"); layer.rollBack(); self._remove_layer_by_name(layer_name); QMessageBox.critical(self, "Viz Error", f"Could not populate layer:\n{e}"); return
         finally:
              if layer.isEditable(): layer.rollBack()
 
-        # Apply categorized styling (remains the same)
+        # --- Apply categorized styling ---
+        # (Styling logic remains the same)
         try:
-            categories = []
-            symbol_runin = QgsLineSymbol.createSimple({'color': 'red', 'line_style': 'dash', 'width': '0.4', 'width_unit': 'MM'})
-            categories.append(QgsRendererCategory('RunIn', symbol_runin, 'RunIn'))
-            symbol_line = QgsLineSymbol.createSimple({'color': 'blue', 'line_style': 'solid', 'width': '0.6', 'width_unit': 'MM'})
-            categories.append(QgsRendererCategory('Line', symbol_line, 'Line'))
-            symbol_turn = QgsLineSymbol.createSimple({'color': 'green', 'line_style': 'solid', 'width': '0.5', 'width_unit': 'MM'})
-            categories.append(QgsRendererCategory('Turn', symbol_turn, 'Turn'))
-            renderer = QgsCategorizedSymbolRenderer('SegmentType', categories)
-            layer.setRenderer(renderer)
-            log.debug("Applied categorized styling to visualization layer.")
-        except Exception as style_e:
-            log.exception(f"Failed to apply styling: {style_e}")
+            categories = []; symbol_runin = QgsLineSymbol.createSimple({'color': 'red', 'line_style': 'dash', 'width': '0.4', 'width_unit': 'MM'}); categories.append(QgsRendererCategory('RunIn', symbol_runin, 'RunIn'))
+            symbol_line = QgsLineSymbol.createSimple({'color': 'blue', 'line_style': 'solid', 'width': '0.6', 'width_unit': 'MM'}); categories.append(QgsRendererCategory('Line', symbol_line, 'Line'))
+            symbol_turn = QgsLineSymbol.createSimple({'color': 'green', 'line_style': 'solid', 'width': '0.5', 'width_unit': 'MM'}); categories.append(QgsRendererCategory('Turn', symbol_turn, 'Turn'))
+            renderer = QgsCategorizedSymbolRenderer('SegmentType', categories); layer.setRenderer(renderer); log.debug("Applied categorized styling.")
+        except Exception as style_e: log.exception(f"Failed styling: {style_e}")
 
-        # --- Add Labels for Turn Duration (FIXED attribute name) ---
+
+        # --- Add Labels for Turn Duration (Corrected Flags Attribute AGAIN) ---
         try:
             label_settings = QgsPalLayerSettings()
             label_settings.fieldName = "Duration_s"
             label_settings.placement = QgsPalLayerSettings.Placement.Line
 
-            # --- FIX: Use placementFlags (camelCase) ---
-            label_settings.placementFlags = QgsPalLayerSettings.AboveLine | QgsPalLayerSettings.OffsetFromLine | QgsPalLayerSettings.AlongLine
+            # --- FIX 4: Use lowercase placementFlags attribute name, correct enum access ---
+            # QgsPalLayerSettings constants are directly accessible after QGIS 3.x? Let's try direct access.
+            # If this fails, we might need QgsPalLayerSettings.PlacementFlags(...) depending on exact version.
+            label_settings.placementFlags = QgsPalLayerSettings.AlongLine | QgsPalLayerSettings.AboveLine
+            # --- End FIX 4 ---
 
             label_settings.quadOffset = QgsPalLayerSettings.QuadrantFlags(QgsPalLayerSettings.Quadrant.Above)
-            label_settings.dist = 1.0
-            label_settings.distUnits = QgsUnitTypes.RenderUnit.MM # Use MM for offset for consistency
-
-            text_format = QgsTextFormat()
-            text_format.setSize(8)
-            text_format.setColor(QColor("black"))
-            label_settings.setFormat(text_format)
-
-            label_settings.setFormatExpression("format_number(\"Duration_s\", 1) || ' s'")
-            label_settings.isExpression = True
-
-            rule_settings = QgsPalLayerSettings(label_settings)
-            rule = QgsRuleBasedLabeling.Rule(rule_settings)
-            rule.setFilterExpression("\"SegmentType\" = 'Turn'")
-            rule.setActive(True)
-
-            rules = QgsRuleBasedLabeling.RuleRenderer(rule)
-            layer.setLabeling(rules)
-            layer.setLabelsEnabled(True)
-            log.debug("Applied labeling for turn duration.")
-
+            label_settings.dist = 1.0; label_settings.distUnits = QgsUnitTypes.RenderUnit.MM
+            text_format = QgsTextFormat(); text_format.setSize(8); text_format.setColor(QColor("black")); label_settings.setFormat(text_format)
+            label_settings.setFormatExpression("format_number(\"Duration_s\", 1) || ' s'"); label_settings.isExpression = True
+            rule_settings = QgsPalLayerSettings(label_settings); rule = QgsRuleBasedLabeling.Rule(rule_settings)
+            rule.setFilterExpression("\"SegmentType\" = 'Turn'"); rule.setActive(True)
+            rules = QgsRuleBasedLabeling.RuleRenderer(rule); layer.setLabeling(rules); layer.setLabelsEnabled(True)
+            log.debug("Applied labeling for turn duration (corrected flags attribute name again).")
+        except AttributeError as ae:
+             log.error(f"AttributeError applying labeling settings: {ae}. Check QGIS API version compatibility for placementFlags.")
+             layer.setLabelsEnabled(False)
         except Exception as label_e:
-             # Log error but continue
              log.exception(f"Failed to apply labeling: {label_e}")
 
-
-        layer.triggerRepaint() # Refresh map
-        QgsProject.instance().addMapLayer(layer)
-        self.optimized_path_layer = layer # Store reference
+        layer.triggerRepaint(); QgsProject.instance().addMapLayer(layer); self.optimized_path_layer = layer
         log.info(f"Added visualization layer '{layer_name}' to project.")
 
-
     # --- Helper Functions ---
+
     def _ensure_point_xy(self, point):
         """ Ensures a point is a QgsPointXY object, converting if necessary. """
         if point is None:
@@ -2134,56 +1976,43 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.error(f"Error reversing line geometry: {e}")
             return line_geom
 
-    def _generate_lookahead_table(self, sequence, line_data):
+    def _generate_lookahead_table(self, final_sequence_info):
         """Generates a lookahead table based on simulation results."""
+        if not isinstance(final_sequence_info, dict): log.warning("Cannot generate lookahead: Invalid input format"); return None
+        sequence = final_sequence_info.get('seq', [])
+        if not sequence: log.warning("Cannot generate lookahead table: empty sequence"); return None
+        state_info = final_sequence_info.get('state', {})
+        final_directions = state_info.get('line_directions', {})
         log.info("Generating lookahead table based on simulation results")
 
-        if not sequence or not line_data:
-            log.warning("Cannot generate lookahead table: empty sequence or line data")
-            return None
-
-        # Create table data
         table_data = []
-
         for i in range(len(sequence)):
             line_num = sequence[i]
+            # Get direction (handle first line potentially missing from map)
+            direction_str = final_directions.get(line_num)
+            if direction_str is None:
+                # If missing (should only be first line), retrieve from initial setup stored in cache
+                line_info_cache = self.line_data_cache.get(line_num, {})
+                direction_str = line_info_cache.get('direction', 'unknown')
+                log.debug(f"Lookahead: Using cached direction '{direction_str}' for line {line_num}")
 
-            # Skip lines not in line_data (shouldn't happen but just in case)
-            if line_num not in line_data:
-                log.warning(f"Line {line_num} in sequence but not in line_data. Skipping in lookahead table.")
-                continue
-            
-            # Get vessel direction for this line
-            direction = line_data[line_num].get('direction')
+            direction_is_reciprocal = (direction_str == 'high_to_low')
+            entry_position = "Highest SP" if direction_is_reciprocal else "Lowest SP"
+            exit_position = "Lowest SP" if direction_is_reciprocal else "Highest SP"
 
-            # Determine entry/exit positions based on direction
-            entry_position = "Highest SP" if direction == "high_to_low" else "Lowest SP"
-            exit_position = "Lowest SP" if direction == "high_to_low" else "Highest SP"
-
-            # For next line (if available)
-            next_line_info = "End of Simulation"
-            next_entry_position = ""
-
+            # Determine Next Turn To
+            next_line_info = "End of Simulation"; next_entry_position = ""
             if i < len(sequence) - 1:
                 next_line = sequence[i+1]
-                if next_line in line_data:
-                    next_direction = line_data[next_line].get('direction')
-                    next_entry_position = "Highest SP" if next_direction == "high_to_low" else "Lowest SP"
-                    next_line_info = f"{next_line} {next_entry_position}"
+                next_direction_str = final_directions.get(next_line, "Unknown")
+                next_direction_is_reciprocal = (next_direction_str == 'high_to_low')
+                next_entry_position = "Highest SP" if next_direction_is_reciprocal else "Lowest SP"
+                next_line_info = f"{next_line} {next_entry_position}"
 
-            # Add row to table data
-            row = {
-                "Line Number": line_num,
-                "Direction": "High to Low SP" if direction == "high_to_low" else "Low to High SP",
-                "Dubins Entry": entry_position,
-                "Dubins Exit": exit_position,
-                "Next Turn To": next_line_info
-            }
+            row = { "Line Number": line_num, "Direction": direction_str.replace("_", " ").title(), "Dubins Entry": entry_position, "Dubins Exit": exit_position, "Next Turn To": next_line_info }
             table_data.append(row)
 
-        # Display the table to the user
         self._display_lookahead_table(table_data)
-
         return table_data
 
     def _display_lookahead_table(self, table_data):
@@ -2233,23 +2062,211 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         dialog.setLayout(layout)
         dialog.exec_()
 
-    # ... _apply_basic_style ...
-    # ... other helpers as needed ...
+    def _get_entry_details(self, line_info, is_reciprocal):
+        """ Gets the entry point (QgsPointXY) and entry heading (degrees) for a line given the direction """
+        p_entry = None
+        h_entry = None
+        base_heading = line_info.get('heading')
+        if base_heading is None: return None, None # Cannot proceed without base heading
+
+        if is_reciprocal: # High->Low entry needed
+            pt = line_info.get('end_runin_point') # Entry for High->Low is END run-in point
+            p_entry = self._ensure_point_xy(pt)
+            h_entry = (base_heading + 180) % 360
+        else: # Low->High entry needed
+            pt = line_info.get('start_runin_point') # Entry for Low->High is START run-in point
+            p_entry = self._ensure_point_xy(pt)
+            h_entry = base_heading
+
+        return p_entry, h_entry
+
+    def _get_next_exit_state(self, line_num, direction_is_reciprocal, line_data):
+        """ Determines the exit point and heading AFTER traversing a line """
+        line_info = line_data[line_num]
+        base_heading = line_info['heading']
+        if not direction_is_reciprocal: # Traveled Low->High
+            exit_pt = self._ensure_point_xy(line_info.get('end_runin_point'))
+            exit_hdg = base_heading
+        else: # Traveled High->Low
+            exit_pt = self._ensure_point_xy(line_info.get('start_runin_point'))
+            exit_hdg = (base_heading + 180) % 360
+        return exit_pt, exit_hdg
+
+    def _add_line_segments(self, line_num, direction_is_reciprocal, line_data, required_layers, sim_params, path_segments_list):
+        """ Adds RunIn and Line segments to the path_segments list and returns cost """
+        total_runin_time = 0.0
+        total_line_time = 0.0
+        runin_heading = None
+        line_heading = None
+        line_info = line_data[line_num]
+        base_heading = line_info['heading']
+        line_time = line_info['length'] / sim_params['avg_shooting_speed_mps']
+        total_line_time += line_time
+
+        if not direction_is_reciprocal: # Low->High
+            runin_geom = self._find_runin_geom(required_layers['runins'], line_num, "Start")
+            if runin_geom:
+                runin_time = self._calculate_runin_time(runin_geom, sim_params)
+                total_runin_time += runin_time
+                runin_heading = self._calculate_geom_heading(runin_geom)
+                path_segments_list.append((runin_geom, 'RunIn', line_num, runin_time, runin_heading))
+            line_geom = line_info['line_geom']
+            line_heading = base_heading
+            path_segments_list.append((line_geom, 'Line', line_num, line_time, line_heading))
+        else: # High->Low
+            runin_geom = self._find_runin_geom(required_layers['runins'], line_num, "End")
+            if runin_geom:
+                runin_time = self._calculate_runin_time(runin_geom, sim_params)
+                total_runin_time += runin_time
+                runin_heading = self._calculate_geom_heading(runin_geom)
+                path_segments_list.append((runin_geom, 'RunIn', line_num, runin_time, runin_heading))
+            line_geom_rev = self._reverse_line_geometry(line_info['line_geom'])
+            line_heading = (base_heading + 180) % 360
+            path_segments_list.append((line_geom_rev, 'Line', line_num, line_time, line_heading))
+
+        return self._get_next_exit_state(line_num, direction_is_reciprocal, line_data) + (total_runin_time, total_line_time)
+
+    def _simulate_add_line(self, line_num, direction_is_reciprocal, line_data, required_layers, sim_params):
+        """ Calculates RunIn and Line time for a potential step WITHOUT modifying path_segments """
+        runin_time_sim = 0.0
+        line_time_sim = 0.0
+        line_info = line_data[line_num]
+        line_time_sim = line_info['length'] / sim_params['avg_shooting_speed_mps']
+
+        runin_geom = None
+        if not direction_is_reciprocal: runin_geom = self._find_runin_geom(required_layers['runins'], line_num, "Start")
+        else: runin_geom = self._find_runin_geom(required_layers['runins'], line_num, "End")
+
+        if runin_geom: runin_time_sim = self._calculate_runin_time(runin_geom, sim_params)
+
+        new_exit_pt, new_exit_hdg = self._get_next_exit_state(line_num, direction_is_reciprocal, line_data)
+        return new_exit_pt, new_exit_hdg, runin_time_sim, line_time_sim
+
+    def _get_cached_turn(self, from_line, to_line, to_is_reciprocal, exit_pt, exit_hdg, entry_pt, entry_hdg, sim_params, turn_cache):
+         """ Calculates or retrieves a cached Dubins turn """
+         cache_key = (from_line, to_line, to_is_reciprocal)
+         if cache_key in turn_cache:
+             return turn_cache[cache_key]
+         else:
+             turn_geom, turn_length, turn_time = self._calculate_dubins_turn(
+                 exit_pt, exit_hdg, entry_pt, entry_hdg,
+                 sim_params['turn_radius_meters'],
+                 sim_params['avg_turn_speed_mps'],
+                 sim_params.get('vessel_turn_rate_dps')
+             )
+             # Ensure time is valid even if calculation returns None/0 length
+             if turn_geom is not None and turn_time is not None:
+                 turn_time = self._ensure_turn_time(turn_geom, turn_length, turn_time, sim_params)
+             else: # Handle failed calculation
+                 turn_time = None # Indicate failure
+
+             turn_cache[cache_key] = (turn_geom, turn_length, turn_time)
+             return turn_geom, turn_length, turn_time
+
+    def _find_closest_line(self, current_line_num, remaining_lines_set, line_data):
+        """ Finds the numerically closest line number in the remaining set. """
+        if not remaining_lines_set: return None
+        min_diff = MAX_FLOAT
+        closest_line = None
+        for line_num in remaining_lines_set:
+            diff = abs(line_num - current_line_num)
+            if diff < min_diff:
+                min_diff = diff
+                closest_line = line_num
+        return closest_line
+
+    def _reconstruct_path(self, final_sequence_info, line_data, required_layers, sim_params, turn_cache):
+        """ Rebuilds the path_segments list from a completed sequence info dictionary """
+        # --- Added Robustness Checks ---
+        if not isinstance(final_sequence_info, dict):
+             log.error(f"_reconstruct_path expected a dict, got {type(final_sequence_info)}. Value: {final_sequence_info}")
+             return []
+        sequence = final_sequence_info.get('seq', [])
+        state_info = final_sequence_info.get('state', {})
+        final_directions = state_info.get('line_directions', {}) # Safely get directions map
+
+        log.debug(f"Reconstructing path for sequence: {sequence}")
+        log.debug(f"Using final directions: {final_directions}")
+        path_segments_out = []
+        if not sequence: return path_segments_out
+
+        first_line_num = sequence[0]
+        # --- Get direction for first line safely ---
+        first_direction_str = final_directions.get(first_line_num)
+        if first_direction_str is None:
+            # Fallback to checking the cached line_data if direction missing in final state (e.g., single line sequence)
+            first_line_info_cache = self.line_data_cache.get(first_line_num, {})
+            first_direction_str = first_line_info_cache.get('direction', 'low_to_high') # Default if still missing
+            log.warning(f"Direction for first line {first_line_num} not in final state map, using cached/default: {first_direction_str}")
+        # ---
+        first_direction_is_reciprocal = (first_direction_str == 'high_to_low')
+        log.debug(f"Reconstruction: First line {first_line_num}, Direction: {first_direction_str}")
+
+        # Add first RunIn and Line (using the determined first_direction_is_reciprocal)
+        # (This part remains the same as previous version)
+        first_line_info = line_data[first_line_num]
+        base_heading = first_line_info['heading']; line_time = first_line_info['length'] / sim_params['avg_shooting_speed_mps']
+        runin_heading = None; line_heading = None; runin_time = 0.0
+        if not first_direction_is_reciprocal:
+            runin_geom = self._find_runin_geom(required_layers['runins'], first_line_num, "Start");
+            if runin_geom: runin_time = self._calculate_runin_time(runin_geom, sim_params); runin_heading = self._calculate_geom_heading(runin_geom); path_segments_out.append((runin_geom, 'RunIn', first_line_num, runin_time, runin_heading))
+            line_geom = first_line_info['line_geom']; line_heading = base_heading; path_segments_out.append((line_geom, 'Line', first_line_num, line_time, line_heading))
+        else:
+            runin_geom = self._find_runin_geom(required_layers['runins'], first_line_num, "End");
+            if runin_geom: runin_time = self._calculate_runin_time(runin_geom, sim_params); runin_heading = self._calculate_geom_heading(runin_geom); path_segments_out.append((runin_geom, 'RunIn', first_line_num, runin_time, runin_heading))
+            line_geom_rev = self._reverse_line_geometry(first_line_info['line_geom']); line_heading = (base_heading + 180) % 360; path_segments_out.append((line_geom_rev, 'Line', first_line_num, line_time, line_heading))
+
+        # Simulate step-by-step for turns
+        current_exit_pt, current_exit_hdg = self._get_next_exit_state(first_line_num, first_direction_is_reciprocal, line_data)
+
+        for i in range(len(sequence) - 1):
+            from_line = sequence[i]; to_line = sequence[i+1]
+            to_direction_str = final_directions.get(to_line) # Get direction from map
+            if to_direction_str is None: log.error(f"Reconstruction: Missing direction for {to_line}. Abort."); break
+            to_direction_is_reciprocal = (to_direction_str == 'high_to_low')
+            log.debug(f"  Reconstructing turn from {from_line} to {to_line} (Direction: {to_direction_str})")
+
+            to_line_info = line_data[to_line]
+            p_entry, h_entry = self._get_entry_details(to_line_info, to_direction_is_reciprocal)
+            if not p_entry or h_entry is None or not current_exit_pt or current_exit_hdg is None: log.error(f"Reconstruction: Missing data turn {from_line}->{to_line}. Skip."); break
+
+            turn_geom, turn_length, turn_time = self._get_cached_turn(from_line, to_line, to_direction_is_reciprocal, current_exit_pt, current_exit_hdg, p_entry, h_entry, sim_params, turn_cache)
+            if turn_geom is None or turn_time is None: log.error(f"Reconstruction: Failed turn {from_line}->{to_line}. Skip."); break
+
+            turn_entry_heading = h_entry
+            path_segments_out.append((turn_geom, 'Turn', to_line, turn_time, turn_entry_heading))
+
+            # Add RunIn and Line using the determined direction
+            _, _, _, _ = self._add_line_segments(to_line, to_direction_is_reciprocal, line_data, required_layers, sim_params, path_segments_out)
+            current_exit_pt, current_exit_hdg = self._get_next_exit_state(to_line, to_direction_is_reciprocal, line_data) # Update state
+
+        log.debug(f"Path reconstruction generated {len(path_segments_out)} segments.")
+        return path_segments_out
+
+    def _calculate_geom_heading(self, geom):
+        """ Calculate heading in degrees (0=N, CW) for a 2-point line geometry """
+        if not geom or geom.isEmpty() or not geom.isMultipart(): # Simplified assumption
+            vertices = list(geom.vertices())
+            if len(vertices) >= 2:
+                p1 = vertices[0]; p2 = vertices[-1]
+                dx = p2.x() - p1.x(); dy = p2.y() - p1.y()
+                if abs(dx) < 1e-6 and abs(dy) < 1e-6: return None # Zero length
+                rad = math.atan2(dx, dy) # Note: atan2(x,y) for 0=N
+                heading = (math.degrees(rad) + 360) % 360
+                return heading
+        return None # Invalid geometry    # ... _apply_basic_style ...
 
     # --- END: Simulation / Lookahead Handlers ---
 
     def closeEvent(self, event):
         """ Clean up when dock widget is closed """
-        # --- No changes in this method ---
-        # (Code omitted for brevity)
         log.debug("Dock widget close event triggered.")
         self._remove_layer_by_name("Generated_Survey_Lines")
         self._remove_layer_by_name("Generated_RunIns")
-        self._remove_layer_by_name("Generated_Turns")
         self._remove_layer_by_name("Optimized_Path")
         self.generated_lines_layer = None
         self.generated_runins_layer = None
         self.generated_turns_layer = None
         self.optimized_path_layer = None
         self.closingPlugin.emit()
-        event.accept()
+        event.accept() # Use accept() instead of Accept()
