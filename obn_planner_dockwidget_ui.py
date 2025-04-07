@@ -31,3 +31,4 @@ class Ui_OBNPlannerDockWidgetBase(object):
         _translate = QtCore.QCoreApplication.translate
         OBNPlannerDockWidgetBase.setWindowTitle(_translate("OBNPlannerDockWidgetBase", "OBN Source Line Planner & Optimisation"))
         self.importSpsButton.setText(_translate("OBNPlannerDockWidgetBase", "Import SPS File..."))
+        self.editFinalizeButton.setText(_translate("OBNPlannerDockWidgetBase", "Edit Sequence / Finalize Plan"))

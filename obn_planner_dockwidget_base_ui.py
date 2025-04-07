@@ -224,9 +224,9 @@ class Ui_OBNPlannerDockWidgetBase(object):
         self.runSimulationButton = QtWidgets.QPushButton(self.dockWidgetContents)
         self.runSimulationButton.setObjectName("runSimulationButton")
         self.verticalLayout.addWidget(self.runSimulationButton)
-        self.generatePlanButton = QtWidgets.QPushButton(self.dockWidgetContents)
-        self.generatePlanButton.setObjectName("generatePlanButton")
-        self.verticalLayout.addWidget(self.generatePlanButton)
+        self.editFinalizeButton = QtWidgets.QPushButton(self.dockWidgetContents)
+        self.editFinalizeButton.setObjectName("editFinalizeButton")
+        self.verticalLayout.addWidget(self.editFinalizeButton)
         OBNPlannerDockWidgetBase.setWidget(self.dockWidgetContents)
 
         self.retranslateUi(OBNPlannerDockWidgetBase)
@@ -267,4 +267,4 @@ class Ui_OBNPlannerDockWidgetBase(object):
         self.label_14.setText(_translate("OBNPlannerDockWidgetBase", "Start Time"))
         self.startDateTimeEdit.setDisplayFormat(_translate("OBNPlannerDockWidgetBase", "yyyy-MM-dd HH:mm"))
         self.runSimulationButton.setText(_translate("OBNPlannerDockWidgetBase", "Run Simulation"))
-        self.generatePlanButton.setText(_translate("OBNPlannerDockWidgetBase", "Generate Lookahead Plan"))
+        self.editFinalizeButton.setText(_translate("OBNPlannerDockWidgetBase", "Finalize Lookahead Plan"))
