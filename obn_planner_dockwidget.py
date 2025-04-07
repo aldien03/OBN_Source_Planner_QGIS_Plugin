@@ -2073,17 +2073,22 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             return None # Indicate failure
 
     # --- NEW: Helper to generate the interleaved racetrack sequence ---
-    # --- REVISED: _generate_interleaved_racetrack_sequence (Simpler Logic) ---
+
+    # --- REVISED AGAIN: _generate_interleaved_racetrack_sequence (True Interleaving) ---
     def _generate_interleaved_racetrack_sequence(self, sorted_active_lines, first_line_num, ideal_jump_count):
         """
-        Generates an interleaved racetrack sequence.
-        Starts at first_line_num, jumps forward by ideal_jump_count,
-        then interleaves backwards on adjacent lines.
+        Generates a more accurate interleaved racetrack sequence.
+
+        Example Pattern (Jump=16, Step=6):
+        1022 -> 1118 (1022 + 16*6)
+        1028 (1022+6) -> 1124 (1028 + 16*6)
+        1034 (1028+6) -> 1130 (1034 + 16*6)
+        ...
 
         Args:
             sorted_active_lines: List of active line numbers, sorted numerically.
             first_line_num: The user-specified starting line number.
-            ideal_jump_count: The number of lines to jump for the racetrack turn.
+            ideal_jump_count: The number of *line intervals* to jump for the racetrack turn.
 
         Returns:
             List of line numbers in the calculated sequence, or None on error.
@@ -2096,65 +2101,135 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             ideal_jump_count = 1
 
         n_lines = len(sorted_active_lines)
+        # Create a lookup for faster index retrieval
+        line_to_index = {line: idx for idx, line in enumerate(sorted_active_lines)}
+        index_to_line = {idx: line for idx, line in enumerate(sorted_active_lines)}
+
         try:
-            start_index = sorted_active_lines.index(first_line_num)
-        except ValueError:
-            log.error(f"Start line {first_line_num} not in active list. Using index 0.")
+            start_index = line_to_index[first_line_num]
+        except KeyError:
+            log.error(f"Start line {first_line_num} not in active list map. Using index 0.")
             start_index = 0
             first_line_num = sorted_active_lines[0] # Ensure first line is valid
+
+        log.info(f"Generating Interleaved Sequence: Start={first_line_num}(idx={start_index}), Jump Count={ideal_jump_count}, N Lines={n_lines}")
 
         sequence = []
         visited_indices = set()
 
-        # Phase 1: Go "outward" from the start index, jumping forward
-        current_index = start_index
-        while 0 <= current_index < n_lines and current_index not in visited_indices:
-            sequence.append(sorted_active_lines[current_index])
-            visited_indices.add(current_index)
-            current_index += ideal_jump_count # Jump forward
+        # --- Determine the two 'banks' of indices based on the jump ---
+        # We assume the jump correctly separates the outward and return passes
+        bank1_indices = list(range(start_index, n_lines, ideal_jump_count)) # Indices for one pass
+        # Find the typical starting index for the return pass (adjacent to start_index)
+        # This assumes the lines are somewhat sequential numerically
+        # A more robust way might be needed if line numbers are very irregular
+        return_start_index = start_index + 1 # Simplistic assumption: next index starts return
+        # Adjust if start_index was the last element
+        if return_start_index >= n_lines:
+            return_start_index = start_index - 1 # Try previous index
+        # If start_index was 0 and n_lines > 1, return starts at 1. If only 1 line, this won't run.
 
-        # Phase 2: Come "back" starting from the line *after* the initial start index
-        #           (or the very beginning if start was 0), interleaving.
-        #           Find the index of the line *just before* the first line added in Phase 1's jump sequence (if possible)
-        #           This is complex to get perfect interleaving start.
+        bank2_indices = []
+        # We need to find the actual indices corresponding to the lines adjacent
+        # to those in bank1_indices. This is hard without knowing the line number step (e.g., 6).
 
-        # Simpler approach for Phase 2: Interleave all remaining lines
-        # Go through all indices. If an index hasn't been visited, add its line.
-        # This ensures all lines are included but might not be perfectly interleaved
-        # if the jump count caused unusual coverage in phase 1.
+        # --- Alternative Strategy based on Expected Output ---
+        # Pair up lines: (1022, 1118), (1028, 1124), (1034, 1130)...
+        # Requires knowing the interval (ideal_jump_count) and the step between adjacent lines
 
-        # Let's try a more structured interleave for Phase 2:
-        # Start from the index *after* the initial line, and jump forward
-        # Then start from the index *before* the initial line, and jump backward
-        # (This is still complex).
+        # Let's estimate the step if possible
+        line_step = 6 # Default or common step value
+        if n_lines > 1:
+             diffs = [sorted_active_lines[i+1] - sorted_active_lines[i] for i in range(n_lines - 1)]
+             # Find the most common difference (basic mode calculation)
+             if diffs:
+                 count = Counter(diffs)
+                 most_common = count.most_common(1)
+                 if most_common and most_common[0][1] > 1: # Check if there's a dominant step
+                      line_step = most_common[0][0]
+                      log.debug(f"Detected common line number step: {line_step}")
+                 else:
+                      log.warning(f"Could not detect dominant line step. Using default: {line_step}. Sequence might be inaccurate.")
+             else: log.warning(f"Cannot calculate line step. Using default: {line_step}")
 
-        # --- Revised Simpler Phase 2 & 3: Fill remaining by simple passes ---
-        # This prioritizes getting all lines over perfect geometric interleaving if Phase 1 was odd.
 
-        # Phase 2: Fill forward from beginning
-        for i in range(n_lines):
-            if i not in visited_indices:
-                sequence.append(sorted_active_lines[i])
-                visited_indices.add(i)
+        # --- Generate pairs based on start, step, and jump ---
+        pairs = []
+        current_line1 = first_line_num
+        line1_idx = start_index
 
-        # Check if all lines were added (should be covered by Phase 2 now)
+        # Find the target jump line based on ideal_jump_count and step
+        # Target = current + jump_count * step
+        target_jump_line = current_line1 + ideal_jump_count * line_step
+
+        # Find the index of the closest available line to the target jump line
+        target_line2_idx = -1
+        min_diff = float('inf')
+        potential_target_indices = range(line1_idx + ideal_jump_count - 2, line1_idx + ideal_jump_count + 3) # Search around ideal index
+
+        for idx in potential_target_indices:
+            if 0 <= idx < n_lines:
+                diff = abs(sorted_active_lines[idx] - target_jump_line)
+                if diff < min_diff:
+                    min_diff = diff
+                    target_line2_idx = idx
+
+        if target_line2_idx == -1: # Fallback if search failed
+             target_line2_idx = min(line1_idx + ideal_jump_count, n_lines - 1) # Clamp
+
+        current_line2_idx = target_line2_idx
+
+        log.debug(f"Starting pair generation: Line1={current_line1}(idx={line1_idx}), TargetJumpLine={target_jump_line}, InitialLine2Idx={current_line2_idx}")
+
+        # Loop to generate pairs, moving outwards from start and inwards from target
+        visited_indices_loop = set() # Track visited within this loop
+        outward_idx = line1_idx
+        return_idx = current_line2_idx
+
+        while len(visited_indices_loop) < n_lines:
+            # Add outward line if valid and not visited
+            if 0 <= outward_idx < n_lines and outward_idx not in visited_indices_loop:
+                sequence.append(sorted_active_lines[outward_idx])
+                visited_indices_loop.add(outward_idx)
+
+            # Add return line if valid and not visited
+            if 0 <= return_idx < n_lines and return_idx not in visited_indices_loop:
+                 # Check if it's the same as the outward one just added
+                 if outward_idx != return_idx:
+                     sequence.append(sorted_active_lines[return_idx])
+                     visited_indices_loop.add(return_idx)
+                 elif len(visited_indices_loop) == n_lines: # If only one line left, break
+                     break
+
+
+            # Move pointers for next pair
+            outward_idx += 1 # Move outward pointer forward by 1 index
+            # Move return pointer backward by 1 index (assuming paired structure)
+            # Need to handle edges carefully
+            return_idx += 1 # This assumes return lines are adjacent to previous return lines
+
+            # Safety break
+            if outward_idx >= n_lines and return_idx >= n_lines : break
+            if outward_idx < 0 and return_idx < 0 : break # Should not happen with incrementing
+
+
+        # Ensure all lines were added (fallback)
         if len(sequence) != n_lines:
-             log.warning(f"Racetrack sequence generation mismatch. Expected {n_lines}, got {len(sequence)}. Sequence: {sequence}")
-             # As a fallback, ensure all lines are present, preserving initial order as much as possible
-             missing_lines = [line for idx, line in enumerate(sorted_active_lines) if idx not in visited_indices]
-             sequence.extend(missing_lines)
-             log.warning(f"Added missing lines: {missing_lines}")
+            log.warning(f"Pair generation mismatch. Expected {n_lines}, got {len(sequence)}. Adding remaining.")
+            original_set = set(sorted_active_lines)
+            current_set = set(sequence)
+            missing = sorted(list(original_set - current_set))
+            sequence.extend(missing)
+            log.warning(f"Added missing lines: {missing}")
 
-
-        # --- Ensure the user's FIRST line is truly first ---
+        # Final check: ensure the user's first line is first
         if sequence and sequence[0] != first_line_num:
-            try:
-                sequence.remove(first_line_num) # Remove it from wherever it ended up
-            except ValueError: pass # Should exist, but check anyway
-            sequence.insert(0, first_line_num) # Put it at the beginning
+            try: sequence.remove(first_line_num)
+            except ValueError: pass
+            sequence.insert(0, first_line_num)
             log.debug(f"Adjusted sequence to ensure {first_line_num} is first.")
 
-        log.info(f"Generated Racetrack Sequence (Length: {len(sequence)}): {sequence}")
+        log.info(f"Generated Racetrack Sequence (Pairing Method - Length: {len(sequence)}): {sequence}")
         return sequence
 
     # --- ADD LOGGING/ERROR HANDLING to _visualize_optimized_path ---
@@ -2766,9 +2841,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     def closeEvent(self, event):
         """ Clean up when dock widget is closed """
         log.debug("Dock widget close event triggered.")
-        self._remove_layer_by_name("Generated_Survey_Lines")
-        self._remove_layer_by_name("Generated_RunIns")
-        self._remove_layer_by_name("Optimized_Path")
+        # self._remove_layer_by_name("Generated_Survey_Lines")
+        # self._remove_layer_by_name("Generated_RunIns")
+        # self._remove_layer_by_name("Optimized_Path")
         self.generated_lines_layer = None
         self.generated_runins_layer = None
         self.generated_turns_layer = None
