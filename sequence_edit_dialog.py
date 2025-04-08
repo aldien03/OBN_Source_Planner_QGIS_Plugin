@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 import copy
 from datetime import datetime, timedelta
+from qgis.core import QgsGeometry, QgsPointXY, QgsPoint
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 from qgis.PyQt.QtCore import Qt, QDateTime
 from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QTableWidget, QTableWidgetItem, QAbstractItemView,
                              QLabel, QHeaderView, QComboBox, QMessageBox,
                              QSizePolicy, QApplication) # Added QApplication
-from qgis.core import QgsPointXY
 
 # Define constants for column indices
 COL_LINE_NUM = 0
@@ -19,39 +19,52 @@ COL_DURATION = 5
 COL_DIRECTION = 6
 COL_ACTIONS = 7 # Placeholder
 
-def custom_deepcopy(obj):
-    """Custom deepcopy function that handles QgsPointXY objects."""
-    if isinstance(obj, QgsPointXY):
-        # Create a new QgsPointXY with the same x,y coordinates
-        return QgsPointXY(obj.x(), obj.y())
+# --- ENHANCED custom_deepcopy (using copy constructor for QgsGeometry) ---
+def custom_deepcopy(obj, memo=None):
+    """Custom deepcopy function that handles QgsPointXY, QgsPoint, and QgsGeometry objects."""
+    if memo is None:
+        memo = {}
+    obj_id = id(obj)
+    if obj_id in memo:
+        return memo[obj_id]
+
+    if isinstance(obj, QgsGeometry):
+        new_geom = QgsGeometry(obj) # Use copy constructor
+        memo[obj_id] = new_geom
+        return new_geom
+    elif isinstance(obj, QgsPointXY):
+        new_point = QgsPointXY(obj.x(), obj.y())
+        memo[obj_id] = new_point
+        return new_point
+    elif isinstance(obj, QgsPoint):
+        new_point = QgsPoint(obj.x(), obj.y())
+        memo[obj_id] = new_point
+        return new_point
     elif isinstance(obj, dict):
-        # Handle dictionaries
-        return {custom_deepcopy(k): custom_deepcopy(v) for k, v in obj.items()}
+        new_dict = {}
+        memo[obj_id] = new_dict
+        for k, v in obj.items():
+             new_dict[custom_deepcopy(k, memo)] = custom_deepcopy(v, memo)
+        return new_dict
     elif isinstance(obj, list):
-        # Handle lists
-        return [custom_deepcopy(item) for item in obj]
+        new_list = []
+        memo[obj_id] = new_list
+        for item in obj:
+            new_list.append(custom_deepcopy(item, memo))
+        return new_list
     elif isinstance(obj, tuple):
-        # Handle tuples
-        return tuple(custom_deepcopy(item) for item in obj)
-    elif hasattr(obj, "__dict__"):
-        # Handle objects with a __dict__ attribute (custom objects)
-        try:
-            # Try standard deepcopy first
-            return copy.deepcopy(obj)
-        except TypeError:
-            # If that fails, create a new instance and copy attributes
-            class_type = type(obj)
-            new_obj = class_type.__new__(class_type)
-            for key, val in obj.__dict__.items():
-                setattr(new_obj, key, custom_deepcopy(val))
-            return new_obj
+         new_tuple_elements = [custom_deepcopy(item, memo) for item in obj]
+         new_tuple = tuple(new_tuple_elements)
+         return new_tuple
     else:
-        # Use standard deepcopy for other types
         try:
-            return copy.deepcopy(obj)
-        except TypeError:
-            # If deepcopy fails, return the original object
+            new_obj = copy.deepcopy(obj, memo)
+            memo[obj_id] = new_obj
+            return new_obj
+        except (TypeError, NotImplementedError):
+            memo[obj_id] = obj
             return obj
+# --- END ENHANCED custom_deepcopy ---
 
 class SequenceEditDialog(QDialog):
     """ Dialog for viewing, editing sequence, directions, and timing. """
@@ -68,7 +81,7 @@ class SequenceEditDialog(QDialog):
         self.recalculation_context = recalculation_context # Dict with params, data, layers, cache, methods
         self.recalculation_callback = recalculation_callback # Callback to update main widget's cost/state
 
-        self.segment_timings = {} # Cache detailed timings: {line_num: {'start': dt, 'end': dt, 'turn': s, 'runin': s, 'line': s}}
+        self.segment_timings = {} # Cache detailed timings: {line_num: {'start': dt, 'end': dt, 'turn': s, 'runin': s, 'line': s, 'total_segment': s}}
 
         # --- UI Elements ---
         self.layout = QVBoxLayout(self)

@@ -1,0 +1,904 @@
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Run Simulation button clicked.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Running Step 1: Data Gathering & Preparation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Gathering simulation parameters from UI...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Using 'acqSpeedPrimaryDoubleSpinBox'.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Parameters gathered: {'acquisition_mode': 'Racetrack', 'nogo_layer': <QgsVectorLayer: 'UM_Planta_150m_Buffer_20250206' (ogr)>, 'deviation_clearance_m': 100.0, 'first_line_num': 1888, 'first_heading_option': 'Low to High SP (Default)', 'avg_shooting_speed_knots': 4.5, 'avg_shooting_speed_mps': 2.314998, 'avg_turn_speed_knots': 4.3, 'turn_radius_meters': 900.0, 'run_in_length_meters': 500.0, 'start_datetime': datetime.datetime(2025, 4, 8, 14, 27, 51, 120000), 'vessel_turn_rate_dps': 30.0, 'avg_turn_speed_mps': 2.2121092}
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Preparing line data from temporary layers...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Processing survey lines layer...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Processed 39 'To Be Acquired' lines from 'Generated_Survey_Lines'.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Skipped 0 (Status), 0 (Geometry), 0 (Attributes).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Processing run-ins layer to find run-in endpoints...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Processed 78 features from 'Generated_RunIns'. Matched 78 run-in points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Run-in skips: Geom=0, Attr=0.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Prepared final data for 39 lines: [1888, 1894, 1900, 1906, 1912, 1918, 1924, 1930, 1936, 1942, 1948, 1954, 1960, 1966, 1972, 1978, 1984, 1990, 1996, 2002, 2008, 2014, 2020, 2026, 2032, 2038, 2044, 2050, 2056, 2062, 2068, 2074, 2080, 2086, 2092, 2098, 2104, 2110, 2116]
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Initial line data preparation complete (0.11s). Found 39 lines.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Running Step 2: Calculating Deviations...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Starting deviation calculation with clearance 100.0m...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Found 1 valid NoGo geometries to process.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Buffering base NoGo geometry...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Avoidance buffer geometry created successfully (or with warnings).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1888: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1894: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1900: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1906: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1912: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1918: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1924: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1930: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1936: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1942: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1948: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1954: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1960: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1966: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 1972: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1972: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 1972: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 401519.04,7520468.22 | Exit: 401892.95,7520227.83
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401705.99,7520348.02 | Peak: 401710.68,7520223.11
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 1978: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1978: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 1978: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 401321.01,7520461.65 | Exit: 401969.26,7520045.29
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401644.95,7520253.17 | Peak: 401649.65,7520128.26
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 1984: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1984: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 1984: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 401186.87,7520413.98 | Exit: 401981.92,7519903.04
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401584.61,7520158.87 | Peak: 401589.31,7520033.95
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 1990: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1990: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 1990: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 401083.91,7520346.72 | Exit: 401963.73,7519780.96
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401523.83,7520063.85 | Peak: 401528.53,7519938.94
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 1996: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 1996: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 1996: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 401002.80,7520265.10 | Exit: 401923.46,7519673.43
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401462.98,7519969.03 | Peak: 401467.56,7519844.11
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 2002: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2002: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 2002: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 400940.95,7520170.79 | Exit: 401863.61,7519577.81
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401402.51,7519874.67 | Peak: 401407.21,7519749.76
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 2008: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2008: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 2008: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 400898.11,7520064.97 | Exit: 401785.04,7519494.49
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401341.59,7519779.75 | Peak: 401346.29,7519654.84
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 2014: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2014: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 2014: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 400877.02,7519944.78 | Exit: 401684.91,7519425.42
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401280.83,7519684.89 | Peak: 401285.40,7519559.97
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 2020: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2020: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 2020: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 400884.92,7519805.53 | Exit: 401555.38,7519374.72
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401220.35,7519590.46 | Peak: 401225.05,7519465.54
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Line 2026: intersects avoidance zone. Attempting deviation...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.boundary() method not available. Trying alternative ring extraction.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_surface_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_point_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - geom.closestSegment() not available. Using nearestPoint fallback.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2026: Using simple 3-point deviation path (smoothing bypassed).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - WARNING - Line 2026: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Entry: 400948.40,7519631.39 | Exit: 401371.41,7519359.88
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Midpoint: 401159.72,7519495.34 | Peak: 401164.42,7519370.43
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Offset Dist: 125.00
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2032: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2038: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2044: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2050: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2056: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2062: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2068: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2074: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2080: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2086: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2092: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2098: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2104: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2110: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Falling back to list check for is_line_type
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Line 2116: Does not intersect avoidance zone.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Deviation check complete. Processed: 39, Deviated: 0, Failed: 10
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Deviation calculation complete (0.35s).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Selected Acquisition Mode: Racetrack
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Running Step 3: Sequencing Algorithm...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Proceeding with 29 non-failed lines for sequencing.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Starting True Interleaved Racetrack Algorithm...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Calculating most common interval for layer: Generated_Survey_Lines
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Calculated most common line interval: 113.11m (based on 38 intervals in the dominant group).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   All calculated intervals: ['113.0', '113.5', '114.7', '112.5', '112.4', '114.6', '112.9', '113.0', '114.2', '112.4', '113.5', '112.9', '114.6', '112.1', '112.8', '114.6', '112.9', '113.6', '112.7', '113.6', '112.8', '113.5', '113.6', '113.6', '112.3', '112.8', '112.1', '112.8', '113.1', '113.2', '112.7', '112.7', '113.6', '112.4', '113.1', '112.1', '112.8', '112.8']
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Interval groups (key is approx avg): {112.95753913855805: 38}
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Calculated Ideal Racetrack Jump = 16 lines
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Generating Interleaved Sequence: Start=1888(idx=0), Jump Count=16, N Lines=29
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Detected common line number step: 6
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Starting pair generation: Line1=1888(idx=0), TargetJumpLine=1984, InitialLine2Idx=14
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Generated Racetrack Sequence (Pairing Method - Length: 29): [1888, 2032, 1894, 2038, 1900, 2044, 1906, 2050, 1912, 2056, 1918, 2062, 1924, 2068, 1930, 2074, 1936, 2080, 1942, 2086, 1948, 2092, 1954, 2098, 1960, 2104, 1966, 2110, 2116]
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Generated Interleaved Racetrack Sequence: [1888, 2032, 1894, 2038, 1900, 2044, 1906, 2050, 1912, 2056, 1918, 2062, 1924, 2068, 1930, 2074, 1936, 2080, 1942, 2086, 1948, 2092, 1954, 2098, 1960, 2104, 1966, 2110, 2116]
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Evaluating Interleaved Sequence - Start Normal (Low->High)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Calculating time for sequence [1888, 2032, 1894, 2038, 1900, 2044, 1906, 2050, 1912, 2056, 1918, 2062, 1924, 2068, 1930, 2074, 1936, 2080, 1942, 2086, 1948, 2092, 1954, 2098, 1960, 2104, 1966, 2110, 2116] starting Normal
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(420288.56144810939440504 7510280.73356465436518192)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419084.06125377403805032 7507845.73326217755675316)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3775.56m, Time: 1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394884.83874622598523274 7523393.26673782244324684)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396975.43525654054246843 7525125.26130616571754217)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3964.90m, Time: 1792.4s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(420239.86474345944589004 7510178.73869383428245783)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419047.56441262288717553 7507735.73817888461053371)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3780.44m, Time: 1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394811.93558737711282447 7523306.26182111538946629)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396878.24186537467176095 7525054.27159261330962181)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3944.33m, Time: 1783.1s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(420191.25813462532823905 7510075.72840738669037819)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418986.75676075444789603 7507640.7262690681964159)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3775.58m, Time: 1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394751.04323924554046243 7523212.2737309318035841)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396781.03912315960042179 7524983.26732450630515814)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 46 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3913.98m, Time: 1769.3s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(420130.36087684042286128 7509981.73267549369484186)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418938.06808617117349058 7507538.74389687366783619)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3780.40m, Time: 1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394665.93191382882650942 7523132.25610312633216381)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396683.83858960255747661 7524912.26649404317140579)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3904.49m, Time: 1765.1s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(420093.96141039743088186 7509871.73350595682859421)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418889.35623675445094705 7507435.72545351181179285)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3776.59m, Time: 1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394593.04376324557233602 7523046.27454648818820715)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396610.84241670637857169 7524825.27245071902871132)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3904.07m, Time: 1764.9s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(420045.15758329362142831 7509768.72754928097128868)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418840.66254904872039333 7507333.7352782404050231)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3775.54m, Time: 1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394532.23745095130288973 7522951.2647217595949769)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396513.63914516882505268 7524753.26735876314342022)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3874.94m, Time: 1751.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419984.36085483117494732 7509673.73264123685657978)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418779.85939033620525151 7507238.73036182019859552)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3775.57m, Time: 1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394447.14060966379474849 7522872.26963817980140448)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396428.53534190770005807 7524674.26143904030323029)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3874.91m, Time: 1751.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419935.7646580922883004 7509571.73856095969676971)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418743.36253415013197809 7507128.73525505047291517)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3780.47m, Time: 1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394374.2374658499029465 7522785.26474494952708483)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396331.33590375841595232 7524603.26231356430798769)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3856.19m, Time: 1743.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419899.16409624158404768 7509461.73768643569201231)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418694.66121912136441097 7507025.73320824187248945)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3776.54m, Time: 1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394313.33878087863558903 7522690.26679175812751055)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396234.04052595025859773 7524532.26950788497924805)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3829.04m, Time: 1730.9s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419838.35947404976468533 7509366.73049211502075195)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418633.86618980311322957 7506931.74094509799033403)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3775.52m, Time: 1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394228.23381019692169502 7522611.25905490200966597)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396161.13538390904432163 7524445.26150441542267799)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3838.05m, Time: 1735.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419789.76461609092075378 7509264.73849558457732201)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418585.25493044988252223 7506828.72342038527131081)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3776.58m, Time: 1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394155.34506955009419471 7522525.27657961472868919)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(396063.84188707108842209 7524374.27162638213485479)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3819.82m, Time: 1726.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419741.05811292893486097 7509161.72837361786514521)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418548.65754795481916517 7506718.72749427892267704)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3780.48m, Time: 1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394082.44245204515755177 7522438.27250572107732296)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(395978.83918848645407706 7524295.26742618530988693)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3811.20m, Time: 1722.9s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419692.36081151355756447 7509059.73257381469011307)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418487.85624089511111379 7506623.72545995563268661)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3776.56m, Time: 1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(394009.44375910487724468 7522351.27454004436731339)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(395881.54377606260823086 7524224.27456643711775541)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3794.27m, Time: 1715.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419631.55622393742669374 7508964.72543356288224459)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418439.1606768710189499 7506521.73236424941569567)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 44 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3780.45m, Time: 1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(393936.53932312899269164 7522264.26763575058430433)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(393863.53385845583397895 7522177.25913001876324415)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 74 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 6463.08m, Time: 2921.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -  -> Calculated Cost: 399989.3s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Evaluating Interleaved Sequence - Start Reciprocal (High->Low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Calculating time for sequence [1888, 2032, 1894, 2038, 1900, 2044, 1906, 2050, 1912, 2056, 1918, 2062, 1924, 2068, 1930, 2074, 1936, 2080, 1942, 2086, 1948, 2092, 1954, 2098, 1960, 2104, 1966, 2110, 2116] starting Reciprocal
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(397060.53855189064051956 7525204.26643534563481808)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394884.83874622598523274 7523393.26673782244324684)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 47 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 4065.05m, Time: 1837.6s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419084.06125377403805032 7507845.73326217755675316)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(420239.86474345944589004 7510178.73869383428245783)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3665.07m, Time: 1656.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396975.43525654054246843 7525125.26130616571754217)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394811.93558737711282447 7523306.26182111538946629)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 47 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 4055.18m, Time: 1833.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(419047.56441262288717553 7507735.73817888461053371)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(420191.25813462532823905 7510075.72840738669037819)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3669.33m, Time: 1658.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396878.24186537467176095 7525054.27159261330962181)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394751.04323924554046243 7523212.2737309318035841)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 46 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 4026.09m, Time: 1820.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418986.75676075444789603 7507640.7262690681964159)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(420130.36087684042286128 7509981.73267549369484186)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3670.34m, Time: 1659.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396781.03912315960042179 7524983.26732450630515814)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394665.93191382882650942 7523132.25610312633216381)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 46 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 4017.04m, Time: 1815.9s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418938.06808617117349058 7507538.74389687366783619)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(420093.96141039743088186 7509871.73350595682859421)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3665.04m, Time: 1656.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396683.83858960255747661 7524912.26649404317140579)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394593.04376324557233602 7523046.27454648818820715)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 46 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3998.08m, Time: 1807.4s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418889.35623675445094705 7507435.72545351181179285)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(420045.15758329362142831 7509768.72754928097128868)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3665.08m, Time: 1656.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396610.84241670637857169 7524825.27245071902871132)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394532.23745095130288973 7522951.2647217595949769)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3988.95m, Time: 1803.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418840.66254904872039333 7507333.7352782404050231)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419984.36085483117494732 7509673.73264123685657978)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3669.35m, Time: 1658.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396513.63914516882505268 7524753.26735876314342022)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394447.14060966379474849 7522872.26963817980140448)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3979.62m, Time: 1799.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418779.85939033620525151 7507238.73036182019859552)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419935.7646580922883004 7509571.73856095969676971)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3665.11m, Time: 1656.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396428.53534190770005807 7524674.26143904030323029)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394374.2374658499029465 7522785.26474494952708483)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 46 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3970.66m, Time: 1795.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418743.36253415013197809 7507128.73525505047291517)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419899.16409624158404768 7509461.73768643569201231)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3665.06m, Time: 1656.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396331.33590375841595232 7524603.26231356430798769)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394313.33878087863558903 7522690.26679175812751055)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 46 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3944.74m, Time: 1783.3s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418694.66121912136441097 7507025.73320824187248945)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419838.35947404976468533 7509366.73049211502075195)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3670.33m, Time: 1659.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396234.04052595025859773 7524532.26950788497924805)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394228.23381019692169502 7522611.25905490200966597)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3936.31m, Time: 1779.4s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418633.86618980311322957 7506931.74094509799033403)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419789.76461609092075378 7509264.73849558457732201)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3665.06m, Time: 1656.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396161.13538390904432163 7524445.26150441542267799)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394155.34506955009419471 7522525.27657961472868919)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3935.85m, Time: 1779.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418585.25493044988252223 7506828.72342038527131081)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419741.05811292893486097 7509161.72837361786514521)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3665.09m, Time: 1656.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(396063.84188707108842209 7524374.27162638213485479)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394082.44245204515755177 7522438.27250572107732296)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3919.30m, Time: 1771.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418548.65754795481916517 7506718.72749427892267704)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419692.36081151355756447 7509059.73257381469011307)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3670.36m, Time: 1659.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(395978.83918848645407706 7524295.26742618530988693)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(394009.44375910487724468 7522351.27454004436731339)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3911.36m, Time: 1768.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418487.85624089511111379 7506623.72545995563268661)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(419631.55622393742669374 7508964.72543356288224459)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 43 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3670.35m, Time: 1659.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(395881.54377606260823086 7524224.27456643711775541)> @ h_exit: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(393936.53932312899269164 7522264.26763575058430433)> @ h_entry: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=147.3, End=327.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 45 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 3895.60m, Time: 1761.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_dubins_turn (using local dubins_calc) called with:
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_exit: <QgsPointXY: POINT(418439.1606768710189499 7506521.73236424941569567)> @ h_exit: 122.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   p_entry: <QgsPointXY: POINT(418390.56614154420094565 7506419.74086998123675585)> @ h_entry: 302.7° (QGIS Heading)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   radius: 900.0 m, speed: 2.21 m/s, rate: 30.0
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Converted Headings (Math, Deg): Start=327.3, End=147.3
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Set dubins_calc globals: MAX_LINE_DISTANCE=90.00, MAX_CURVE_ANGLE=5.73
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Calling local dubins_calc.get_curve...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local dubins_calc.get_curve returned 74 points.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Local Dubins calculation successful. Geom Length: 6463.81m, Time: 2922.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -  -> Calculated Cost: 400036.1s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Selecting Normal start (User Pref).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - True Racetrack Algorithm complete (0.04s).
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - --- Starting Post-Simulation Processing ---
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - Visualizing final result...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Calling _reconstruct_path...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - --- Starting _reconstruct_path ---
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Reconstructing for sequence: [1888, 2032, 1894, 2038, 1900, 2044, 1906, 2050, 1912, 2056, 1918, 2062, 1924, 2068, 1930, 2074, 1936, 2080, 1942, 2086, 1948, 2092, 1954, 2098, 1960, 2104, 1966, 2110, 2116]
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Using final directions: {1888: 'low_to_high', 2032: 'high_to_low', 1894: 'low_to_high', 2038: 'high_to_low', 1900: 'low_to_high', 2044: 'high_to_low', 1906: 'low_to_high', 2050: 'high_to_low', 1912: 'low_to_high', 2056: 'high_to_low', 1918: 'low_to_high', 2062: 'high_to_low', 1924: 'low_to_high', 2068: 'high_to_low', 1930: 'low_to_high', 2074: 'high_to_low', 1936: 'low_to_high', 2080: 'high_to_low', 1942: 'low_to_high', 2086: 'high_to_low', 1948: 'low_to_high', 2092: 'high_to_low', 1954: 'low_to_high', 2098: 'high_to_low', 1960: 'low_to_high', 2104: 'high_to_low', 1966: 'low_to_high', 2110: 'high_to_low', 2116: 'low_to_high'}
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Recon: First line 1888, Direction: low_to_high
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Recon: Adding first line segments for 1888...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Recon: First line added. Current Exit: <QgsPointXY: POINT(420288.56144810939440504 7510280.73356465436518192)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 1: Turn from 1888 to 2032 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1888->2032...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3775.6, Time=1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2032...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2032. New Exit: <QgsPointXY: POINT(394884.83874622598523274 7523393.26673782244324684)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 2: Turn from 2032 to 1894 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2032->1894...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3964.9, Time=1792.4s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1894...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1894. New Exit: <QgsPointXY: POINT(420239.86474345944589004 7510178.73869383428245783)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 3: Turn from 1894 to 2038 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1894->2038...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3780.4, Time=1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2038...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2038. New Exit: <QgsPointXY: POINT(394811.93558737711282447 7523306.26182111538946629)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 4: Turn from 2038 to 1900 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2038->1900...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3944.3, Time=1783.1s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1900...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1900. New Exit: <QgsPointXY: POINT(420191.25813462532823905 7510075.72840738669037819)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 5: Turn from 1900 to 2044 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1900->2044...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3775.6, Time=1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2044...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2044. New Exit: <QgsPointXY: POINT(394751.04323924554046243 7523212.2737309318035841)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 6: Turn from 2044 to 1906 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2044->1906...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3914.0, Time=1769.3s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1906...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1906. New Exit: <QgsPointXY: POINT(420130.36087684042286128 7509981.73267549369484186)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 7: Turn from 1906 to 2050 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1906->2050...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3780.4, Time=1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2050...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2050. New Exit: <QgsPointXY: POINT(394665.93191382882650942 7523132.25610312633216381)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 8: Turn from 2050 to 1912 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2050->1912...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3904.5, Time=1765.1s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1912...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1912. New Exit: <QgsPointXY: POINT(420093.96141039743088186 7509871.73350595682859421)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 9: Turn from 1912 to 2056 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1912->2056...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3776.6, Time=1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2056...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2056. New Exit: <QgsPointXY: POINT(394593.04376324557233602 7523046.27454648818820715)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 10: Turn from 2056 to 1918 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2056->1918...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3904.1, Time=1764.9s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1918...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1918. New Exit: <QgsPointXY: POINT(420045.15758329362142831 7509768.72754928097128868)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 11: Turn from 1918 to 2062 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1918->2062...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3775.5, Time=1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2062...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2062. New Exit: <QgsPointXY: POINT(394532.23745095130288973 7522951.2647217595949769)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 12: Turn from 2062 to 1924 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2062->1924...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3874.9, Time=1751.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1924...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1924. New Exit: <QgsPointXY: POINT(419984.36085483117494732 7509673.73264123685657978)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 13: Turn from 1924 to 2068 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1924->2068...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3775.6, Time=1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2068...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2068. New Exit: <QgsPointXY: POINT(394447.14060966379474849 7522872.26963817980140448)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 14: Turn from 2068 to 1930 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2068->1930...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3874.9, Time=1751.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1930...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1930. New Exit: <QgsPointXY: POINT(419935.7646580922883004 7509571.73856095969676971)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 15: Turn from 1930 to 2074 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1930->2074...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3780.5, Time=1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2074...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2074. New Exit: <QgsPointXY: POINT(394374.2374658499029465 7522785.26474494952708483)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 16: Turn from 2074 to 1936 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2074->1936...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3856.2, Time=1743.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1936...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1936. New Exit: <QgsPointXY: POINT(419899.16409624158404768 7509461.73768643569201231)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 17: Turn from 1936 to 2080 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1936->2080...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3776.5, Time=1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2080...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2080. New Exit: <QgsPointXY: POINT(394313.33878087863558903 7522690.26679175812751055)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 18: Turn from 2080 to 1942 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2080->1942...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3829.0, Time=1730.9s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1942...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1942. New Exit: <QgsPointXY: POINT(419838.35947404976468533 7509366.73049211502075195)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 19: Turn from 1942 to 2086 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1942->2086...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3775.5, Time=1706.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2086...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2086. New Exit: <QgsPointXY: POINT(394228.23381019692169502 7522611.25905490200966597)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 20: Turn from 2086 to 1948 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2086->1948...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3838.1, Time=1735.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1948...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1948. New Exit: <QgsPointXY: POINT(419789.76461609092075378 7509264.73849558457732201)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 21: Turn from 1948 to 2092 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1948->2092...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3776.6, Time=1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2092...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2092. New Exit: <QgsPointXY: POINT(394155.34506955009419471 7522525.27657961472868919)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 22: Turn from 2092 to 1954 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2092->1954...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3819.8, Time=1726.8s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1954...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1954. New Exit: <QgsPointXY: POINT(419741.05811292893486097 7509161.72837361786514521)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 23: Turn from 1954 to 2098 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1954->2098...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3780.5, Time=1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2098...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2098. New Exit: <QgsPointXY: POINT(394082.44245204515755177 7522438.27250572107732296)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 24: Turn from 2098 to 1960 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2098->1960...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3811.2, Time=1722.9s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1960...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1960. New Exit: <QgsPointXY: POINT(419692.36081151355756447 7509059.73257381469011307)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 25: Turn from 1960 to 2104 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1960->2104...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3776.6, Time=1707.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2104...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2104. New Exit: <QgsPointXY: POINT(394009.44375910487724468 7522351.27454004436731339)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 26: Turn from 2104 to 1966 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2104->1966...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3794.3, Time=1715.2s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 1966...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 1966. New Exit: <QgsPointXY: POINT(419631.55622393742669374 7508964.72543356288224459)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 27: Turn from 1966 to 2110 (high_to_low)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 1966->2110...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=3780.4, Time=1709.0s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2110...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2110. New Exit: <QgsPointXY: POINT(393936.53932312899269164 7522264.26763575058430433)> @ 302.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon Step 28: Turn from 2110 to 2116 (low_to_high)
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Getting turn 2110->2116...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Got turn. Length=6463.1, Time=2921.7s
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Adding segments for 2116...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG -   Recon: Segments added for 2116. New Exit: <QgsPointXY: POINT(418390.56614154420094565 7506419.74086998123675585)> @ 122.7
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - --- Path reconstruction generated 86 segments. Ending _reconstruct_path ---
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - _reconstruct_path returned 86 segments.
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - DEBUG - Calling _visualize_optimized_path...
+2025-04-08 14:28:34 - obn_planner.obn_planner_dockwidget - INFO - --- Starting _visualize_optimized_path ---
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Removed 1 layer(s) named 'Optimized_Path'.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Creating visualization layer 'Optimized_Path' with CRS EPSG:31984
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Memory layer 'Optimized_Path' created successfully.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Commit successful for 86 features.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Applying rule-based styling...
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Applied rule-based styling.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Applying labeling for turn duration...
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Applied labeling for turn duration.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - INFO - Added visualization layer 'Optimized_Path' to project successfully.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - INFO - --- Ending _visualize_optimized_path ---
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - INFO - Final visualization complete.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - DEBUG - Enabling Edit/Finalize button.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - INFO - Algorithm Racetrack finished.
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - INFO - Final Sequence: [1888, 2032, 1894, 2038, 1900, 2044, 1906, 2050, 1912, 2056, 1918, 2062, 1924, 2068, 1930, 2074, 1936, 2080, 1942, 2086, 1948, 2092, 1954, 2098, 1960, 2104, 1966, 2110, 2116]
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - INFO - Estimated Cost: 111.11 hours (399989 seconds)
+2025-04-08 14:28:35 - obn_planner.obn_planner_dockwidget - INFO - --- handle_run_simulation finished ---

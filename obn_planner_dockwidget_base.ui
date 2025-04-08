@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>324</width>
-    <height>765</height>
+    <height>769</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -127,6 +127,33 @@
      </layout>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_19">
+      <item>
+       <widget class="QLabel" name="label_17">
+        <property name="text">
+         <string>Min. Deviation Clearance</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QDoubleSpinBox" name="deviationClearanceDoubleSpinBox">
+        <property name="suffix">
+         <string> m</string>
+        </property>
+        <property name="decimals">
+         <number>0</number>
+        </property>
+        <property name="maximum">
+         <double>500.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>100.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="horizontalLayout_6">
       <item>
        <widget class="QLabel" name="label_6">
@@ -228,7 +255,7 @@
          <double>50.000000000000000</double>
         </property>
         <property name="value">
-         <double>750.000000000000000</double>
+         <double>500.000000000000000</double>
         </property>
        </widget>
       </item>
@@ -305,6 +332,30 @@
       </item>
       <item>
        <widget class="QSpinBox" name="firstLineSpinBox">
+        <property name="minimum">
+         <number>1000</number>
+        </property>
+        <property name="maximum">
+         <number>9999</number>
+        </property>
+        <property name="value">
+         <number>1006</number>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_9">
+      <item>
+       <widget class="QLabel" name="label_16">
+        <property name="text">
+         <string>First Line Seq.</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="firstSeqComboBox">
         <property name="minimum">
          <number>1000</number>
         </property>
