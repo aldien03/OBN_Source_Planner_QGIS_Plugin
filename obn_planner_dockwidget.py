@@ -4180,6 +4180,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except Exception as viz_e:
             log.warning(f"Error in visualization: {str(viz_e)}")
             # Continue with path generation even if visualization fails
+            
         log.debug(f"Input parameters:")
         log.debug(f"  Entry point: ({entry_point.x():.2f}, {entry_point.y():.2f})")
         log.debug(f"  Exit point: ({exit_point.x():.2f}, {exit_point.y():.2f})")
@@ -4218,95 +4219,154 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             dot1 = vec_to_centroid_x * perp1_x + vec_to_centroid_y * perp1_y
             dot2 = vec_to_centroid_x * perp2_x + vec_to_centroid_y * perp2_y
             
-            # Choose perpendicular direction opposite to centroid
-            perp_x = perp1_x if dot1 < dot2 else perp2_x
-            perp_y = perp1_y if dot1 < dot2 else perp2_y
-            log.debug(f"Selected perpendicular direction: ({perp_x:.2f}, {perp_y:.2f})")
+            # Choose perpendicular direction opposite to centroid by default
+            # Will try both sides if needed
+            perp1 = (perp1_x, perp1_y)
+            perp2 = (perp2_x, perp2_y)
             
-            # Try with different offset distances
-            base_offset = clearance_m * 2.0  # Start with double the clearance distance
+            # Direction away from centroid first (generally better)
+            directions = [perp1 if dot1 < dot2 else perp2, perp2 if dot1 < dot2 else perp1]
+            direction_names = ["away from centroid", "toward centroid"]
+            
+            # Setup for safety-focused search strategy
+            best_path = None
+            best_safety_margin = 0  # Higher is better - represents distance from no-go zone
             max_attempts = 10
+            attempt_count = 0
             
-            for attempt in range(max_attempts):
-                # Increase offset progressively
-                current_offset = base_offset * (1 + 0.5 * attempt)
-                log.debug(f"\nAttempt {attempt+1}/{max_attempts}: offset = {current_offset:.2f}m")
-                
-                # Create intermediate points for smoother path
-                # Use 5 points: entry, 25%, midpoint with offset, 75%, exit
-                # Apply full offset at midpoint, partial offsets at 25% and 75%
-                point1 = QgsPointXY(
-                    entry_point.x() + dx*0.25 + perp_x*current_offset*0.5,
-                    entry_point.y() + dy*0.25 + perp_y*current_offset*0.5
-                )
-                
-                point2 = QgsPointXY(
-                    mid_point.x() + perp_x*current_offset,
-                    mid_point.y() + perp_y*current_offset
-                )
-                
-                point3 = QgsPointXY(
-                    entry_point.x() + dx*0.75 + perp_x*current_offset*0.5,
-                    entry_point.y() + dy*0.75 + perp_y*current_offset*0.5
-                )
-                
-                # Create a sequence of points for the deviation path
-                path_points = [entry_point, point1, point2, point3, exit_point]
-                
-                # Create the deviation path
-                deviation_path = QgsGeometry.fromPolylineXY(path_points)
-                
-                # Visualize current attempt with color based on attempt number
-                attempt_layer_name = f"deviation_attempt_{attempt+1}"
-                # Colors get progressively more green as attempts increase
-                r = max(0, 255 - attempt * 20)
-                g = min(255, 100 + attempt * 20) 
-                b = 0
-                attempt_color = QColor(r, g, b)
-                
-                try:
-                    # Visualize the current attempt path with appropriate color
-                    self._visualize_path(deviation_path, attempt_layer_name, attempt_color)
+            # Try both directions (away from centroid first, then toward if needed)
+            for direction_idx, (perp_x, perp_y) in enumerate(directions):
+                # Skip second direction if we already found a path
+                if best_path is not None and direction_idx > 0:
+                    log.debug(f"Already found a valid path, skipping {direction_names[direction_idx]} direction")
+                    continue
                     
-                    # Add turn radius indicators at key points to show vessel constraints
-                    # This helps visualize how vessel turn rate constraints affect path generation
-                    if hasattr(self, 'turn_radius_m') and self.turn_radius_m > 0:
-                        turn_radius = self.turn_radius_m
-                        entry_circle = QgsGeometry.fromPointXY(path_points[0]).buffer(turn_radius, 20)
-                        exit_circle = QgsGeometry.fromPointXY(path_points[-1]).buffer(turn_radius, 20)
+                log.debug(f"\nTrying direction: {direction_names[direction_idx]}")
+                
+                # Start with higher offsets for better safety
+                min_offset = clearance_m * 1.5  # Start with more than minimum clearance
+                max_offset = clearance_m * 15.0  # Allow for larger safety margins
+                
+                # Try progressively larger offsets for better safety
+                offsets_to_try = [
+                    clearance_m * 2.0,   # Start with 2x clearance
+                    clearance_m * 3.0,   # Try 3x clearance
+                    clearance_m * 5.0,   # Try 5x clearance
+                    clearance_m * 8.0,   # Try 8x clearance
+                    clearance_m * 12.0   # Try 12x clearance if needed
+                ]
+                
+                for current_offset in offsets_to_try:
+                    if attempt_count >= max_attempts:
+                        break
                         
-                        # Use semi-transparent buffers to show turn constraints
-                        turn_color = QColor(r, g, b, 50)  # Same color but semi-transparent
-                        self._visualize_path(entry_circle, f"entry_turn_radius_{attempt+1}", turn_color)
-                        self._visualize_path(exit_circle, f"exit_turn_radius_{attempt+1}", turn_color)
-                except Exception as viz_e:
-                    log.warning(f"Error visualizing attempt {attempt+1}: {str(viz_e)}")
-                    # Continue even if visualization fails
-                
-                # Log detailed path information
-                log.debug(f"Attempt {attempt+1} path points:")
-                for i, pt in enumerate(path_points):
-                    log.debug(f"  Point {i}: ({pt.x():.2f}, {pt.y():.2f})")
-                
-                # Check if the path intersects the avoidance geometry
-                intersects = deviation_path.intersects(avoidance_geom)
-                log.debug(f"Path intersects no-go zone: {intersects}")
-                
-                if not intersects:
-                    log.debug(f"SUCCESS! Found non-intersecting path with offset {current_offset:.2f} meters")
-                    log.debug(f"Path length: {deviation_path.length():.2f} units")
-                    log.debug(f"Number of points in path: {len(path_points)}")
+                    attempt_count += 1
                     
-                    # Visualize successful path in a distinct color
-                    self._visualize_path(deviation_path, "direct_deviation_path_SUCCESS")
+                    log.debug(f"Attempt {attempt_count}/{max_attempts}: offset = {current_offset:.2f}m, direction = {direction_names[direction_idx]}")
                     
-                    # Success! Return the path
-                    return deviation_path
-                else:
-                    log.debug(f"Path with offset {current_offset:.2f}m still intersects the no-go zone")
+                    # Create intermediate points for smoother path
+                    # Use 5 points: entry, 25%, midpoint with offset, 75%, exit
+                    # Apply full offset at midpoint, partial offsets at 25% and 75%
+                    point1 = QgsPointXY(
+                        entry_point.x() + dx*0.25 + perp_x*current_offset*0.5,
+                        entry_point.y() + dy*0.25 + perp_y*current_offset*0.5
+                    )
+                    
+                    point2 = QgsPointXY(
+                        mid_point.x() + perp_x*current_offset,
+                        mid_point.y() + perp_y*current_offset
+                    )
+                    
+                    point3 = QgsPointXY(
+                        entry_point.x() + dx*0.75 + perp_x*current_offset*0.5,
+                        entry_point.y() + dy*0.75 + perp_y*current_offset*0.5
+                    )
+                    
+                    # Create a sequence of points for the deviation path
+                    path_points = [entry_point, point1, point2, point3, exit_point]
+                    
+                    # Create the deviation path
+                    deviation_path = QgsGeometry.fromPolylineXY(path_points)
+                    
+                    # Visualize current attempt with color based on attempt number
+                    attempt_layer_name = f"deviation_attempt_{attempt_count}"
+                    
+                    # Use different color schemes for different directions
+                    if direction_idx == 0:  # First direction (away from centroid) - red to green
+                        r = max(0, 255 - attempt_count * 20)
+                        g = min(255, 100 + attempt_count * 20) 
+                        b = 0
+                    else:  # Second direction (toward centroid) - blue to cyan
+                        r = 0
+                        g = min(255, 50 + attempt_count * 20)
+                        b = 255
+                        
+                    attempt_color = QColor(r, g, b)
+                    
+                    try:
+                        # Visualize the current attempt path with appropriate color
+                        self._visualize_path(deviation_path, attempt_layer_name, attempt_color)
+                        
+                        # Add turn radius indicators at key points to show vessel constraints
+                        if hasattr(self, 'turn_radius_m') and self.turn_radius_m > 0:
+                            turn_radius = self.turn_radius_m
+                            entry_circle = QgsGeometry.fromPointXY(path_points[0]).buffer(turn_radius, 20)
+                            exit_circle = QgsGeometry.fromPointXY(path_points[-1]).buffer(turn_radius, 20)
+                            
+                            # Use semi-transparent buffers to show turn constraints
+                            turn_color = QColor(r, g, b, 50)  # Same color but semi-transparent
+                            self._visualize_path(entry_circle, f"entry_turn_radius_{attempt_count}", turn_color)
+                            self._visualize_path(exit_circle, f"exit_turn_radius_{attempt_count}", turn_color)
+                    except Exception as viz_e:
+                        log.warning(f"Error visualizing attempt {attempt_count}: {str(viz_e)}")
+                        # Continue even if visualization fails
+                    
+                    # Log detailed path information
+                    log.debug(f"Attempt {attempt_count} path points:")
+                    for i, pt in enumerate(path_points):
+                        if pt:
+                            log.debug(f"  Point {i}: ({pt.x():.2f}, {pt.y():.2f})")
+                        else:
+                            log.debug(f"  Point {i}: None")
+                    
+                    # Check if the path intersects the avoidance geometry
+                    intersects = deviation_path.intersects(avoidance_geom)
+                    log.debug(f"Path intersects no-go zone: {intersects}")
+                    
+                    # Evaluate the path safety
+                    if not intersects:
+                        # Calculate the minimum distance to the no-go zone
+                        # This is a simple approximation - for complex no-go zones, more advanced methods could be used
+                        min_distance = self._calculate_min_distance(deviation_path, avoidance_geom)
+                        log.debug(f"Valid path found with offset {current_offset:.2f}m, min distance to no-go: {min_distance:.2f}m")
+                        
+                        # Keep track of the path with best safety margin
+                        if min_distance > best_safety_margin:
+                            best_path = deviation_path
+                            best_safety_margin = min_distance
+                            log.debug(f"This is the safest path so far (margin: {best_safety_margin:.2f}m)")
+                            
+                        # Found a valid path - no need to try larger offsets if we have a good safety margin
+                        if min_distance > clearance_m * 1.5 and direction_idx == 0:
+                            log.debug(f"Found path with good safety margin, no need to try larger offsets")
+                            break
+                            
+                    else:
+                        log.debug(f"Path with offset {current_offset:.2f}m still intersects the no-go zone")
+                        # Continue to next offset
             
-            log.warning("All attempts failed to find a valid path")
-            return None
+            # After trying all attempts, return the safest path found
+            if best_path:
+                log.debug(f"SUCCESS! Found safe path with safety margin {best_safety_margin:.2f}m")
+                log.debug(f"Final path length: {best_path.length():.2f} units")
+                
+                # Visualize successful path in a distinct color
+                self._visualize_path(best_path, "direct_deviation_path_SUCCESS", QColor(0, 255, 255))  # Cyan
+                
+                return best_path
+            else:
+                log.warning("All attempts failed to find a valid path")
+                return None
         except Exception as e:
             log.warning(f"Error generating direct deviation: {str(e)}")
             import traceback
@@ -4577,23 +4637,54 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         return None
     
     def _ensure_point_xy(self, point):
-        """Ensure a point is a QgsPointXY"""
-        if not point:
-            return QgsPointXY(0, 0)
+        """Ensure a point is a QgsPointXY
+        
+        Args:
+            point: QgsPointXY, QgsPoint, or other point-like object
+            
+        Returns:
+            QgsPointXY or None if conversion fails
+        """
+        if point is None:
+            return None
             
         try:
             if isinstance(point, QgsPointXY):
                 return point
-            elif isinstance(point, QgsPoint):
-                return QgsPointXY(point.x(), point.y())
             elif hasattr(point, 'x') and hasattr(point, 'y'):
+                # Handle QgsPoint or other point-like objects
                 return QgsPointXY(point.x(), point.y())
             else:
-                log.warning(f"Couldn't convert unknown point type to QgsPointXY: {type(point)}")
-                return QgsPointXY(0, 0)
+                log.warning(f"Could not convert {type(point)} to QgsPointXY")
+                return None
         except Exception as e:
-            log.warning(f"Error in _ensure_point_xy: {str(e)}")
-            return QgsPointXY(0, 0)
+            log.warning(f"Error converting point to QgsPointXY: {str(e)}")
+            return None
+            
+    def _calculate_min_distance(self, path_geom, nogo_geom):
+        """Calculate the minimum distance between a path and a no-go zone
+        
+        Args:
+            path_geom: QgsGeometry representing the path
+            nogo_geom: QgsGeometry representing the no-go zone
+            
+        Returns:
+            float: Minimum distance in map units (usually meters)
+        """
+        try:
+            # Use QGIS distance method which is more efficient than manual calculation
+            distance = path_geom.distance(nogo_geom)
+            
+            # For added detail, we could sample points along the path and find minimum
+            # distance from each point to the no-go zone, but the geometry's built-in
+            # distance method is usually sufficient
+            
+            log.debug(f"Minimum distance from path to no-go zone: {distance:.2f}m")
+            return distance
+        except Exception as e:
+            log.warning(f"Error calculating min distance: {str(e)}")
+            # Return a default small value as a fallback
+            return 0.01
     
     def _point_distance(self, point1, point2):
         """Calculate distance between two points"""
