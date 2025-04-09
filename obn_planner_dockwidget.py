@@ -156,16 +156,7 @@ KNOTS_TO_MPS = 0.514444 # Conversion factor
 MAX_FLOAT = sys.float_info.max # Use for infinity
 
 # --- CORRECTED Helper functions for QGIS version compatibility ---
-def is_line_type(wkb_type):
-    """ Check if a WKB type is a line type (LineString, MultiLineString, etc.) """
-    try:
-        # Primary method for QGIS 3+
-        return QgsWkbTypes.isLine(wkb_type)
-    except AttributeError:
-        # Fallback for older versions or unexpected issues
-        log.debug("Falling back to list check for is_line_type")
-        line_types = [ QgsWkbTypes.LineString, QgsWkbTypes.LineStringZ, QgsWkbTypes.LineStringM, QgsWkbTypes.LineStringZM, QgsWkbTypes.MultiLineString, QgsWkbTypes.MultiLineStringZ, QgsWkbTypes.MultiLineStringM, QgsWkbTypes.MultiLineStringZM, QgsWkbTypes.LineString25D, QgsWkbTypes.MultiLineString25D ]
-        return wkb_type in line_types
+
 
 def is_surface_type(wkb_type):
     """ Check if a WKB type is a surface type (Polygon, MultiPolygon, etc.) """
@@ -257,6 +248,8 @@ def geometry_closest_segment(geom, point_geom):
             log.error(f"Error during nearestPoint/closestVertex fallback: {e_alt}")
             return None, -1, float('inf')
 # --- END CORRECTED geometry_closest_segment ---
+
+
 
 class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     """ Main QGIS Dock Widget class... """
@@ -1570,9 +1563,21 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         """ Calculates the shortest Dubins path using the local dubins_path.py module and estimates time. """
         # Debugging for input parameters
         log.debug(f"_calculate_dubins_turn (using local dubins_calc) called with:")
-        log.debug(f"  p_exit: {p_exit} @ h_exit: {h_exit:.1f}° (QGIS Heading)")
-        log.debug(f"  p_entry: {p_entry} @ h_entry: {h_entry:.1f}° (QGIS Heading)")
-        log.debug(f"  radius: {radius:.1f} m, speed: {turn_speed_mps:.2f} m/s, rate: {turn_rate_dps}")
+        # Safely format the debug output to handle None values
+        try:
+            log.debug(f"  p_exit: {p_exit} @ h_exit: {h_exit:.1f}° (QGIS Heading)")
+        except (TypeError, AttributeError):
+            log.debug(f"  p_exit: {p_exit} @ h_exit: {h_exit} (QGIS Heading)")
+        
+        try:
+            log.debug(f"  p_entry: {p_entry} @ h_entry: {h_entry:.1f}° (QGIS Heading)")
+        except (TypeError, AttributeError):
+            log.debug(f"  p_entry: {p_entry} @ h_entry: {h_entry} (QGIS Heading)")
+        
+        try:
+            log.debug(f"  radius: {radius:.1f} m, speed: {turn_speed_mps:.2f} m/s, rate: {turn_rate_dps}")
+        except (TypeError, AttributeError):
+            log.debug(f"  radius: {radius} m, speed: {turn_speed_mps} m/s, rate: {turn_rate_dps}")
 
         # Validate input points and headings
         if p_exit is None or p_entry is None or h_exit is None or h_entry is None:
@@ -1760,8 +1765,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             turn_radius = sim_params.get('turn_radius_meters', 500.0)
 
             # line_data is modified IN PLACE
+            # Convert vessel turn rate from degrees per second to degrees per minute
+            vessel_turn_rate_dps = sim_params.get('vessel_turn_rate_dps', 3.0)
+            vessel_turn_rate_dpm = vessel_turn_rate_dps * 60.0
+            
             line_data = self._calculate_and_apply_deviations(
-                line_data, nogo_layer, clearance, turn_radius
+                line_data, nogo_layer, clearance, turn_radius, vessel_turn_rate_dpm
             )
             # Store the potentially modified line_data for the editor/visualizer
             self.last_line_data = line_data
@@ -2804,272 +2813,272 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error during sequence time calculation: {e}")
             return None, None
 
-    def _calculate_and_apply_deviations(self, line_data, nogo_layer, clearance_m, turn_radius_m):
-        """
-        Checks lines for intersection with NoGo zones (+ clearance) and calculates
-        a simplified deviation path if necessary. Modifies line_data in place.
-        Handles MultiPoint intersections and geometry splitting correctly.
+    # def _calculate_and_apply_deviations(self, line_data, nogo_layer, clearance_m, turn_radius_m):
+    #     """
+    #     Checks lines for intersection with NoGo zones (+ clearance) and calculates
+    #     a simplified deviation path if necessary. Modifies line_data in place.
+    #     Handles MultiPoint intersections and geometry splitting correctly.
 
-        Args:
-            line_data (dict): Dictionary containing line information {line_num: data}.
-                              Modified in place with deviation results.
-            nogo_layer (QgsVectorLayer or None): The No-Go zone layer.
-            clearance_m (float): The clearance distance to add around No-Go zones.
-            turn_radius_m (float): The vessel's turn radius (used for smoothing hint).
+    #     Args:
+    #         line_data (dict): Dictionary containing line information {line_num: data}.
+    #                           Modified in place with deviation results.
+    #         nogo_layer (QgsVectorLayer or None): The No-Go zone layer.
+    #         clearance_m (float): The clearance distance to add around No-Go zones.
+    #         turn_radius_m (float): The vessel's turn radius (used for smoothing hint).
 
-        Returns:
-            dict: The modified line_data dictionary.
-        """
-        log.info(f"Starting deviation calculation with clearance {clearance_m}m...")
-        if nogo_layer is None or not nogo_layer.isValid():
-            log.warning("No valid No-Go zone layer selected. Skipping deviation calculation.")
-            for line_num in line_data: line_data[line_num]['deviated'] = False; line_data[line_num]['deviation_failed'] = False
-            return line_data
+    #     Returns:
+    #         dict: The modified line_data dictionary.
+    #     """
+    #     log.info(f"Starting deviation calculation with clearance {clearance_m}m...")
+    #     if nogo_layer is None or not nogo_layer.isValid():
+    #         log.warning("No valid No-Go zone layer selected. Skipping deviation calculation.")
+    #         for line_num in line_data: line_data[line_num]['deviated'] = False; line_data[line_num]['deviation_failed'] = False
+    #         return line_data
 
-        avoidance_geom = None; nogo_base_geom = None
-        try:
-            # --- Prepare the combined and buffered avoidance geometry ---
-            all_nogo_geoms = []
-            request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoFlags)
-            for feat in nogo_layer.getFeatures(request):
-                geom = feat.geometry()
-                if geom and not geom.isEmpty():
-                    if not geom.isGeosValid():
-                        valid_geom = geom.makeValid()
-                        if valid_geom and not valid_geom.isEmpty(): geom = valid_geom
-                        else: log.warning(f"Could not make NoGo feature geometry valid (FID: {feat.id()}). Skipping."); continue
-                    all_nogo_geoms.append(geom)
-            if not all_nogo_geoms: log.warning("No valid geometries found in No-Go layer. Skipping deviation."); return line_data # Early exit if no valid NoGo geoms
+    #     avoidance_geom = None; nogo_base_geom = None
+    #     try:
+    #         # --- Prepare the combined and buffered avoidance geometry ---
+    #         all_nogo_geoms = []
+    #         request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoFlags)
+    #         for feat in nogo_layer.getFeatures(request):
+    #             geom = feat.geometry()
+    #             if geom and not geom.isEmpty():
+    #                 if not geom.isGeosValid():
+    #                     valid_geom = geom.makeValid()
+    #                     if valid_geom and not valid_geom.isEmpty(): geom = valid_geom
+    #                     else: log.warning(f"Could not make NoGo feature geometry valid (FID: {feat.id()}). Skipping."); continue
+    #                 all_nogo_geoms.append(geom)
+    #         if not all_nogo_geoms: log.warning("No valid geometries found in No-Go layer. Skipping deviation."); return line_data # Early exit if no valid NoGo geoms
 
-            log.debug(f"Found {len(all_nogo_geoms)} valid NoGo geometries to process.")
-            if len(all_nogo_geoms) > 1:
-                log.debug("Unioning NoGo geometries..."); nogo_base_geom = QgsGeometry.unaryUnion(all_nogo_geoms); log.debug("Union complete.")
-            elif len(all_nogo_geoms) == 1: nogo_base_geom = all_nogo_geoms[0]
-            if not nogo_base_geom or nogo_base_geom.isEmpty(): raise ValueError("Failed to prepare base NoGo geometry (union failed or empty).")
-            if not nogo_base_geom.isGeosValid():
-                log.warning("Base NoGo geometry is invalid. Attempting to fix..."); fixed_base = nogo_base_geom.makeValid()
-                if fixed_base and not fixed_base.isEmpty(): nogo_base_geom = fixed_base; log.debug("Fixed base NoGo geometry.")
-                else: raise ValueError("Base NoGo geometry is invalid and could not be fixed.")
-            log.debug("Buffering base NoGo geometry..."); avoidance_geom = nogo_base_geom.buffer(clearance_m, 5)
-            if not avoidance_geom or avoidance_geom.isEmpty(): raise ValueError("Failed to create avoidance buffer geometry.")
-            if not avoidance_geom.isGeosValid():
-                 log.warning("Avoidance buffer geometry invalid. Attempting to fix..."); fixed_avoid = avoidance_geom.makeValid()
-                 if fixed_avoid and not fixed_avoid.isEmpty(): avoidance_geom = fixed_avoid; log.debug("Fixed avoidance buffer.")
-                 else: log.error("Avoidance buffer invalid and unfixable. Deviations may fail.")
-            log.debug("Avoidance buffer geometry created successfully (or with warnings).")
-        except Exception as prep_e:
-            log.error(f"Error preparing avoidance geometry: {prep_e}. Skipping all deviations."); log.debug(traceback.format_exc())
-            for line_num in line_data: line_data[line_num]['deviated'] = False; line_data[line_num]['deviation_failed'] = False
-            return line_data
+    #         log.debug(f"Found {len(all_nogo_geoms)} valid NoGo geometries to process.")
+    #         if len(all_nogo_geoms) > 1:
+    #             log.debug("Unioning NoGo geometries..."); nogo_base_geom = QgsGeometry.unaryUnion(all_nogo_geoms); log.debug("Union complete.")
+    #         elif len(all_nogo_geoms) == 1: nogo_base_geom = all_nogo_geoms[0]
+    #         if not nogo_base_geom or nogo_base_geom.isEmpty(): raise ValueError("Failed to prepare base NoGo geometry (union failed or empty).")
+    #         if not nogo_base_geom.isGeosValid():
+    #             log.warning("Base NoGo geometry is invalid. Attempting to fix..."); fixed_base = nogo_base_geom.makeValid()
+    #             if fixed_base and not fixed_base.isEmpty(): nogo_base_geom = fixed_base; log.debug("Fixed base NoGo geometry.")
+    #             else: raise ValueError("Base NoGo geometry is invalid and could not be fixed.")
+    #         log.debug("Buffering base NoGo geometry..."); avoidance_geom = nogo_base_geom.buffer(clearance_m, 5)
+    #         if not avoidance_geom or avoidance_geom.isEmpty(): raise ValueError("Failed to create avoidance buffer geometry.")
+    #         if not avoidance_geom.isGeosValid():
+    #              log.warning("Avoidance buffer geometry invalid. Attempting to fix..."); fixed_avoid = avoidance_geom.makeValid()
+    #              if fixed_avoid and not fixed_avoid.isEmpty(): avoidance_geom = fixed_avoid; log.debug("Fixed avoidance buffer.")
+    #              else: log.error("Avoidance buffer invalid and unfixable. Deviations may fail.")
+    #         log.debug("Avoidance buffer geometry created successfully (or with warnings).")
+    #     except Exception as prep_e:
+    #         log.error(f"Error preparing avoidance geometry: {prep_e}. Skipping all deviations."); log.debug(traceback.format_exc())
+    #         for line_num in line_data: line_data[line_num]['deviated'] = False; line_data[line_num]['deviation_failed'] = False
+    #         return line_data
 
-        # --- Iterate through lines and check for intersections ---
-        processed_count = 0; deviated_count = 0; failed_count = 0
-        line_nums_to_check = list(line_data.keys())
-        for line_num in line_nums_to_check:
-            data = line_data[line_num]
-            original_geom = data.get('line_geom'); original_length = data.get('length')
-            original_start_pt = data.get('start_point_geom'); original_end_pt = data.get('end_point_geom')
-            processed_count += 1; data['deviated'] = False; data['deviation_failed'] = False
+    #     # --- Iterate through lines and check for intersections ---
+    #     processed_count = 0; deviated_count = 0; failed_count = 0
+    #     line_nums_to_check = list(line_data.keys())
+    #     for line_num in line_nums_to_check:
+    #         data = line_data[line_num]
+    #         original_geom = data.get('line_geom'); original_length = data.get('length')
+    #         original_start_pt = data.get('start_point_geom'); original_end_pt = data.get('end_point_geom')
+    #         processed_count += 1; data['deviated'] = False; data['deviation_failed'] = False
 
-            # Use corrected helper function
-            if not original_geom or original_geom.isEmpty() or not is_line_type(original_geom.wkbType()):
-                log.debug(f"Line {line_num}: Skipping deviation check (invalid geom type: {QgsWkbTypes.displayString(original_geom.wkbType()) if original_geom else 'None'}).")
-                continue
+    #         # Use corrected helper function
+    #         if not original_geom or original_geom.isEmpty() or not is_line_type(original_geom.wkbType()):
+    #             log.debug(f"Line {line_num}: Skipping deviation check (invalid geom type: {QgsWkbTypes.displayString(original_geom.wkbType()) if original_geom else 'None'}).")
+    #             continue
 
-            try:
-                if not original_geom.intersects(avoidance_geom): log.debug(f"Line {line_num}: Does not intersect avoidance zone."); continue
-                log.info(f"Line {line_num}: intersects avoidance zone. Attempting deviation...")
+    #         try:
+    #             if not original_geom.intersects(avoidance_geom): log.debug(f"Line {line_num}: Does not intersect avoidance zone."); continue
+    #             log.info(f"Line {line_num}: intersects avoidance zone. Attempting deviation...")
 
-                if not avoidance_geom or avoidance_geom.isEmpty() or not avoidance_geom.isGeosValid(): log.warning(f"Line {line_num}: Avoidance geometry invalid. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
-                # Use corrected helper function
-                if not is_surface_type(avoidance_geom.wkbType()): log.warning(f"Line {line_num}: Avoidance geometry not surface type. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             if not avoidance_geom or avoidance_geom.isEmpty() or not avoidance_geom.isGeosValid(): log.warning(f"Line {line_num}: Avoidance geometry invalid. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             # Use corrected helper function
+    #             if not is_surface_type(avoidance_geom.wkbType()): log.warning(f"Line {line_num}: Avoidance geometry not surface type. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
 
-                boundary_avoid = get_geometry_boundary(avoidance_geom) # Use helper
-                if not boundary_avoid or boundary_avoid.isEmpty(): log.warning(f"Line {line_num}: Could not get boundary of avoidance zone. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             boundary_avoid = get_geometry_boundary(avoidance_geom) # Use helper
+    #             if not boundary_avoid or boundary_avoid.isEmpty(): log.warning(f"Line {line_num}: Could not get boundary of avoidance zone. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
 
-                intersection_points_geom = original_geom.intersection(boundary_avoid)
-                if not intersection_points_geom or intersection_points_geom.isEmpty():
-                    if original_geom.within(avoidance_geom): log.warning(f"Line {line_num}: Line entirely within avoidance zone. Flagging failed.")
-                    else: log.warning(f"Line {line_num}: No clear point intersection(s) found. Flagging failed.")
-                    data['deviation_failed'] = True; failed_count += 1; continue
+    #             intersection_points_geom = original_geom.intersection(boundary_avoid)
+    #             if not intersection_points_geom or intersection_points_geom.isEmpty():
+    #                 if original_geom.within(avoidance_geom): log.warning(f"Line {line_num}: Line entirely within avoidance zone. Flagging failed.")
+    #                 else: log.warning(f"Line {line_num}: No clear point intersection(s) found. Flagging failed.")
+    #                 data['deviation_failed'] = True; failed_count += 1; continue
 
-                intersection_points = []
-                intersect_wkb_type = intersection_points_geom.wkbType()
-                # Use corrected helper function
-                if is_point_type(intersect_wkb_type):
-                    if intersect_wkb_type == QgsWkbTypes.Point: intersection_points.append(intersection_points_geom.asPoint())
-                    elif intersect_wkb_type == QgsWkbTypes.MultiPoint:
-                        multi_point = intersection_points_geom.asMultiPoint();
-                        if multi_point: intersection_points.extend(multi_point)
-                    else: log.warning(f"Line {line_num}: Unknown Point type intersection. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
-                # Use corrected helper function
-                elif is_line_type(intersect_wkb_type): log.warning(f"Line {line_num}: Intersection is line (overlap). Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
-                else: log.warning(f"Line {line_num}: Unexpected intersection type {QgsWkbTypes.displayString(intersect_wkb_type)}. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
-                if len(intersection_points) < 2: log.warning(f"Line {line_num}: Found < 2 intersection points ({len(intersection_points)}). Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             intersection_points = []
+    #             intersect_wkb_type = intersection_points_geom.wkbType()
+    #             # Use corrected helper function
+    #             if is_point_type(intersect_wkb_type):
+    #                 if intersect_wkb_type == QgsWkbTypes.Point: intersection_points.append(intersection_points_geom.asPoint())
+    #                 elif intersect_wkb_type == QgsWkbTypes.MultiPoint:
+    #                     multi_point = intersection_points_geom.asMultiPoint();
+    #                     if multi_point: intersection_points.extend(multi_point)
+    #                 else: log.warning(f"Line {line_num}: Unknown Point type intersection. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             # Use corrected helper function
+    #             elif is_line_type(intersect_wkb_type): log.warning(f"Line {line_num}: Intersection is line (overlap). Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             else: log.warning(f"Line {line_num}: Unexpected intersection type {QgsWkbTypes.displayString(intersect_wkb_type)}. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             if len(intersection_points) < 2: log.warning(f"Line {line_num}: Found < 2 intersection points ({len(intersection_points)}). Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
 
-                distances = []
-                for pt in intersection_points:
-                     # Pass the intersection point (pt, which is QgsPoint) as a QgsGeometry
-                     closest_pt_xy, vertex_info, _ = geometry_closest_segment(original_geom, QgsGeometry.fromPointXY(QgsPointXY(pt))) # Use helper
-                     if closest_pt_xy:
-                         dist = original_geom.lineLocatePoint(QgsGeometry.fromPointXY(closest_pt_xy))
-                         if dist >= -1e-6: distances.append((dist, pt)) # Store original QgsPoint 'pt'
-                     else:
-                          log.warning(f"Line {line_num}: geometry_closest_segment failed for intersection point {pt.x()},{pt.y()}")
+    #             distances = []
+    #             for pt in intersection_points:
+    #                  # Pass the intersection point (pt, which is QgsPoint) as a QgsGeometry
+    #                  closest_pt_xy, vertex_info, _ = geometry_closest_segment(original_geom, QgsGeometry.fromPointXY(QgsPointXY(pt))) # Use helper
+    #                  if closest_pt_xy:
+    #                      dist = original_geom.lineLocatePoint(QgsGeometry.fromPointXY(closest_pt_xy))
+    #                      if dist >= -1e-6: distances.append((dist, pt)) # Store original QgsPoint 'pt'
+    #                  else:
+    #                       log.warning(f"Line {line_num}: geometry_closest_segment failed for intersection point {pt.x()},{pt.y()}")
 
-                if len(distances) < 2: log.warning(f"Line {line_num}: Found < 2 valid projected intersection points ({len(distances)}). Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
-                distances.sort(key=lambda x: x[0])
-                p_entry_qgs = distances[0][1]; p_exit_qgs = distances[-1][1] # These are QgsPoint
-                entry_dist = distances[0][0]; exit_dist = distances[-1][0]
-                if abs(entry_dist - exit_dist) < 1e-3: log.warning(f"Line {line_num}: Entry/Exit points too close. Skipping deviation."); continue
+    #             if len(distances) < 2: log.warning(f"Line {line_num}: Found < 2 valid projected intersection points ({len(distances)}). Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             distances.sort(key=lambda x: x[0])
+    #             p_entry_qgs = distances[0][1]; p_exit_qgs = distances[-1][1] # These are QgsPoint
+    #             entry_dist = distances[0][0]; exit_dist = distances[-1][0]
+    #             if abs(entry_dist - exit_dist) < 1e-3: log.warning(f"Line {line_num}: Entry/Exit points too close. Skipping deviation."); continue
 
-                mid_dist = (entry_dist + exit_dist) / 2.0
-                mid_point_geom = original_geom.interpolate(mid_dist)
-                if not mid_point_geom or mid_point_geom.isEmpty(): log.warning(f"Line {line_num}: Could not interpolate midpoint. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
-                mid_point_qgs = mid_point_geom.asPoint()
+    #             mid_dist = (entry_dist + exit_dist) / 2.0
+    #             mid_point_geom = original_geom.interpolate(mid_dist)
+    #             if not mid_point_geom or mid_point_geom.isEmpty(): log.warning(f"Line {line_num}: Could not interpolate midpoint. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             mid_point_qgs = mid_point_geom.asPoint()
 
-                # --- Use interpolateAngle instead of angleAtVertex/helper ---
-                angle_at_mid_deg = None
-                try:
-                    angle_at_mid_deg = original_geom.interpolateAngle(mid_dist) # Returns degrees
-                except AttributeError:
-                     log.warning(f"Line {line_num}: geom.interpolateAngle() not available. Cannot calculate angle at midpoint. Flagging failed.")
-                     data['deviation_failed'] = True; failed_count += 1; continue
-                except Exception as angle_e:
-                     log.warning(f"Line {line_num}: Error calling interpolateAngle: {angle_e}. Flagging failed.")
-                     data['deviation_failed'] = True; failed_count += 1; continue
+    #             # --- Use interpolateAngle instead of angleAtVertex/helper ---
+    #             angle_at_mid_deg = None
+    #             try:
+    #                 angle_at_mid_deg = original_geom.interpolateAngle(mid_dist) # Returns degrees
+    #             except AttributeError:
+    #                  log.warning(f"Line {line_num}: geom.interpolateAngle() not available. Cannot calculate angle at midpoint. Flagging failed.")
+    #                  data['deviation_failed'] = True; failed_count += 1; continue
+    #             except Exception as angle_e:
+    #                  log.warning(f"Line {line_num}: Error calling interpolateAngle: {angle_e}. Flagging failed.")
+    #                  data['deviation_failed'] = True; failed_count += 1; continue
 
-                if angle_at_mid_deg is None: # Check if angle calculation failed
-                     log.warning(f"Line {line_num}: Could not calculate angle at midpoint using interpolateAngle. Flagging failed.")
-                     data['deviation_failed'] = True; failed_count += 1; continue
-                # --- End replacement ---
+    #             if angle_at_mid_deg is None: # Check if angle calculation failed
+    #                  log.warning(f"Line {line_num}: Could not calculate angle at midpoint using interpolateAngle. Flagging failed.")
+    #                  data['deviation_failed'] = True; failed_count += 1; continue
+    #             # --- End replacement ---
 
-                angle_at_mid_rad = math.radians(angle_at_mid_deg)
-                perp_angle_rad_1 = angle_at_mid_rad + math.pi / 2.0; perp_angle_rad_2 = angle_at_mid_rad - math.pi / 2.0
+    #             angle_at_mid_rad = math.radians(angle_at_mid_deg)
+    #             perp_angle_rad_1 = angle_at_mid_rad + math.pi / 2.0; perp_angle_rad_2 = angle_at_mid_rad - math.pi / 2.0
 
-                # --- Increased offset multiplier ---
-                offset_dist_peak = clearance_m * 1.25
-                offset_pt1 = QgsPointXY(mid_point_qgs.x() + offset_dist_peak * math.cos(perp_angle_rad_1), mid_point_qgs.y() + offset_dist_peak * math.sin(perp_angle_rad_1))
-                offset_pt2 = QgsPointXY(mid_point_qgs.x() + offset_dist_peak * math.cos(perp_angle_rad_2), mid_point_qgs.y() + offset_dist_peak * math.sin(perp_angle_rad_2))
+    #             # --- Increased offset multiplier ---
+    #             offset_dist_peak = clearance_m * 1.25
+    #             offset_pt1 = QgsPointXY(mid_point_qgs.x() + offset_dist_peak * math.cos(perp_angle_rad_1), mid_point_qgs.y() + offset_dist_peak * math.sin(perp_angle_rad_1))
+    #             offset_pt2 = QgsPointXY(mid_point_qgs.x() + offset_dist_peak * math.cos(perp_angle_rad_2), mid_point_qgs.y() + offset_dist_peak * math.sin(perp_angle_rad_2))
 
-                avoid_centroid_geom = avoidance_geom.centroid()
-                deviation_peak_pt = QgsPoint(offset_pt1) # Default
-                if avoid_centroid_geom and not avoid_centroid_geom.isEmpty():
-                    avoid_centroid = avoid_centroid_geom.asPoint()
-                    dist1_sq = offset_pt1.sqrDist(avoid_centroid); dist2_sq = offset_pt2.sqrDist(avoid_centroid)
-                    if dist2_sq > dist1_sq: deviation_peak_pt = QgsPoint(offset_pt2)
-                else: log.warning(f"Line {line_num}: Could not get centroid of avoidance zone.")
+    #             avoid_centroid_geom = avoidance_geom.centroid()
+    #             deviation_peak_pt = QgsPoint(offset_pt1) # Default
+    #             if avoid_centroid_geom and not avoid_centroid_geom.isEmpty():
+    #                 avoid_centroid = avoid_centroid_geom.asPoint()
+    #                 dist1_sq = offset_pt1.sqrDist(avoid_centroid); dist2_sq = offset_pt2.sqrDist(avoid_centroid)
+    #                 if dist2_sq > dist1_sq: deviation_peak_pt = QgsPoint(offset_pt2)
+    #             else: log.warning(f"Line {line_num}: Could not get centroid of avoidance zone.")
 
-                # Ensure p_entry_qgs and p_exit_qgs are QgsPoint for fromPolyline
-                deviation_segment_simple = QgsGeometry.fromPolyline([QgsPoint(p_entry_qgs), deviation_peak_pt, QgsPoint(p_exit_qgs)])
+    #             # Ensure p_entry_qgs and p_exit_qgs are QgsPoint for fromPolyline
+    #             deviation_segment_simple = QgsGeometry.fromPolyline([QgsPoint(p_entry_qgs), deviation_peak_pt, QgsPoint(p_exit_qgs)])
 
-                # --- REMOVE SMOOTHING ---
-                # max_angle_smoothing = 1.0
-                # if turn_radius_m > 0: max_angle_smoothing = max(1.0, 180.0 / (math.pi * (turn_radius_m / 50.0)))
-                # else: log.warning(f"Line {line_num}: Turn radius non-positive. Using default maxAngle for smoothing.")
-                # smoothed_deviation_segment = deviation_segment_simple.smooth( iterations=3, offset=0.2, maxAngle=max_angle_smoothing )
-                # final_deviation_segment = smoothed_deviation_segment if smoothed_deviation_segment and not smoothed_deviation_segment.isEmpty() else deviation_segment_simple
-                final_deviation_segment = deviation_segment_simple # Use the simple 3-point path directly
-                log.debug(f"Line {line_num}: Using simple 3-point deviation path (smoothing bypassed).")
-                # --- END REMOVE SMOOTHING ---
+    #             # --- REMOVE SMOOTHING ---
+    #             # max_angle_smoothing = 1.0
+    #             # if turn_radius_m > 0: max_angle_smoothing = max(1.0, 180.0 / (math.pi * (turn_radius_m / 50.0)))
+    #             # else: log.warning(f"Line {line_num}: Turn radius non-positive. Using default maxAngle for smoothing.")
+    #             # smoothed_deviation_segment = deviation_segment_simple.smooth( iterations=3, offset=0.2, maxAngle=max_angle_smoothing )
+    #             # final_deviation_segment = smoothed_deviation_segment if smoothed_deviation_segment and not smoothed_deviation_segment.isEmpty() else deviation_segment_simple
+    #             final_deviation_segment = deviation_segment_simple # Use the simple 3-point path directly
+    #             log.debug(f"Line {line_num}: Using simple 3-point deviation path (smoothing bypassed).")
+    #             # --- END REMOVE SMOOTHING ---
 
-                if final_deviation_segment.intersects(avoidance_geom):
-                     log.warning(f"Line {line_num}: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.")
-                     # Add more debug info:
-                     log.debug(f"  Entry: {p_entry_qgs.x():.2f},{p_entry_qgs.y():.2f} | Exit: {p_exit_qgs.x():.2f},{p_exit_qgs.y():.2f}")
-                     log.debug(f"  Midpoint: {mid_point_qgs.x():.2f},{mid_point_qgs.y():.2f} | Peak: {deviation_peak_pt.x():.2f},{deviation_peak_pt.y():.2f}")
-                     log.debug(f"  Offset Dist: {offset_dist_peak:.2f}")
-                     data['deviation_failed'] = True; failed_count += 1; continue
+    #             if final_deviation_segment.intersects(avoidance_geom):
+    #                  log.warning(f"Line {line_num}: Generated 3-point deviation path still intersects avoidance zone. Offset may be insufficient or geometry complex. Flagging failed.")
+    #                  # Add more debug info:
+    #                  log.debug(f"  Entry: {p_entry_qgs.x():.2f},{p_entry_qgs.y():.2f} | Exit: {p_exit_qgs.x():.2f},{p_exit_qgs.y():.2f}")
+    #                  log.debug(f"  Midpoint: {mid_point_qgs.x():.2f},{mid_point_qgs.y():.2f} | Peak: {deviation_peak_pt.x():.2f},{deviation_peak_pt.y():.2f}")
+    #                  log.debug(f"  Offset Dist: {offset_dist_peak:.2f}")
+    #                  data['deviation_failed'] = True; failed_count += 1; continue
 
-                try:
-                    # Use QgsPointXY for splitting
-                    split_points_for_split = [QgsPointXY(p_entry_qgs), QgsPointXY(p_exit_qgs)]
-                    split_points_for_split.sort(key=lambda pt: original_geom.lineLocatePoint(QgsGeometry.fromPointXY(pt)))
-                    split_geoms_xy = [pt for pt in split_points_for_split] # Already QgsPointXY
+    #             try:
+    #                 # Use QgsPointXY for splitting
+    #                 split_points_for_split = [QgsPointXY(p_entry_qgs), QgsPointXY(p_exit_qgs)]
+    #                 split_points_for_split.sort(key=lambda pt: original_geom.lineLocatePoint(QgsGeometry.fromPointXY(pt)))
+    #                 split_geoms_xy = [pt for pt in split_points_for_split] # Already QgsPointXY
 
-                    result = original_geom.splitGeometry(split_geoms_xy, False)
-                    result_geoms = []
-                    # --- Handle tuple return from splitGeometry ---
-                    if isinstance(result, tuple):
-                        log.debug(f"Line {line_num}: splitGeometry returned tuple. Processing as list.")
-                        result_geoms = [geom for geom in result if isinstance(geom, QgsGeometry)]
-                    # --- End Handle tuple ---
-                    elif hasattr(result, 'geometries'): result_geoms = result.geometries() # QGIS 3.10+
-                    elif isinstance(result, list): result_geoms = result # Older QGIS
-                    else: raise ValueError(f"Unsupported splitGeometry result type: {type(result)}")
+    #                 result = original_geom.splitGeometry(split_geoms_xy, False)
+    #                 result_geoms = []
+    #                 # --- Handle tuple return from splitGeometry ---
+    #                 if isinstance(result, tuple):
+    #                     log.debug(f"Line {line_num}: splitGeometry returned tuple. Processing as list.")
+    #                     result_geoms = [geom for geom in result if isinstance(geom, QgsGeometry)]
+    #                 # --- End Handle tuple ---
+    #                 elif hasattr(result, 'geometries'): result_geoms = result.geometries() # QGIS 3.10+
+    #                 elif isinstance(result, list): result_geoms = result # Older QGIS
+    #                 else: raise ValueError(f"Unsupported splitGeometry result type: {type(result)}")
 
-                    if not result_geoms: raise ValueError("splitGeometry failed to produce results.")
+    #                 if not result_geoms: raise ValueError("splitGeometry failed to produce results.")
 
-                    geom_before = QgsGeometry(); geom_after = QgsGeometry()
-                    start_point_orig = QgsPointXY(original_start_pt); end_point_orig = QgsPointXY(original_end_pt)
-                    TOLERANCE_SQ = 1.0
-                    for part in result_geoms:
-                        if part.isEmpty(): continue
-                        # Ensure part is a line before getting vertices
-                        if not is_line_type(part.wkbType()): continue
-                        start_vertex = QgsPointXY(part.vertexAt(0))
-                        if start_vertex.sqrDist(start_point_orig) <= TOLERANCE_SQ: geom_before = part
-                        # Use vertexCount() for compatibility
-                        num_vertices = 0
-                        if hasattr(part.constGet(), 'vertexCount'): num_vertices = part.constGet().vertexCount()
-                        elif hasattr(part.constGet(), 'Point'): num_vertices = len(part.constGet().Point) # Older way?
-                        else: log.warning(f"Line {line_num}: Cannot get vertex count for split part."); continue
+    #                 geom_before = QgsGeometry(); geom_after = QgsGeometry()
+    #                 start_point_orig = QgsPointXY(original_start_pt); end_point_orig = QgsPointXY(original_end_pt)
+    #                 TOLERANCE_SQ = 1.0
+    #                 for part in result_geoms:
+    #                     if part.isEmpty(): continue
+    #                     # Ensure part is a line before getting vertices
+    #                     if not is_line_type(part.wkbType()): continue
+    #                     start_vertex = QgsPointXY(part.vertexAt(0))
+    #                     if start_vertex.sqrDist(start_point_orig) <= TOLERANCE_SQ: geom_before = part
+    #                     # Use vertexCount() for compatibility
+    #                     num_vertices = 0
+    #                     if hasattr(part.constGet(), 'vertexCount'): num_vertices = part.constGet().vertexCount()
+    #                     elif hasattr(part.constGet(), 'Point'): num_vertices = len(part.constGet().Point) # Older way?
+    #                     else: log.warning(f"Line {line_num}: Cannot get vertex count for split part."); continue
 
-                        last_vertex_index = num_vertices - 1
-                        if last_vertex_index >= 0:
-                            end_vertex = QgsPointXY(part.vertexAt(last_vertex_index))
-                            if end_vertex.sqrDist(end_point_orig) <= TOLERANCE_SQ: geom_after = part
+    #                     last_vertex_index = num_vertices - 1
+    #                     if last_vertex_index >= 0:
+    #                         end_vertex = QgsPointXY(part.vertexAt(last_vertex_index))
+    #                         if end_vertex.sqrDist(end_point_orig) <= TOLERANCE_SQ: geom_after = part
 
-                    # Check endpoints match entry/exit points with tolerance
-                    if not geom_before.isEmpty():
-                         last_v_before = QgsPointXY(geom_before.vertexAt(-1))
-                         if last_v_before.sqrDist(QgsPointXY(p_entry_qgs)) > TOLERANCE_SQ: log.warning(f"Line {line_num}: 'Before' segment end mismatch entry point.")
-                    if not geom_after.isEmpty():
-                         first_v_after = QgsPointXY(geom_after.vertexAt(0))
-                         if first_v_after.sqrDist(QgsPointXY(p_exit_qgs)) > TOLERANCE_SQ: log.warning(f"Line {line_num}: 'After' segment start mismatch exit point.")
+    #                 # Check endpoints match entry/exit points with tolerance
+    #                 if not geom_before.isEmpty():
+    #                      last_v_before = QgsPointXY(geom_before.vertexAt(-1))
+    #                      if last_v_before.sqrDist(QgsPointXY(p_entry_qgs)) > TOLERANCE_SQ: log.warning(f"Line {line_num}: 'Before' segment end mismatch entry point.")
+    #                 if not geom_after.isEmpty():
+    #                      first_v_after = QgsPointXY(geom_after.vertexAt(0))
+    #                      if first_v_after.sqrDist(QgsPointXY(p_exit_qgs)) > TOLERANCE_SQ: log.warning(f"Line {line_num}: 'After' segment start mismatch exit point.")
 
-                except Exception as split_e:
-                    log.exception(f"Line {line_num}: Exception during geometry splitting/assembly: {split_e}")
-                    data['deviation_failed'] = True; failed_count += 1; continue
+    #             except Exception as split_e:
+    #                 log.exception(f"Line {line_num}: Exception during geometry splitting/assembly: {split_e}")
+    #                 data['deviation_failed'] = True; failed_count += 1; continue
 
-                combined_parts = []
-                # Use corrected helper function
-                if not geom_before.isEmpty() and is_line_type(geom_before.wkbType()): combined_parts.append(geom_before)
-                if not final_deviation_segment.isEmpty() and is_line_type(final_deviation_segment.wkbType()): combined_parts.append(final_deviation_segment)
-                if not geom_after.isEmpty() and is_line_type(geom_after.wkbType()): combined_parts.append(geom_after)
+    #             combined_parts = []
+    #             # Use corrected helper function
+    #             if not geom_before.isEmpty() and is_line_type(geom_before.wkbType()): combined_parts.append(geom_before)
+    #             if not final_deviation_segment.isEmpty() and is_line_type(final_deviation_segment.wkbType()): combined_parts.append(final_deviation_segment)
+    #             if not geom_after.isEmpty() and is_line_type(geom_after.wkbType()): combined_parts.append(geom_after)
 
-                if not combined_parts: log.error(f"Line {line_num}: No valid geometry parts to combine. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             if not combined_parts: log.error(f"Line {line_num}: No valid geometry parts to combine. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
 
-                # Use QgsGeometryUtils.mergeLines for better merging
-                final_deviated_geom = QgsGeometryUtils.mergeLines(combined_parts)
-                if not final_deviated_geom or final_deviated_geom.isEmpty():
-                    log.warning(f"Line {line_num}: QgsGeometryUtils.mergeLines failed. Trying collectGeometry.")
-                    final_deviated_geom = QgsGeometry.collectGeometry(combined_parts) # Fallback
+    #             # Use QgsGeometryUtils.mergeLines for better merging
+    #             final_deviated_geom = QgsGeometryUtils.mergeLines(combined_parts)
+    #             if not final_deviated_geom or final_deviated_geom.isEmpty():
+    #                 log.warning(f"Line {line_num}: QgsGeometryUtils.mergeLines failed. Trying collectGeometry.")
+    #                 final_deviated_geom = QgsGeometry.collectGeometry(combined_parts) # Fallback
 
-                # Use corrected helper function
-                if not final_deviated_geom or final_deviated_geom.isEmpty() or not is_line_type(final_deviated_geom.wkbType()):
-                    log.error(f"Line {line_num}: Final combined geometry invalid or not line type. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             # Use corrected helper function
+    #             if not final_deviated_geom or final_deviated_geom.isEmpty() or not is_line_type(final_deviated_geom.wkbType()):
+    #                 log.error(f"Line {line_num}: Final combined geometry invalid or not line type. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
 
-                new_length = final_deviated_geom.length()
-                data['line_geom'] = final_deviated_geom; data['length'] = new_length if new_length >= 0 else 0.0
-                try:
-                    new_vertices_xy = final_deviated_geom.asPolyline()
-                    if new_vertices_xy:
-                        data['start_point_geom'] = QgsPoint(new_vertices_xy[0]); data['end_point_geom'] = QgsPoint(new_vertices_xy[-1])
-                    else: log.error(f"Line {line_num}: Final deviated geometry has no vertices! Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
-                except Exception as vertex_e: log.error(f"Line {line_num}: Error extracting vertices: {vertex_e}. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             new_length = final_deviated_geom.length()
+    #             data['line_geom'] = final_deviated_geom; data['length'] = new_length if new_length >= 0 else 0.0
+    #             try:
+    #                 new_vertices_xy = final_deviated_geom.asPolyline()
+    #                 if new_vertices_xy:
+    #                     data['start_point_geom'] = QgsPoint(new_vertices_xy[0]); data['end_point_geom'] = QgsPoint(new_vertices_xy[-1])
+    #                 else: log.error(f"Line {line_num}: Final deviated geometry has no vertices! Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
+    #             except Exception as vertex_e: log.error(f"Line {line_num}: Error extracting vertices: {vertex_e}. Flagging failed."); data['deviation_failed'] = True; failed_count += 1; continue
 
-                data['deviated'] = True; data['deviation_failed'] = False; deviated_count += 1
-                log.info(f"Line {line_num}: Deviation calculated successfully. Original length: {original_length:.1f}m, New length: {data['length']:.1f}m")
+    #             data['deviated'] = True; data['deviation_failed'] = False; deviated_count += 1
+    #             log.info(f"Line {line_num}: Deviation calculated successfully. Original length: {original_length:.1f}m, New length: {data['length']:.1f}m")
 
-            except Exception as dev_e:
-                log.exception(f"Line {line_num}: Unhandled error during deviation calculation: {dev_e}")
-                data['deviation_failed'] = True; failed_count += 1
-                data['line_geom'] = original_geom; data['length'] = original_length if original_length is not None else 0.0
-                data['start_point_geom'] = original_start_pt; data['end_point_geom'] = original_end_pt; data['deviated'] = False
+    #         except Exception as dev_e:
+    #             log.exception(f"Line {line_num}: Unhandled error during deviation calculation: {dev_e}")
+    #             data['deviation_failed'] = True; failed_count += 1
+    #             data['line_geom'] = original_geom; data['length'] = original_length if original_length is not None else 0.0
+    #             data['start_point_geom'] = original_start_pt; data['end_point_geom'] = original_end_pt; data['deviated'] = False
 
-        log.info(f"Deviation check complete. Processed: {processed_count}, Deviated: {deviated_count}, Failed: {failed_count}")
-        return line_data
+    #     log.info(f"Deviation check complete. Processed: {processed_count}, Deviated: {deviated_count}, Failed: {failed_count}")
+    #     return line_data
 
     # --- Visualization Method (Corrected Labeling Expression Setting) ---
     def _visualize_optimized_path(self, sequence, path_segments, start_datetime, source_crs, line_data):
@@ -3230,6 +3239,1392 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
              self._remove_layer_by_name(layer_name) # Assuming _remove_layer_by_name exists
 
         log.info("--- Ending _visualize_optimized_path ---")
+
+
+    def _prepare_nogo_geometry(self, nogo_layer, clearance_m):
+        """
+        Process NoGo zones from a layer and create a unified geometry with buffer.
+        
+        Args:
+            nogo_layer: The QGIS vector layer containing NoGo zones
+            clearance_m: Buffer distance in meters to add around NoGo zones
+            
+        Returns:
+            QgsGeometry: Combined geometry of all NoGo zones with buffer, or None if failed
+        """
+        log.debug(f"Preparing NoGo geometry with clearance buffer of {clearance_m}m")
+        
+        if not nogo_layer or not nogo_layer.isValid():
+            log.error("NoGo layer is invalid or None")
+            return None
+        
+        try:
+            # Initialize empty geometry
+            combined_geom = None
+            feature_count = 0
+            
+            # Process all features in the NoGo layer
+            for feature in nogo_layer.getFeatures():
+                feature_count += 1
+                geom = feature.geometry()
+                
+                if not geom or not geom.isGeosValid():
+                    log.warning(f"Skipping invalid NoGo geometry (Feature ID: {feature.id()})")
+                    continue
+                
+                # Apply buffer if clearance is specified
+                if clearance_m > 0:
+                    buffered_geom = geom.buffer(clearance_m, 12)  # 12 segments per quadrant for smooth buffer
+                else:
+                    buffered_geom = QgsGeometry(geom)  # Create a copy
+                
+                if not buffered_geom or not buffered_geom.isGeosValid():
+                    log.warning(f"Failed to create valid buffered geometry for feature {feature.id()}")
+                    continue
+                    
+                # Combine with existing geometries
+                if combined_geom is None:
+                    combined_geom = buffered_geom
+                else:
+                    combined_geom = combined_geom.combine(buffered_geom)
+                    
+                # Check the combined geometry is still valid
+                if not combined_geom.isGeosValid():
+                    log.warning("Combined geometry became invalid after adding feature")
+                    # Try to fix the geometry
+                    combined_geom = self._repair_geometry(combined_geom)
+                    if not combined_geom or not combined_geom.isGeosValid():
+                        log.error("Failed to repair invalid combined geometry")
+            
+            if feature_count == 0:
+                log.warning("No features found in NoGo layer")
+                return None
+                
+            log.debug(f"Created combined NoGo geometry from {feature_count} features")
+            
+            # Final validity check before returning
+            if combined_geom and combined_geom.isGeosValid():
+                log.debug(f"Final NoGo geometry type: {QgsWkbTypes.displayString(combined_geom.wkbType())}")
+                log.debug(f"Final NoGo geometry area: {combined_geom.area():.2f} sq units")
+                return combined_geom
+            else:
+                log.error("Failed to create valid combined NoGo geometry")
+                return None
+                
+        except Exception as e:
+            log.error(f"Error processing NoGo geometries: {str(e)}")
+            import traceback
+            log.error(f"Traceback: {traceback.format_exc()}")
+            return None
+    
+    def _repair_geometry(self, geometry):
+        """
+        Attempt to repair an invalid geometry
+        
+        Args:
+            geometry: The invalid QgsGeometry to repair
+            
+        Returns:
+            QgsGeometry: Repaired geometry or None if failed
+        """
+        log.debug("Attempting to repair invalid geometry")
+        
+        if not geometry:
+            return None
+            
+        try:
+            # Method 1: Use QGIS makeValid
+            valid_geom = geometry.makeValid()
+            if valid_geom and valid_geom.isGeosValid():
+                log.debug("Geometry repaired using makeValid()")
+                return valid_geom
+                
+            # Method 2: Try buffer with distance 0
+            valid_geom = geometry.buffer(0, 5)
+            if valid_geom and valid_geom.isGeosValid():
+                log.debug("Geometry repaired using buffer(0)")
+                return valid_geom
+                
+            log.warning("Failed to repair geometry")
+            return None
+        except Exception as e:
+            log.error(f"Error repairing geometry: {str(e)}")
+            return None
+    
+    def _get_geometry_boundary(self, geometry):
+        """
+        Extract the boundary from a geometry for intersection calculations
+        
+        Args:
+            geometry: QgsGeometry to extract boundary from
+            
+        Returns:
+            QgsGeometry: Boundary geometry or None if failed
+        """
+        log.debug("Extracting boundary from geometry")
+        
+        if not geometry or not geometry.isGeosValid():
+            log.warning("Cannot extract boundary from invalid geometry")
+            return None
+        
+        try:
+            # For polygon-type geometries, try to extract exterior rings
+            geom_type = QgsWkbTypes.flatType(geometry.wkbType())
+            log.debug(f"Geometry type: {QgsWkbTypes.displayString(geom_type)}")
+            
+            # Handle single polygon case
+            if geom_type == QgsWkbTypes.Polygon:
+                log.debug("Processing polygon geometry")
+                try:
+                    polygon = geometry.asPolygon()
+                    if polygon and len(polygon) > 0:
+                        exterior = polygon[0]  # Get exterior ring
+                        if exterior and len(exterior) > 0:
+                            boundary_geom = QgsGeometry.fromPolylineXY(exterior)
+                            if boundary_geom and boundary_geom.isGeosValid():
+                                log.debug("Successfully extracted polygon exterior ring")
+                                return boundary_geom
+                except Exception as polygon_error:
+                    log.debug(f"Error extracting polygon exterior: {str(polygon_error)}")
+            
+            # Handle multipolygon case
+            elif geom_type == QgsWkbTypes.MultiPolygon:
+                log.debug("Processing multipolygon geometry")
+                try:
+                    multi_polygon = geometry.asMultiPolygon()
+                    if multi_polygon and len(multi_polygon) > 0:
+                        # Collect all exterior rings from all polygons
+                        exterior_lines = []
+                        for polygon in multi_polygon:
+                            if polygon and len(polygon) > 0:
+                                exterior_lines.append(polygon[0])  # Add exterior ring
+                        
+                        # Create a multilinestring from all rings
+                        if exterior_lines:
+                            boundary_geom = QgsGeometry.fromMultiPolylineXY(exterior_lines)
+                            if boundary_geom and boundary_geom.isGeosValid():
+                                log.debug("Successfully extracted multipolygon exterior rings")
+                                return boundary_geom
+                except Exception as multipolygon_error:
+                    log.debug(f"Error extracting multipolygon exteriors: {str(multipolygon_error)}")
+            
+            # For line-type geometries, just return a copy
+            elif geom_type == QgsWkbTypes.LineString:
+                log.debug("Geometry is already a line, using as boundary")
+                return QgsGeometry(geometry)  # Return a copy
+            elif geom_type == QgsWkbTypes.MultiLineString:
+                log.debug("Geometry is already a multiline, using as boundary")
+                return QgsGeometry(geometry)  # Return a copy
+            
+            # Try buffer approach as fallback for any geometry type
+            log.debug("Using buffer approach to extract boundary")
+            buffered = geometry.buffer(0.01, 5)  # Small positive buffer
+            if buffered and buffered.isGeosValid():
+                # Try extracting exterior again after buffering
+                try:
+                    if buffered.wkbType() == QgsWkbTypes.Polygon:
+                        polygon = buffered.asPolygon()
+                        if polygon and len(polygon) > 0:
+                            boundary_geom = QgsGeometry.fromPolylineXY(polygon[0])
+                            if boundary_geom and boundary_geom.isGeosValid():
+                                log.debug("Successfully extracted boundary via buffer+polygon")
+                                return boundary_geom
+                    elif buffered.wkbType() == QgsWkbTypes.MultiPolygon:
+                        multi_polygon = buffered.asMultiPolygon()
+                        if multi_polygon and len(multi_polygon) > 0:
+                            exterior_lines = [polygon[0] for polygon in multi_polygon if polygon and len(polygon) > 0]
+                            if exterior_lines:
+                                boundary_geom = QgsGeometry.fromMultiPolylineXY(exterior_lines)
+                                if boundary_geom and boundary_geom.isGeosValid():
+                                    log.debug("Successfully extracted boundary via buffer+multipolygon")
+                                    return boundary_geom
+                except Exception as buffer_extract_error:
+                    log.debug(f"Error extracting boundary after buffering: {str(buffer_extract_error)}")
+            
+            # Last resort - create a simplified rectangular boundary from the extent
+            log.debug("Creating simplified boundary from extent as last resort")
+            extent = geometry.boundingBox()
+            if extent:
+                # Create a rectangle from the extent
+                points = [
+                    QgsPointXY(extent.xMinimum(), extent.yMinimum()),
+                    QgsPointXY(extent.xMaximum(), extent.yMinimum()),
+                    QgsPointXY(extent.xMaximum(), extent.yMaximum()),
+                    QgsPointXY(extent.xMinimum(), extent.yMaximum()),
+                    QgsPointXY(extent.xMinimum(), extent.yMinimum())  # Close the ring
+                ]
+                boundary_geom = QgsGeometry.fromPolylineXY(points)
+                if boundary_geom and boundary_geom.isGeosValid():
+                    log.debug("Using bounding box boundary as fallback")
+                    return boundary_geom
+            
+            # If we get here, all boundary extraction methods have failed
+            log.warning(f"All boundary extraction methods failed for geometry type: {QgsWkbTypes.displayString(geometry.wkbType())}")
+            return None
+            
+        except Exception as e:
+            log.error(f"Error extracting geometry boundary: {str(e)}")
+            import traceback
+            log.error(f"Traceback: {traceback.format_exc()}") 
+            return None
+
+    def _calculate_and_apply_deviations(self, line_data, nogo_layer, clearance_m, turn_radius_m, vessel_turn_rate_dpm):
+        """Calculate and apply deviations to survey lines that intersect with No-Go zones."""
+        
+        # Initialize tracking variables
+        deviated_count = 0
+        failed_count = 0
+        
+        # Process NoGo geometries and create buffer
+        avoidance_geom = self._prepare_nogo_geometry(nogo_layer, clearance_m)
+        if not avoidance_geom:
+            self.log_message("Failed to create valid NoGo avoidance geometry")
+            return line_data
+        
+        # Extract boundary for intersection calculations
+        boundary_avoid = self._get_geometry_boundary(avoidance_geom)
+        if not boundary_avoid:
+            self.log_message("Failed to extract boundary from NoGo geometry")
+            return line_data
+        
+        # Process each line
+        for line_num, line_info in line_data.items():
+            try:
+                # Initialize deviation flags
+                line_info['deviated'] = False
+                line_info['deviation_failed'] = False
+                
+                # Get and validate original geometry
+                original_geom = line_info.get('line_geom')
+                if not original_geom or not self._is_line_type(original_geom):
+                    continue
+                
+                # Check for intersection with avoidance geometry
+                if not original_geom.intersects(avoidance_geom):
+                    continue
+                
+                # Line intersects - attempt deviation
+                self.log_message(f"Line {line_num} intersects NoGo zone, calculating deviation")
+                
+                # Find entry/exit points
+                self.log_message(f"Line {line_num}: Finding intersection points with boundary")
+                intersection_points = self._find_intersection_points(original_geom, boundary_avoid)
+                if not intersection_points:
+                    self.log_message(f"Line {line_num}: No intersection points found")
+                    line_info['deviation_failed'] = True
+                    failed_count += 1
+                    continue
+                elif len(intersection_points) < 2:
+                    self.log_message(f"Line {line_num}: Only found {len(intersection_points)} intersection points, need at least 2")
+                    line_info['deviation_failed'] = True
+                    failed_count += 1
+                    continue
+                else:
+                    self.log_message(f"Line {line_num}: Found {len(intersection_points)} intersection points")
+                
+                # Process intersection points to get entry/exit
+                self.log_message(f"Line {line_num}: Calculating distances for intersection points")
+                point_distances = self._calculate_point_distances(original_geom, intersection_points)
+                if len(point_distances) < 2:
+                    self.log_message(f"Line {line_num}: Failed to calculate distances for at least 2 points")
+                    line_info['deviation_failed'] = True
+                    failed_count += 1
+                    continue
+                else:
+                    self.log_message(f"Line {line_num}: Successfully calculated distances for {len(point_distances)} points")
+                
+                # Sort by distance and get entry/exit points
+                sorted_points = sorted(point_distances, key=lambda x: x[0])
+                entry_dist, p_entry = sorted_points[0]
+                exit_dist, p_exit = sorted_points[-1]
+                
+                # Calculate deviation path
+                self.log_message(f"Line {line_num}: Generating deviation path from entry to exit")
+                deviation_path = self._generate_deviation_path(
+                    original_geom, p_entry, entry_dist, p_exit, exit_dist,
+                    avoidance_geom, clearance_m, turn_radius_m, vessel_turn_rate_dpm
+                )
+                
+                # Check if deviation path is valid and doesn't intersect NoGo
+                if not deviation_path:
+                    self.log_message(f"Line {line_num}: Failed to generate deviation path")
+                    line_info['deviation_failed'] = True
+                    failed_count += 1
+                    continue
+                elif deviation_path.intersects(avoidance_geom):
+                    self.log_message(f"Line {line_num}: Generated path still intersects avoidance zone")
+                    line_info['deviation_failed'] = True
+                    failed_count += 1
+                    continue
+                else:
+                    self.log_message(f"Line {line_num}: Successfully generated valid deviation path")
+                
+                # Split original geometry and create final path
+                final_geom = self._create_final_geometry(
+                    original_geom, p_entry, p_exit, deviation_path
+                )
+                
+                if not final_geom or not self._is_line_type(final_geom):
+                    line_info['deviation_failed'] = True
+                    failed_count += 1
+                    continue
+                
+                # Update line data with new geometry
+                line_info['line_geom'] = final_geom
+                line_info['length'] = final_geom.length()
+                line_info['start_point_geom'] = QgsPoint(final_geom.vertexAt(0))
+                line_info['end_point_geom'] = QgsPoint(final_geom.vertexAt(final_geom.constGet().numPoints() - 1))
+                line_info['deviated'] = True
+                deviated_count += 1
+                
+            except Exception as e:
+                self.log_message(f"Error processing line {line_num}: {str(e)}")
+                line_info['deviation_failed'] = True
+                failed_count += 1
+        
+        # Report summary
+        self.log_message(f"Deviation process complete: {deviated_count} lines successfully deviated, {failed_count} failed")
+        
+        return line_data
+
+    def _find_intersection_points(self, line_geom, boundary_geom):
+        """Find intersection points between a line and boundary"""
+        if not line_geom or not boundary_geom:
+            log.debug("Missing line_geom or boundary_geom in _find_intersection_points")
+            return []
+            
+        try:
+            # Log geometry types
+            line_type = QgsWkbTypes.displayString(line_geom.wkbType())
+            boundary_type = QgsWkbTypes.displayString(boundary_geom.wkbType())
+            log.debug(f"Finding intersections between {line_type} and {boundary_type}")
+            
+            # Calculate intersection
+            intersection = line_geom.intersection(boundary_geom)
+            if not intersection:
+                log.debug("Intersection operation returned None")
+                return []
+            elif intersection.isEmpty():
+                log.debug("Intersection is empty (no intersection points)")
+                return []
+                
+            # Extract points from intersection result
+            points = []
+            wkb_type = intersection.wkbType()
+            wkb_type_str = QgsWkbTypes.displayString(wkb_type)
+            log.debug(f"Intersection result type: {wkb_type_str}")
+            
+            if QgsWkbTypes.flatType(wkb_type) == QgsWkbTypes.Point:
+                pt = intersection.asPoint()
+                points.append(pt)
+                log.debug(f"  Single point: {pt.x():.2f},{pt.y():.2f}")
+            elif QgsWkbTypes.flatType(wkb_type) == QgsWkbTypes.MultiPoint:
+                multi_pts = intersection.asMultiPoint()
+                for i, pt in enumerate(multi_pts):
+                    log.debug(f"  Point {i}: {pt.x():.2f},{pt.y():.2f}")
+                points.extend(multi_pts)
+            # Handle LineString intersection results
+            elif QgsWkbTypes.flatType(wkb_type) == QgsWkbTypes.LineString:
+                log.debug("Processing LineString intersection")
+                line_pts = intersection.asPolyline()
+                if line_pts and len(line_pts) >= 2:
+                    # Add start and end points of the line segment
+                    points.append(line_pts[0])
+                    points.append(line_pts[-1])
+                    log.debug(f"  Extracted endpoints from LineString: {points[0].x():.2f},{points[0].y():.2f} and {points[1].x():.2f},{points[1].y():.2f}")
+            # Handle MultiLineString intersection results
+            elif QgsWkbTypes.flatType(wkb_type) == QgsWkbTypes.MultiLineString:
+                log.debug("Processing MultiLineString intersection")
+                multi_line = intersection.asMultiPolyline()
+                for i, line in enumerate(multi_line):
+                    if line and len(line) >= 2:
+                        # Add start and end points of each line segment
+                        points.append(line[0])
+                        points.append(line[-1])
+                        log.debug(f"  Line {i} endpoints: {line[0].x():.2f},{line[0].y():.2f} and {line[-1].x():.2f},{line[-1].y():.2f}")
+            else:
+                log.debug(f"Unexpected intersection geometry type: {wkb_type_str}")
+                
+            log.debug(f"Found {len(points)} intersection points")
+            return points
+        except Exception as e:
+            log.warning(f"Error finding intersection points: {str(e)}")
+            return []
+
+    def _calculate_point_distances(self, line_geom, points):
+        """Calculate distances along a line for each point"""
+        point_distances = []
+        
+        for pt in points:
+            try:
+                pt_xy = self._ensure_point_xy(pt)
+                pt_geom = QgsGeometry.fromPointXY(pt_xy)
+                dist = line_geom.lineLocatePoint(pt_geom)
+                
+                if dist >= 0:
+                    point_distances.append((dist, pt))
+            except Exception as e:
+                log.warning(f"Error calculating point distance: {str(e)}")
+                
+        return point_distances
+
+    def _point_at_angle_distance(self, start_point, angle_deg, distance):
+        """
+        Calculate a new point at a specific angle and distance from a starting point
+        
+        Args:
+            start_point: The QgsPointXY starting point
+            angle_deg: The angle in degrees (0 = North, clockwise)
+            distance: The distance to the new point in map units
+            
+        Returns:
+            QgsPointXY: The calculated point
+        """
+        if not start_point:
+            log.warning("Cannot calculate point from None start point")
+            return QgsPointXY(0, 0)
+            
+        try:
+            # Convert angle from degrees to radians
+            # Adjust angle: 0 degrees = North, increasing clockwise
+            angle_rad = math.radians(90 - angle_deg)  # Adjust to match our angle system
+            
+            # Calculate point position using trigonometry
+            dx = distance * math.cos(angle_rad)
+            dy = distance * math.sin(angle_rad)
+            
+            # Create new point
+            new_point = QgsPointXY(start_point.x() + dx, start_point.y() + dy)
+            log.debug(f"Calculated point at angle {angle_deg:.2f}° and distance {distance:.2f} from ({start_point.x():.2f}, {start_point.y():.2f})")
+            
+            return new_point
+            
+        except Exception as e:
+            log.error(f"Error calculating point at angle/distance: {str(e)}")
+            import traceback
+            log.error(f"Traceback: {traceback.format_exc()}")
+            return QgsPointXY(0, 0)
+
+    def _get_heading_at_distance(self, geometry, distance):
+        """
+        Calculate the heading (azimuth) at a specific distance along a line geometry
+        
+        Args:
+            geometry: The QgsGeometry line to calculate heading on
+            distance: The distance along the line to calculate heading at
+            
+        Returns:
+            float: Heading in degrees (0-360, clockwise from North)
+        """
+        if not geometry or not geometry.isGeosValid():
+            log.warning("Cannot calculate heading on invalid geometry")
+            return 0
+            
+        # Check if geometry is line type
+        geom_type = QgsWkbTypes.flatType(geometry.wkbType())
+        is_line = (geom_type == QgsWkbTypes.LineString or 
+                  geom_type == QgsWkbTypes.MultiLineString or
+                  geom_type == QgsWkbTypes.CompoundCurve or
+                  geom_type == QgsWkbTypes.CircularString)
+        
+        if not is_line:
+            log.warning(f"Cannot calculate heading on non-line geometry type: {QgsWkbTypes.displayString(geometry.wkbType())}")
+            return 0
+            
+        try:
+            # Find the segment containing the distance point
+            length = geometry.length()
+            if length <= 0:
+                log.warning("Cannot calculate heading on zero-length geometry")
+                return 0
+                
+            # Handle distance beyond line length
+            if distance >= length:
+                distance = length - 0.001  # Use point just before end
+            elif distance <= 0:
+                distance = 0.001  # Use point just after start
+                
+            # Interpolate points just before and after the target distance
+            sample_dist = 0.5  # Sample distance in map units
+            point_at = geometry.interpolate(distance).asPoint()
+            
+            # Calculate points before and after to determine direction
+            dist_before = max(0, distance - sample_dist)
+            dist_after = min(length, distance + sample_dist)
+            
+            # If we're at the endpoints, adjust the sampling distances
+            if dist_before == 0:
+                dist_after = min(length, distance + 2 * sample_dist)
+            elif dist_after == length:
+                dist_before = max(0, distance - 2 * sample_dist)
+                
+            point_before = geometry.interpolate(dist_before).asPoint()
+            point_after = geometry.interpolate(dist_after).asPoint()
+            
+            # If points are too close, try increasing the sample distance
+            if (point_before.distance(point_after) < 0.001):
+                sample_dist = min(length / 4, 10)  # Increase sample distance
+                dist_before = max(0, distance - sample_dist)
+                dist_after = min(length, distance + sample_dist)
+                point_before = geometry.interpolate(dist_before).asPoint()
+                point_after = geometry.interpolate(dist_after).asPoint()
+            
+            # Calculate direction vector and azimuth
+            dx = point_after.x() - point_before.x()
+            dy = point_after.y() - point_before.y()
+            
+            # Calculate azimuth angle (0 = North, clockwise)
+            azimuth = math.degrees(math.atan2(dx, dy))
+            if azimuth < 0:
+                azimuth += 360
+                
+            log.debug(f"Calculated heading at distance {distance:.2f}: {azimuth:.2f}°")
+            return azimuth
+            
+        except Exception as e:
+            log.error(f"Error calculating heading: {str(e)}")
+            import traceback
+            log.error(f"Traceback: {traceback.format_exc()}") 
+            return 0
+
+    def _generate_deviation_path(self, original_geom, entry_point, entry_dist, exit_point, exit_dist,
+                            avoidance_geom, clearance_m, turn_radius_m, vessel_turn_rate_dpm):
+        """Generate optimal deviation path around no-go zones
+        
+        First tries the direct deviation approach (more efficient),
+        then falls back to Dubins curves and finally simple deviation if needed.
+        """
+        
+        log.debug("================ DEVIATION PATH GENERATION (START) =================")
+        log.debug(f"Input parameters:")
+        log.debug(f"  Turn radius: {turn_radius_m:.2f}m, Clearance: {clearance_m:.2f}m, Vessel turn rate: {vessel_turn_rate_dpm:.2f}°/min")
+        
+        # Log information about the avoidance geometry
+        try:
+            log.debug("Analyzing avoidance (NoGo) geometry:")
+            if avoidance_geom:
+                geom_type = QgsWkbTypes.displayString(avoidance_geom.wkbType())
+                log.debug(f"  Type: {geom_type}")
+                log.debug(f"  Valid: {avoidance_geom.isGeosValid()}")
+                if avoidance_geom.isGeosValid():
+                    log.debug(f"  Area: {avoidance_geom.area():.2f} sq units")
+                    log.debug(f"  Perimeter: {avoidance_geom.length():.2f} units")
+                    if avoidance_geom.boundingBox():
+                        box = avoidance_geom.boundingBox()
+                        log.debug(f"  Bounding box: ({box.xMinimum():.2f}, {box.yMinimum():.2f}) to ({box.xMaximum():.2f}, {box.yMaximum():.2f})")
+                        log.debug(f"  Dimensions: {box.width():.2f} x {box.height():.2f} units")
+                else:
+                    log.warning("  Avoidance geometry is invalid - this may cause intersection problems")
+            else:
+                log.warning("  Avoidance geometry is None or empty")
+        except Exception as e:
+            log.warning(f"Error analyzing avoidance geometry: {str(e)}")
+        
+        # Get safe point coordinates
+        try:
+            entry_point_xy = self._ensure_point_xy(entry_point)
+            exit_point_xy = self._ensure_point_xy(exit_point)
+            log.debug(f"Entry point: {entry_point_xy.x():.2f}, {entry_point_xy.y():.2f}")
+            log.debug(f"Exit point: {exit_point_xy.x():.2f}, {exit_point_xy.y():.2f}")
+            log.debug(f"Distance between entry and exit: {entry_point_xy.distance(exit_point_xy):.2f} units")
+        except Exception as e:
+            log.warning(f"Error converting entry/exit points: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()}")
+            return None
+        
+        # Calculate headings at entry/exit points
+        try:
+            entry_heading = self._get_heading_at_distance(original_geom, entry_dist)
+            exit_heading = self._get_heading_at_distance(original_geom, exit_dist)
+            log.debug(f"Entry heading: {entry_heading:.1f}°, Exit heading: {exit_heading:.1f}°")
+            log.debug(f"Heading difference: {abs(entry_heading - exit_heading):.1f}°")
+        except Exception as e:
+            log.warning(f"Error calculating headings: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()}")
+            entry_heading = 0
+            exit_heading = 0
+            log.debug(f"Using fallback headings of {entry_heading}° and {exit_heading}°")
+        
+        # Calculate midpoint between entry and exit
+        try:
+            mid_dist = (entry_dist + exit_dist) / 2
+            log.debug(f"Interpolating midpoint at distance {mid_dist:.2f} along original geometry")
+            mid_point_geom = original_geom.interpolate(mid_dist)
+            if not mid_point_geom or mid_point_geom.isEmpty():
+                log.warning("Failed to interpolate midpoint - geometry may be invalid")
+                log.debug(f"Original geometry type: {QgsWkbTypes.displayString(original_geom.wkbType())}")
+                log.debug(f"Original geometry valid: {original_geom.isGeosValid()}")
+                log.debug(f"Original geometry vertices: {original_geom.constGet().numPoints()}")
+                
+                # Create a fallback midpoint between entry and exit
+                mid_point = QgsPointXY((entry_point.x() + exit_point.x()) / 2, 
+                                      (entry_point.y() + exit_point.y()) / 2)
+                mid_heading = (entry_heading + exit_heading) / 2
+                log.debug(f"Using fallback midpoint: {mid_point.x():.2f}, {mid_point.y():.2f}, Heading: {mid_heading:.1f}°")
+            else:
+                # Successfully interpolated midpoint
+                mid_point = mid_point_geom.asPoint()
+                mid_heading = None  # Will be calculated later if needed
+        except Exception as e:
+            log.warning(f"Error calculating midpoint: {str(e)}")
+            # Create a fallback midpoint between entry and exit
+            mid_point = QgsPointXY((entry_point.x() + exit_point.x()) / 2, 
+                                   (entry_point.y() + exit_point.y()) / 2)
+            mid_heading = (entry_heading + exit_heading) / 2
+            log.debug(f"Using exception fallback midpoint: {mid_point.x():.2f}, {mid_point.y():.2f}")
+        
+        # STEP 1: First try the new direct deviation approach (more efficient and direct)
+        try:
+            log.debug("\nAttempting DIRECT DEVIATION approach first...")
+            direct_path = self._generate_direct_deviation(entry_point, exit_point, avoidance_geom, clearance_m)
+            
+            if direct_path and not direct_path.isEmpty() and not direct_path.intersects(avoidance_geom):
+                log.debug("SUCCESS! Direct deviation approach successful.")
+                log.debug(f"Path length: {direct_path.length():.2f} units")
+                
+                # Visualize the successful path
+                self._visualize_path(direct_path, "direct_deviation_path")
+                
+                return direct_path
+            else:
+                if direct_path:
+                    log.debug(f"Direct deviation failed - Intersection with no-go: {direct_path.intersects(avoidance_geom)}")
+                else:
+                    log.debug("Direct deviation failed - No path generated")
+                    
+                log.debug("Falling back to other path generation methods...")
+        except Exception as e:
+            log.warning(f"Error in direct deviation approach: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()})")
+            # Calculate heading based on entry-exit line
+            dx = exit_point.x() - entry_point.x()
+            dy = exit_point.y() - entry_point.y()
+            angle_rad = math.atan2(dy, dx)
+            entry_heading = exit_heading = (90 - math.degrees(angle_rad)) % 360
+            log.debug(f"Simplified heading calculation: {entry_heading:.1f}°")
+            
+            # Use simple midpoint between entry and exit
+            mid_point = QgsPointXY((entry_point.x() + exit_point.x()) / 2, 
+                                (entry_point.y() + exit_point.y()) / 2)
+            mid_heading = entry_heading
+            log.debug(f"Using midpoint: {mid_point.x():.2f}, {mid_point.y():.2f}, Heading: {mid_heading:.1f}°")
+        
+        # Get the direction from entry to exit point
+        dx = exit_point.x() - entry_point.x()
+        dy = exit_point.y() - entry_point.y()
+        line_angle_rad = math.atan2(dy, dx)
+        line_angle_deg = math.degrees(line_angle_rad)
+        
+        # Calculate perpendicular angles to the line direction
+        perp_angle1 = (line_angle_deg + 90) % 360
+        perp_angle2 = (line_angle_deg - 90) % 360
+        log.debug(f"Line direction: {line_angle_deg:.1f}°, perpendicular angles: {perp_angle1:.1f}° and {perp_angle2:.1f}°")
+        
+        # Get boundary of the avoidance geometry
+        boundary = self._extract_boundary(avoidance_geom)
+        if not boundary:
+            log.warning("Failed to extract boundary from avoidance geometry")
+            return None
+            
+        # Create a buffer around the line to find intersections with the boundary
+        # This helps determine which side to go around
+        buffer_width = clearance_m * 5  # Use a wider buffer to ensure we capture relevant boundary parts
+        line_buffer = QgsGeometry.fromPolylineXY([entry_point, exit_point]).buffer(buffer_width, 5)
+        
+        # Find intersections between the buffer and the boundary
+        buffer_intersection = line_buffer.intersection(boundary)
+        
+        # Calculate centroid of the avoidance geometry to determine which side to go around
+        centroid = avoidance_geom.centroid().asPoint()
+        log.debug(f"Centroid: {centroid.x():.2f}, {centroid.y():.2f}")
+        
+        # Calculate the offset distance (start with 1.5x clearance)
+        offset_distance = clearance_m * 2.0
+        log.debug(f"Initial offset distance: {offset_distance:.2f} meters")
+        
+        # Calculate a vector perpendicular to the line direction
+        # Choose the side that's farther from the centroid
+        perp_vector1_x = math.cos(math.radians(perp_angle1))
+        perp_vector1_y = math.sin(math.radians(perp_angle1))
+        perp_vector2_x = math.cos(math.radians(perp_angle2))
+        perp_vector2_y = math.sin(math.radians(perp_angle2))
+        
+        # Project the centroid onto these perpendicular vectors to determine which side to choose
+        vec_to_centroid_x = centroid.x() - mid_point.x()
+        vec_to_centroid_y = centroid.y() - mid_point.y()
+        
+        dot_product1 = vec_to_centroid_x * perp_vector1_x + vec_to_centroid_y * perp_vector1_y
+        dot_product2 = vec_to_centroid_x * perp_vector2_x + vec_to_centroid_y * perp_vector2_y
+        
+        # Choose the direction with negative dot product (away from centroid)
+        chosen_angle = perp_angle1 if dot_product1 < dot_product2 else perp_angle2
+        log.debug(f"Chosen direction: {chosen_angle:.1f}° (away from centroid)")
+        
+        # Function to create offset points along the perpendicular direction
+        def create_offset_points(offset_dist):
+            # Calculate offset points by moving perpendicular to the line at entry, middle, and exit
+            offset_entry = self._point_at_angle_distance(entry_point, chosen_angle, offset_dist)
+            offset_mid = self._point_at_angle_distance(mid_point, chosen_angle, offset_dist * 1.5)  # Extra offset in middle
+            offset_exit = self._point_at_angle_distance(exit_point, chosen_angle, offset_dist)
+            
+            # Log detailed information about the offset points
+            log.debug(f"Offset Entry: ({offset_entry.x():.2f}, {offset_entry.y():.2f}) at dist {offset_dist:.2f}m")
+            log.debug(f"Offset Mid: ({offset_mid.x():.2f}, {offset_mid.y():.2f}) at dist {offset_dist*1.5:.2f}m")
+            log.debug(f"Offset Exit: ({offset_exit.x():.2f}, {offset_exit.y():.2f}) at dist {offset_dist:.2f}m")
+            
+            return [offset_entry, offset_mid, offset_exit]
+        
+        # Try increasing offsets until we find a path that doesn't intersect
+        max_attempts = 10
+        for attempt in range(max_attempts):
+            current_offset = offset_distance * (1 + attempt * 0.5)  # Increase by 50% each attempt
+            log.debug(f"\nAttempt {attempt+1}/{max_attempts} - Offset: {current_offset:.2f} meters")
+            
+            # Create offset points for this attempt
+            offset_points = create_offset_points(current_offset)
+            
+            # Create a sequence of points for the deviation path
+            path_points = [entry_point]
+            path_points.extend(offset_points)
+            path_points.append(exit_point)
+            
+            # Create the deviation path
+        log.debug(f"Input parameters:")
+        log.debug(f"  Entry point: ({entry_point.x():.2f}, {entry_point.y():.2f}), heading: {entry_heading:.1f}°")
+        log.debug(f"  Mid point: ({mid_point.x():.2f}, {mid_point.y():.2f})")
+        log.debug(f"  Exit point: ({exit_point.x():.2f}, {exit_point.y():.2f}), heading: {exit_heading:.1f}°")
+        log.debug(f"  Turn radius: {turn_radius_m:.2f}m, Vessel turn rate: {vessel_turn_rate_dpm:.2f}°/min")
+        
+        # First, try to generate a direct path using the simpler and more efficient approach
+        try:
+            # Use the avoidance_geom parameter which is passed to this method
+            if avoidance_geom and not avoidance_geom.isEmpty():
+                log.debug(f"\nAttempting DIRECT DEVIATION approach first...")
+                
+                # Use the direct deviation approach with the provided parameters
+                direct_path = self._generate_direct_deviation(entry_point, exit_point, avoidance_geom, clearance_m)
+                if direct_path and not direct_path.isEmpty() and not direct_path.intersects(avoidance_geom):
+                    log.debug("Successfully generated direct deviation path")
+                    log.debug(f"Path length: {direct_path.length():.2f}m")
+                    return direct_path
+                else:
+                    log.debug("Direct deviation failed, falling back to Dubins path calculation")
+            else:
+                log.debug("No valid avoidance geometry found, using standard Dubins path")
+        except Exception as e:
+            log.warning(f"Error attempting direct deviation: {str(e)}")
+            log.debug("Falling back to Dubins path calculation")
+        
+        try:
+            # Calculate heading for mid_point if it's None
+            if mid_heading is None:
+                log.debug("Calculating mid-point heading from entry and exit points...")
+                # Calculate heading based on line from entry to exit
+                dx_total = exit_point.x() - entry_point.x()
+                dy_total = exit_point.y() - entry_point.y()
+                log.debug(f"  dx: {dx_total:.2f}, dy: {dy_total:.2f}")
+                
+                # Convert from math angle to QGIS heading (0=North, CW)
+                math_angle = math.atan2(dy_total, dx_total)
+                degrees_val = math.degrees(math_angle)
+                log.debug(f"  Math angle: {math_angle:.4f} rad, {degrees_val:.1f}°")
+                
+                mid_heading = (90.0 - degrees_val + 360.0) % 360.0
+                log.debug(f"  Calculated mid_heading: {mid_heading:.1f}° based on entry-exit line")
+            else:
+                log.debug(f"Using provided mid_heading: {mid_heading:.1f}°")
+            
+            # Entry segment using Dubins turn
+            log.debug("Calculating entry segment Dubins turn...")
+            entry_turn_geom, entry_length, entry_time = self._calculate_dubins_turn(
+                entry_point, entry_heading,
+                mid_point, mid_heading,
+                turn_radius_m, vessel_turn_rate_dpm
+            )
+            
+            if entry_turn_geom:
+                log.debug(f"  Entry turn successfully generated with {entry_turn_geom.constGet().numPoints()} points")
+                log.debug(f"  Entry turn length: {entry_length:.2f}m, time: {entry_time:.2f}s")
+            else:
+                log.warning("Failed to generate entry turn geometry")
+                return None
+                
+            # Exit segment using Dubins turn
+            log.debug("Calculating exit segment Dubins turn...")
+            exit_turn_geom, exit_length, exit_time = self._calculate_dubins_turn(
+                mid_point, mid_heading,
+                exit_point, exit_heading,
+                turn_radius_m, vessel_turn_rate_dpm
+            )
+            
+            # Validate turn geometries
+            if not entry_turn_geom or not exit_turn_geom:
+                log.warning("Failed to generate one or both turn geometries")
+                return None
+            
+            # Extract points from both turns
+            log.debug("Combining entry and exit turn geometries...")
+            points = []
+            
+            # Get entry turn points
+            entry_points_count = entry_turn_geom.constGet().numPoints()
+            log.debug(f"  Adding {entry_points_count} points from entry turn")
+            for i in range(entry_points_count):
+                point = entry_turn_geom.vertexAt(i)
+                points.append(point)
+                if i == 0 or i == entry_points_count - 1 or i % 10 == 0:  # Log first, last and every 10th point
+                    log.debug(f"    Point {i}: ({point.x():.2f}, {point.y():.2f})")
+            
+            # Add exit turn points (skip first to avoid duplication)
+            exit_points_count = exit_turn_geom.constGet().numPoints()
+            log.debug(f"  Adding {exit_points_count-1} points from exit turn (skipping first)")
+            for i in range(1, exit_points_count):
+                point = exit_turn_geom.vertexAt(i)
+                points.append(point)
+                if i == 1 or i == exit_points_count - 1 or i % 10 == 0:  # Log first, last and every 10th point
+                    log.debug(f"    Point {i}: ({point.x():.2f}, {point.y():.2f})")
+            
+            # Create linestring from points
+            log.debug(f"Creating final geometry from {len(points)} total points")
+            result = QgsGeometry.fromPolyline(points)
+            
+            if result and not result.isEmpty():
+                log.debug(f"  Successfully created Dubins deviation path")
+                log.debug(f"  Path length: {result.length():.2f}m")
+                log.debug(f"  Path Valid: {result.isGeosValid()}")
+                
+                # Visualize the path for debugging
+                self._visualize_path(result, "current_dubins_path")
+                
+                return result
+            else:
+                log.warning("Created empty or invalid geometry from Dubins turns")
+                if result:
+                    log.warning(f"  Empty: {result.isEmpty()}, Valid: {result.isGeosValid()}")
+                return None
+                
+        except Exception as e:
+            log.warning(f"Error generating Dubins deviation: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()}")
+            return None
+
+    def _generate_simple_deviation(self, entry_point, mid_point, exit_point):
+        """Generate simple 3-point path (fallback when Dubins method fails)"""
+        log.debug("========== SIMPLE DEVIATION PATH GENERATION ==========")
+        log.debug(f"Input parameters:")
+        log.debug(f"  Entry point: ({entry_point.x():.2f}, {entry_point.y():.2f})")
+        log.debug(f"  Mid point: ({mid_point.x():.2f}, {mid_point.y():.2f})")
+        log.debug(f"  Exit point: ({exit_point.x():.2f}, {exit_point.y():.2f})")
+        
+        try:
+            # Create simple linestring with the three points
+            points = [entry_point, mid_point, exit_point]
+            log.debug(f"Creating simple path with {len(points)} points...")
+            path = QgsGeometry.fromPolylineXY(points)
+            
+            if path and not path.isEmpty():
+                log.debug(f"  Successfully created simple 3-point path")
+                log.debug(f"  Path length: {path.length():.2f}m")
+                log.debug(f"  Path Valid: {path.isGeosValid()}")
+                return path
+            else:
+                log.warning("Failed to create simple path geometry")
+                if path:
+                    log.warning(f"  Empty: {path.isEmpty()}, Valid: {path.isGeosValid()}")
+                return None
+        except Exception as e:
+            log.warning(f"Error generating simple deviation: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()}")
+            return None
+            
+    def _generate_direct_deviation(self, entry_point, exit_point, avoidance_geom, clearance_m):
+        """Generate a direct path around a no-go zone with multiple offset points for smooth navigation
+        
+        Args:
+            entry_point: QgsPointXY where the path enters the no-go zone
+            exit_point: QgsPointXY where the path exits the no-go zone
+            avoidance_geom: QgsGeometry representing the no-go zone
+            clearance_m: Clearance distance in meters
+            
+        Returns:
+            QgsGeometry representing the path or None if failed
+        """
+        log.debug("==================== DIRECT DEVIATION PATH GENERATION ====================")
+        log.debug(f"Entry point: ({entry_point.x():.2f}, {entry_point.y():.2f})")
+        log.debug(f"Exit point: ({exit_point.x():.2f}, {exit_point.y():.2f})")
+        log.debug(f"Clearance: {clearance_m:.2f} meters")
+        
+        # Ensure points are valid before visualization
+        entry_point_safe = self._ensure_point_xy(entry_point)
+        exit_point_safe = self._ensure_point_xy(exit_point)
+        
+        try:
+            # Visualize the input points
+            entry_point_geom = QgsGeometry.fromPointXY(entry_point_safe)
+            exit_point_geom = QgsGeometry.fromPointXY(exit_point_safe)
+            self._visualize_path(entry_point_geom, "entry_point", QColor(0, 255, 0))  # Green
+            self._visualize_path(exit_point_geom, "exit_point", QColor(255, 0, 0))    # Red
+            
+            # Visualize the straight line (which intersects the no-go zone)
+            direct_line = QgsGeometry.fromPolylineXY([entry_point_safe, exit_point_safe])
+            self._visualize_path(direct_line, "direct_line", QColor(255, 0, 255))     # Magenta
+            
+            # Visualize the no-go zone with buffer for better context
+            if avoidance_geom and not avoidance_geom.isEmpty():
+                self._visualize_path(avoidance_geom, "nogo_zone", QColor(255, 100, 100, 80)) # Semi-transparent red
+        except Exception as viz_e:
+            log.warning(f"Error in visualization: {str(viz_e)}")
+            # Continue with path generation even if visualization fails
+        log.debug(f"Input parameters:")
+        log.debug(f"  Entry point: ({entry_point.x():.2f}, {entry_point.y():.2f})")
+        log.debug(f"  Exit point: ({exit_point.x():.2f}, {exit_point.y():.2f})")
+        log.debug(f"  Clearance: {clearance_m:.2f}m")
+        
+        try:
+            # Get centroid of no-go zone
+            centroid = avoidance_geom.centroid().asPoint()
+            log.debug(f"No-go zone centroid: ({centroid.x():.2f}, {centroid.y():.2f})")
+            
+            # Find midpoint of direct line
+            dx = exit_point.x() - entry_point.x()
+            dy = exit_point.y() - entry_point.y()
+            mid_point = QgsPointXY(
+                entry_point.x() + dx/2,
+                entry_point.y() + dy/2
+            )
+            log.debug(f"Direct line midpoint: ({mid_point.x():.2f}, {mid_point.y():.2f})")
+            
+            # Calculate perpendicular direction vectors
+            length = math.sqrt(dx*dx + dy*dy)
+            if length == 0:
+                log.warning("Entry and exit points are too close")
+                return None
+                
+            # Perpendicular vectors (normalized)
+            perp1_x = -dy/length
+            perp1_y = dx/length
+            perp2_x = dy/length
+            perp2_y = -dx/length
+            
+            # Determine which side to go around (away from centroid)
+            vec_to_centroid_x = centroid.x() - mid_point.x()
+            vec_to_centroid_y = centroid.y() - mid_point.y()
+            
+            dot1 = vec_to_centroid_x * perp1_x + vec_to_centroid_y * perp1_y
+            dot2 = vec_to_centroid_x * perp2_x + vec_to_centroid_y * perp2_y
+            
+            # Choose perpendicular direction opposite to centroid
+            perp_x = perp1_x if dot1 < dot2 else perp2_x
+            perp_y = perp1_y if dot1 < dot2 else perp2_y
+            log.debug(f"Selected perpendicular direction: ({perp_x:.2f}, {perp_y:.2f})")
+            
+            # Try with different offset distances
+            base_offset = clearance_m * 2.0  # Start with double the clearance distance
+            max_attempts = 10
+            
+            for attempt in range(max_attempts):
+                # Increase offset progressively
+                current_offset = base_offset * (1 + 0.5 * attempt)
+                log.debug(f"\nAttempt {attempt+1}/{max_attempts}: offset = {current_offset:.2f}m")
+                
+                # Create intermediate points for smoother path
+                # Use 5 points: entry, 25%, midpoint with offset, 75%, exit
+                # Apply full offset at midpoint, partial offsets at 25% and 75%
+                point1 = QgsPointXY(
+                    entry_point.x() + dx*0.25 + perp_x*current_offset*0.5,
+                    entry_point.y() + dy*0.25 + perp_y*current_offset*0.5
+                )
+                
+                point2 = QgsPointXY(
+                    mid_point.x() + perp_x*current_offset,
+                    mid_point.y() + perp_y*current_offset
+                )
+                
+                point3 = QgsPointXY(
+                    entry_point.x() + dx*0.75 + perp_x*current_offset*0.5,
+                    entry_point.y() + dy*0.75 + perp_y*current_offset*0.5
+                )
+                
+                # Create a sequence of points for the deviation path
+                path_points = [entry_point, point1, point2, point3, exit_point]
+                
+                # Create the deviation path
+                deviation_path = QgsGeometry.fromPolylineXY(path_points)
+                
+                # Visualize current attempt with color based on attempt number
+                attempt_layer_name = f"deviation_attempt_{attempt+1}"
+                # Colors get progressively more green as attempts increase
+                r = max(0, 255 - attempt * 20)
+                g = min(255, 100 + attempt * 20) 
+                b = 0
+                attempt_color = QColor(r, g, b)
+                
+                try:
+                    # Visualize the current attempt path with appropriate color
+                    self._visualize_path(deviation_path, attempt_layer_name, attempt_color)
+                    
+                    # Add turn radius indicators at key points to show vessel constraints
+                    # This helps visualize how vessel turn rate constraints affect path generation
+                    if hasattr(self, 'turn_radius_m') and self.turn_radius_m > 0:
+                        turn_radius = self.turn_radius_m
+                        entry_circle = QgsGeometry.fromPointXY(path_points[0]).buffer(turn_radius, 20)
+                        exit_circle = QgsGeometry.fromPointXY(path_points[-1]).buffer(turn_radius, 20)
+                        
+                        # Use semi-transparent buffers to show turn constraints
+                        turn_color = QColor(r, g, b, 50)  # Same color but semi-transparent
+                        self._visualize_path(entry_circle, f"entry_turn_radius_{attempt+1}", turn_color)
+                        self._visualize_path(exit_circle, f"exit_turn_radius_{attempt+1}", turn_color)
+                except Exception as viz_e:
+                    log.warning(f"Error visualizing attempt {attempt+1}: {str(viz_e)}")
+                    # Continue even if visualization fails
+                
+                # Log detailed path information
+                log.debug(f"Attempt {attempt+1} path points:")
+                for i, pt in enumerate(path_points):
+                    log.debug(f"  Point {i}: ({pt.x():.2f}, {pt.y():.2f})")
+                
+                # Check if the path intersects the avoidance geometry
+                intersects = deviation_path.intersects(avoidance_geom)
+                log.debug(f"Path intersects no-go zone: {intersects}")
+                
+                if not intersects:
+                    log.debug(f"SUCCESS! Found non-intersecting path with offset {current_offset:.2f} meters")
+                    log.debug(f"Path length: {deviation_path.length():.2f} units")
+                    log.debug(f"Number of points in path: {len(path_points)}")
+                    
+                    # Visualize successful path in a distinct color
+                    self._visualize_path(deviation_path, "direct_deviation_path_SUCCESS")
+                    
+                    # Success! Return the path
+                    return deviation_path
+                else:
+                    log.debug(f"Path with offset {current_offset:.2f}m still intersects the no-go zone")
+            
+            log.warning("All attempts failed to find a valid path")
+            return None
+        except Exception as e:
+            log.warning(f"Error generating direct deviation: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()}")
+            return None
+
+    def _visualize_path(self, geometry, layer_name, color=None):
+        """
+        Visualizes a geometry on the QGIS map for debugging purposes.
+        
+        Args:
+            geometry: QgsGeometry to visualize
+            layer_name: String name for the temporary layer
+            color: Optional QColor to apply to the visualization
+        """
+        try:
+            if not geometry or geometry.isEmpty():
+                log.warning(f"Cannot visualize empty geometry for {layer_name}")
+                return False
+            
+            # Get the project CRS
+            project_crs = QgsProject.instance().crs()
+            
+            # Determine geometry type
+            if geometry.type() == QgsWkbTypes.PointGeometry:
+                geom_type = "Point"
+            elif geometry.type() == QgsWkbTypes.LineGeometry:
+                geom_type = "LineString"
+            elif geometry.type() == QgsWkbTypes.PolygonGeometry:
+                geom_type = "Polygon"
+            else:
+                geom_type = "LineString"  # Default
+            
+            # Check if a layer with this name already exists
+            existing_layer = QgsProject.instance().mapLayersByName(layer_name)
+            
+            # Create the layer if it doesn't exist
+            if not existing_layer:
+                layer = QgsVectorLayer(f"{geom_type}?crs={project_crs.authid()}", layer_name, "memory")
+                # Add the layer to the project
+                QgsProject.instance().addMapLayer(layer)
+                log.debug(f"Visualization layer '{layer_name}' created successfully.")
+            else:
+                # Use the existing layer
+                layer = existing_layer[0]
+                # Clear existing features
+                layer.dataProvider().truncate()
+                log.debug(f"Using existing visualization layer '{layer_name}'")
+            
+            # Add the geometry to the layer
+            feature = QgsFeature()
+            feature.setGeometry(geometry)
+            layer.dataProvider().addFeatures([feature])
+            
+            # Apply a style with the specified color if provided
+            if color:
+                if geom_type == "Point":
+                    symbol = QgsMarkerSymbol.createSimple({'color': color.name(), 'size': '3'})
+                elif geom_type == "LineString":
+                    symbol = QgsLineSymbol.createSimple({'color': color.name(), 'width': '1.5'})
+                elif geom_type == "Polygon":
+                    symbol = QgsFillSymbol.createSimple({'color': color.name(), 'outline_color': 'black'})
+                
+                if symbol:
+                    layer.renderer().setSymbol(symbol)
+            else:
+                # Default styles if no color provided
+                if geom_type == "LineString":
+                    symbol = QgsLineSymbol.createSimple({
+                        'line_color': 'red',
+                        'line_style': 'dash',
+                        'line_width': '1.2'
+                    })
+                    layer.renderer().setSymbol(symbol)
+            
+            # Refresh the layer
+            layer.triggerRepaint()
+            layer.updateExtents()
+            return True
+            
+        except Exception as e:
+            log.warning(f"Error visualizing path for {layer_name}: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()}")
+            return False
+
+    def _create_final_geometry(self, lines_geom, deviation_geom, entry_dist, exit_dist):
+        """Create final geometry by combining original line segments with deviation path"""
+        try:
+            if not lines_geom or lines_geom.isEmpty():
+                log.warning("Input line geometry is empty")
+                return None
+                
+            if not deviation_geom or deviation_geom.isEmpty():
+                log.warning("Deviation geometry is empty")
+                return None
+                
+            # Extract vertices from the original line
+            vertices = lines_geom.asPolyline()
+            if not vertices:
+                log.warning("Failed to extract vertices from line geometry")
+                return None
+                
+            # Find entry and exit vertices based on distances
+            entry_point = None
+            exit_point = None
+            total_dist = 0
+            
+            # Get the points before entry and after exit
+            start_points = []
+            end_points = []
+            
+            for i in range(len(vertices) - 1):
+                segment_length = QgsGeometry.fromPolylineXY([vertices[i], vertices[i+1]]).length()
+                
+                # Collect points before entry
+                if total_dist <= entry_dist:
+                    start_points.append(vertices[i])
+                    
+                # Find entry point
+                if total_dist <= entry_dist and total_dist + segment_length >= entry_dist:
+                    # Interpolate point on segment
+                    fraction = (entry_dist - total_dist) / segment_length
+                    x = vertices[i].x() + fraction * (vertices[i+1].x() - vertices[i].x())
+                    y = vertices[i].y() + fraction * (vertices[i+1].y() - vertices[i].y())
+                    entry_point = QgsPointXY(x, y)
+                    
+                # Find exit point
+                if total_dist <= exit_dist and total_dist + segment_length >= exit_dist:
+                    # Interpolate point on segment
+                    fraction = (exit_dist - total_dist) / segment_length
+                    x = vertices[i].x() + fraction * (vertices[i+1].x() - vertices[i].x())
+                    y = vertices[i].y() + fraction * (vertices[i+1].y() - vertices[i].y())
+                    exit_point = QgsPointXY(x, y)
+                    
+                # Collect points after exit
+                if total_dist >= exit_dist:
+                    end_points.append(vertices[i+1])
+                    
+                total_dist += segment_length
+            
+            # If we couldn't find entry or exit points, return original geometry
+            if not entry_point or not exit_point:
+                log.warning("Failed to find entry or exit points on the line")
+                return lines_geom
+                
+            # Get deviation points
+            deviation_points = deviation_geom.asPolyline()
+            if not deviation_points:
+                log.warning("Failed to extract vertices from deviation geometry")
+                return None
+                
+            # Combine segments
+            final_points = []
+            final_points.extend(start_points)
+            if entry_point not in start_points:
+                final_points.append(entry_point)
+            final_points.extend(deviation_points[1:-1])  # Skip first and last (they're entry and exit)
+            if exit_point not in end_points:
+                final_points.append(exit_point)
+            final_points.extend(end_points)
+                
+            # Create final geometry
+            final_geom = QgsGeometry.fromPolylineXY(final_points)
+            log.debug(f"Created final geometry with {len(final_points)} points")
+            log.debug(f"  Length: {final_geom.length():.2f}m")
+            
+            return final_geom
+            
+        except Exception as e:
+            log.warning(f"Error creating final geometry: {str(e)}")
+            import traceback
+            log.warning(f"Stack trace: {traceback.format_exc()}")
+            return None
+
+    def _extract_boundary(self, geom):
+        """Extract boundary from a geometry"""
+        try:
+            # Method 1: Try using QgsGeometry.boundary()
+            boundary = QgsGeometry.boundaryExtract(geom)
+            if boundary and not boundary.isEmpty() and boundary.isGeosValid():
+                log.debug("  Method 1 successful!")
+                return boundary
+            else:
+                log.debug("  Method 1 produced invalid result")
+        except Exception as e1:
+            log.debug(f"  Method 1 failed with error: {str(e1)}")
+            
+        # Method 2: Try using GEOS operation
+        try:
+            log.debug("Trying Method 2: GEOS operation with WKB")
+            # Use GEOS 'boundary' operation with fromWkb
+            wkb = geom.asWkb()
+            if wkb:
+                geos_boundary = QgsGeometry.fromWkb(wkb).convertToType(QgsWkbTypes.LineGeometry)
+                if geos_boundary and not geos_boundary.isEmpty() and geos_boundary.isGeosValid():
+                    log.debug("  Method 2 successful!")
+                    return geos_boundary
+                else:
+                    log.debug("  Method 2 produced invalid result")
+            else:
+                log.debug("  Method 2 failed to get WKB")
+        except Exception as e2:
+            log.debug(f"  Method 2 failed with error: {str(e2)}")
+            
+        # Method 3: Buffer with very small distance and get difference
+        try:
+            log.debug("Trying Method 3: Buffer difference")
+            tiny_buffer = geom.buffer(0.001, 5)  # Tiny buffer
+            larger_buffer = geom.buffer(0.002, 5)  # Slightly larger buffer
+            if tiny_buffer and larger_buffer:
+                ring = larger_buffer.difference(tiny_buffer)
+                if ring and not ring.isEmpty() and ring.isGeosValid():
+                    log.debug("  Method 3 successful!")
+                    return ring
+                else:
+                    log.debug("  Method 3 produced invalid result")
+            else:
+                log.debug("  Method 3 failed to create buffers")
+        except Exception as e3:
+            log.debug(f"  Method 3 failed with error: {str(e3)}")
+            
+        # Fallback - try to get exterior ring directly if it's a polygon
+        try:
+            log.debug("Trying Method 4: Direct polygon ring extraction")
+            if geom.type() == QgsWkbTypes.PolygonGeometry:
+                log.debug("  Geometry is a polygon, extracting exterior ring")
+                polygon = geom.asPolygon()
+                if polygon and polygon[0]:  # Get exterior ring
+                    boundary = QgsGeometry.fromPolylineXY(polygon[0])
+                    log.debug("  Successfully extracted exterior ring from polygon")
+                    return boundary
+            
+            # Try multipolygon extraction
+            if QgsWkbTypes.isMultiType(geom.wkbType()):
+                log.debug("  Geometry appears to be a multi-polygon, trying that approach")
+                multi_polygon = geom.asMultiPolygon()
+                if multi_polygon and len(multi_polygon) > 0:
+                    lines = []
+                    for i, poly in enumerate(multi_polygon):
+                        if poly and len(poly) > 0 and len(poly[0]) > 0:  # Get exterior ring of each polygon
+                            lines.append(poly[0])
+                            log.debug(f"  Added exterior ring from polygon {i}")
+                    if lines:
+                        boundary = QgsGeometry.fromMultiPolylineXY(lines)
+                        log.debug(f"  Successfully extracted {len(lines)} rings from multi-polygon")
+                        return boundary
+        except Exception as e4:
+            log.debug(f"  Method 4 failed with error: {str(e4)}")
+            
+        # Final attempt - create manual buffer outline
+        try:
+            log.debug("Trying Method 5: Manual buffer outline")
+            # Get the bounding box and create slightly larger buffer
+            bbox = geom.boundingBox()
+            enlarged_bbox = QgsGeometry.fromRect(bbox).buffer(0.1, 5)
+            
+            # Use difference to get just the outline
+            if enlarged_bbox:
+                outline = enlarged_bbox.difference(geom)
+                if outline and not outline.isEmpty() and outline.isGeosValid():
+                    log.debug("  Method 5 successful!")
+                    return outline
+        except Exception as e5:
+            log.debug(f"  Method 5 failed with error: {str(e5)}")
+            
+        log.warning("All methods failed to extract boundary from geometry")
+        return None
+    
+    def _ensure_point_xy(self, point):
+        """Ensure a point is a QgsPointXY"""
+        if not point:
+            return QgsPointXY(0, 0)
+            
+        try:
+            if isinstance(point, QgsPointXY):
+                return point
+            elif isinstance(point, QgsPoint):
+                return QgsPointXY(point.x(), point.y())
+            elif hasattr(point, 'x') and hasattr(point, 'y'):
+                return QgsPointXY(point.x(), point.y())
+            else:
+                log.warning(f"Couldn't convert unknown point type to QgsPointXY: {type(point)}")
+                return QgsPointXY(0, 0)
+        except Exception as e:
+            log.warning(f"Error in _ensure_point_xy: {str(e)}")
+            return QgsPointXY(0, 0)
+    
+    def _point_distance(self, point1, point2):
+        """Calculate distance between two points"""
+        try:
+            p1 = self._ensure_point_xy(point1)
+            p2 = self._ensure_point_xy(point2)
+            return math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
+        except Exception:
+            return float('inf')
+    
+    def log_message(self, message):
+        """Log message to the plugin log"""
+        log.info(message)
+
+    def _is_line_type(self, wkb_type):
+        """Check if geometry type is a line type"""
+        try:
+            if isinstance(wkb_type, int):
+                # For cases where wkbType() returns an integer
+                return QgsWkbTypes.flatType(wkb_type) in [
+                    QgsWkbTypes.LineString,
+                    QgsWkbTypes.MultiLineString,
+                    QgsWkbTypes.CircularString,
+                    QgsWkbTypes.CompoundCurve
+                ]
+            else:
+                # If passed a geometry, get its wkbType
+                return self._is_line_type(wkb_type.wkbType())
+        except Exception:
+            return False
+
 
     def closeEvent(self, event):
         """ Clean up when dock widget is closed """
