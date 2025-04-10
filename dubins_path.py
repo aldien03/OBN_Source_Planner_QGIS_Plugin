@@ -1,3 +1,5 @@
+# --- START OF FILE dubins_path.py ---
+
 """
 Dubins functionality.
 """
