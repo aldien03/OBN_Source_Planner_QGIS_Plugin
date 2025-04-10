@@ -10,15 +10,15 @@ from qgis.core import (
     QgsGeometryUtils, # For combining lines
 )
 
-# Assuming dubins_path.py is in the same directory or accessible in PYTHONPATH
-import dubins_path
+# Import dubins_path module using relative import for QGIS plugin structure
+from . import dubins_path
 
 # --- Constants (can be adjusted or passed as parameters) ---
-DEFAULT_STEP_SIZE = 10.0         # How far to extend the tree in one step (meters)
-DEFAULT_MAX_ITERATIONS = 5000    # Max attempts to find a path
-DEFAULT_GOAL_BIAS = 0.1          # Probability (0-1) of sampling the goal state directly
-DEFAULT_GOAL_DIST_TOLERANCE = 5.0 # How close in distance (meters) to the goal is acceptable
-DEFAULT_GOAL_ANGLE_TOLERANCE = math.radians(10.0) # How close in angle (radians) is acceptable
+DEFAULT_STEP_SIZE = 50.0         # How far to extend the tree in one step (meters) - increased for larger survey areas
+DEFAULT_MAX_ITERATIONS = 20000   # Max attempts to find a path - increased for complex obstacle avoidance
+DEFAULT_GOAL_BIAS = 0.2          # Probability (0-1) of sampling the goal state directly - increased for faster convergence
+DEFAULT_GOAL_DIST_TOLERANCE = 25.0 # How close in distance (meters) to the goal is acceptable - increased for faster success
+DEFAULT_GOAL_ANGLE_TOLERANCE = math.radians(15.0) # How close in angle (radians) is acceptable - increased for faster success
 
 # --- Data Structures ---
 

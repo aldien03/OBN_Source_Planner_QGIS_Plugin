@@ -67,7 +67,7 @@ from qgis.core import QgsPointXY, QgsPoint, QgsFeature, QgsGeometry, QgsField, Q
     QgsVectorLayerSimpleLabeling, QgsProperty, QgsFillSymbol, QgsArrowSymbolLayer,\
     QgsDistanceArea, QgsSpatialIndex, QgsPoint, QgsRectangle, QgsPalLayerSettings, QgsTextFormat,\
     QgsRuleBasedLabeling, QgsUnitTypes, QgsRuleBasedRenderer, QgsVectorLayerSimpleLabeling,\
-    QgsGeometryUtils, QgsMapLayerProxyModel, QgsTextBufferSettings, QgsSimpleLineSymbolLayer
+    QgsGeometryUtils, QgsMapLayerProxyModel, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt import QtWidgets, uic, QtCore
 from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt, QDateTime
@@ -2130,6 +2130,90 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except Exception as e:
             log.error(f"Error calc heading at dist {distance:.2f}: {e}")
             return None
+            
+    def _extract_line_segment(self, line_geom, start_dist, end_dist):
+        """
+        Custom method to extract a segment of a line geometry between two distances along the line.
+        Works across different QGIS versions by manually calculating the segment.
+        
+        Args:
+            line_geom (QgsGeometry): The input line geometry
+            start_dist (float): Start distance along the line
+            end_dist (float): End distance along the line
+            
+        Returns:
+            QgsGeometry: The extracted line segment, or None on error
+        """
+        if not line_geom or line_geom.isEmpty() or not self._is_line_type(line_geom):
+            log.warning("Cannot extract segment from empty or non-line geometry")
+            return None
+            
+        # Ensure valid start/end distances
+        line_length = line_geom.length()
+        if start_dist < 0: start_dist = 0
+        if end_dist > line_length: end_dist = line_length
+        if start_dist >= end_dist: return None  # Empty segment
+        
+        try:
+            # Extract all vertices from the line
+            vertices = list(line_geom.vertices())
+            if len(vertices) < 2:
+                log.warning("Line has fewer than 2 vertices")
+                return None
+                
+            # Initialize variables to track our progress
+            current_dist = 0.0
+            segment_points = []
+            point_added = False
+            
+            # Process each segment of the line
+            for i in range(len(vertices) - 1):
+                p1 = vertices[i]
+                p2 = vertices[i + 1]
+                
+                # Convert to QgsPointXY for distance calculation
+                pt1 = QgsPointXY(p1.x(), p1.y())
+                pt2 = QgsPointXY(p2.x(), p2.y())
+                
+                # Calculate segment length
+                segment_length = math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
+                next_dist = current_dist + segment_length
+                
+                # Check if this segment contains our start point
+                if current_dist <= start_dist < next_dist and not point_added:
+                    # Interpolate position along segment
+                    fraction = (start_dist - current_dist) / segment_length
+                    x = p1.x() + fraction * (p2.x() - p1.x())
+                    y = p1.y() + fraction * (p2.y() - p1.y())
+                    segment_points.append(QgsPointXY(x, y))
+                    point_added = True
+                
+                # Add any vertices that fall within our range
+                if start_dist <= next_dist and current_dist < end_dist:
+                    if next_dist <= end_dist:
+                        # The whole segment is within range, add end point
+                        if len(segment_points) == 0 or segment_points[-1] != pt2:
+                            segment_points.append(pt2)
+                    else:
+                        # This segment contains our end point
+                        fraction = (end_dist - current_dist) / segment_length
+                        x = p1.x() + fraction * (p2.x() - p1.x())
+                        y = p1.y() + fraction * (p2.y() - p1.y())
+                        segment_points.append(QgsPointXY(x, y))
+                        break  # We're done after adding the end point
+                
+                current_dist = next_dist
+            
+            # Create a geometry from the collected points
+            if len(segment_points) >= 2:
+                return QgsGeometry.fromPolylineXY(segment_points)
+            else:
+                log.warning(f"Could not extract line segment ({start_dist}-{end_dist}) - insufficient points")
+                return None
+                
+        except Exception as e:
+            log.exception(f"Error extracting line segment: {e}")
+            return None
 
     def _calculate_and_apply_deviations(self, line_data, nogo_layer, clearance_m, turn_radius_m, vessel_turn_rate_dpm=180.0):
         """
@@ -2229,7 +2313,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     continue
                 
                 # Calculate distances along line for each intersection point
-                point_distances = self._calculate_point_distances(original_geom, intersection_points)
+                point_distances = self._calculate_point_distances(intersection_points, original_geom)
                 if len(point_distances) < 1:
                     log.warning(f"Line {line_num}: Failed to locate intersection points along line.")
                     data['deviation_failed'] = True
@@ -2314,13 +2398,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     log.info(f"Line {line_num}: RRT Success (Length: {deviation_segment.length():.1f}m). Assembling final path...")
 
                     try:
-                        # Extract geometry before and after the deviation
-                        try:  # Try newer QGIS API first
-                            geom_before = original_geom.geometryPart(0, start_pose_dist)
-                            geom_after = original_geom.geometryPart(end_pose_dist, original_length)
-                        except AttributeError:  # Fall back to older API
-                            geom_before = original_geom.lineSubstring(0, start_pose_dist)
-                            geom_after = original_geom.lineSubstring(end_pose_dist, original_length)
+                        # Extract geometry before and after the deviation using our custom method
+                        geom_before = self._extract_line_segment(original_geom, 0, start_pose_dist)
+                        geom_after = self._extract_line_segment(original_geom, end_pose_dist, original_length)
 
                         # Combine geometries to create the final path
                         combined = [g for g in [geom_before, deviation_segment, geom_after] 

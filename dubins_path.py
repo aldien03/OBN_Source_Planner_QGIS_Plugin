@@ -61,7 +61,7 @@ def tangent_angle(center, x_coord, y_coord):
     """
     delta_x = x_coord - center[0]
     delta_y = y_coord - center[1]
-    tan_deg = math.degrees(math.atan(delta_y / delta_x))
+    tan_deg = math.degrees(math.atan2(delta_y, delta_x))
     if delta_x < 0:
         angle1 = 180 - tan_deg
         angle2 = (angle1 + 180) % 360
@@ -79,13 +79,26 @@ def split_angle(start, end, max_curve_angle):
     :param max_curve_angle: maximum difference between two points.
     :return: list of angles
     """
-    angles = []
-    while True:
-        if end <= start:
-            break
-        angles.append(start)
-        start += max_curve_angle
-    angles.append(end)
+    # Ensure max_curve_angle is positive and not too small
+    max_curve_angle = max(0.1, abs(max_curve_angle))  # Minimum value to prevent infinite loops
+    
+    angles = [start]  # Always include the start angle
+    
+    # Handle angle wrapping (when end < start)
+    if end <= start:
+        # We need to go through the 0/360 point
+        end += 360.0
+    
+    # Calculate intermediate angles
+    current = start
+    while current + max_curve_angle < end:
+        current += max_curve_angle
+        angles.append(current)
+    
+    # Only add end angle if it's not already the last one
+    if abs(angles[-1] - end) > 1e-6:  # Use small epsilon for float comparison
+        angles.append(end)
+        
     return angles
 
 
@@ -103,26 +116,67 @@ def split_arc(center, theta1, theta2, radius, max_curve_angle, direction):
     :type max_curve_angle:float
     :param direction:"R" is right and "L" is left
     :type direction:str
+    :return: List of points along the arc, or None on error
     """
-    arc_points = list()
-    if theta1 == theta2:
-        return
-    points = split_angle(theta1, theta2, max_curve_angle)
-    if direction == 'R':
-        points.reverse()
+    try:
+        # Input validation and error handling
+        if center is None or not isinstance(center, (list, tuple)) or len(center) < 2:
+            print("ERROR in split_arc: Invalid center point")
+            return []
+            
+        # Ensure radius is positive and not too small
+        radius = max(0.001, abs(radius))  # Minimum radius to prevent calculation issues
+        
+        # Ensure max_curve_angle is positive and reasonable
+        max_curve_angle = max(0.1, abs(max_curve_angle))  # Minimum angle to prevent infinite loops
+        
+        # Handle equal angles case - return a single point
+        if abs(theta1 - theta2) < 1e-6:  # Use small epsilon for float comparison
+            p = theta1  # Just use theta1 since they're essentially equal
+            x_coord = round(center[0] + radius * math.cos(math.radians(p)), DECIMAL_ROUND)
+            y_coord = round(center[1] + radius * math.sin(math.radians(p)), DECIMAL_ROUND)
+            try:
+                heading1, heading2 = tangent_angle(center, x_coord, y_coord)
+                return [[x_coord, y_coord, heading2 if direction == 'R' else heading1]]
+            except Exception as e:
+                print(f"Warning in split_arc: Tangent angle calculation failed: {e}")
+                # Fallback: estimate heading directly from angle
+                heading = (p + (90 if direction == 'R' else 270)) % 360
+                return [[x_coord, y_coord, heading]]
+        
+        # Get angle points with improved split_angle function
+        points = split_angle(theta1, theta2, max_curve_angle)
+        if not points:
+            print("ERROR in split_arc: No angle points generated")
+            return []
+            
+        arc_points = []
+        if direction == 'R':
+            points.reverse()
+        
+        # Process each point along the arc
         for p in points:
             x_coord = round(center[0] + radius * math.cos(math.radians(p)), DECIMAL_ROUND)
             y_coord = round(center[1] + radius * math.sin(math.radians(p)), DECIMAL_ROUND)
-            heading1, heading2 = tangent_angle(center, x_coord, y_coord)
-            arc_points.append([x_coord, y_coord, heading2])
-    else:
-        for p in points:
-            x_coord = round(center[0] + radius * math.cos(math.radians(p)), DECIMAL_ROUND)
-            y_coord = round(center[1] + radius * math.sin(math.radians(p)), DECIMAL_ROUND)
-            heading1, heading2 = tangent_angle(center, x_coord, y_coord)
-            arc_points.append([x_coord, y_coord, heading1])
-    arc_points.pop(0)  # First value not required because it is already added in the list.
-    return arc_points
+            try:
+                heading1, heading2 = tangent_angle(center, x_coord, y_coord)
+                arc_points.append([x_coord, y_coord, heading2 if direction == 'R' else heading1])
+            except Exception as e:
+                print(f"Warning in split_arc: Tangent angle calculation failed for point {p}: {e}")
+                # Fallback: estimate heading directly from angle
+                heading = (p + (90 if direction == 'R' else 270)) % 360
+                arc_points.append([x_coord, y_coord, heading])
+                
+        # Remove first point only if there are multiple points
+        if len(arc_points) > 1:
+            arc_points.pop(0)  # First value already in the path
+            
+        return arc_points
+        
+    except Exception as e:
+        print(f"ERROR in split_arc: {e}")
+        # Return an empty list as fallback
+        return []
 
 
 def split_line(x_1, y_1, x_2, y_2, dividing_factor):

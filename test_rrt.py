@@ -1,5 +1,6 @@
 import os
 import sys
+import importlib
 from qgis.core import (
     QgsPointXY, QgsGeometry, QgsVectorLayer, QgsFeature, QgsProject,
     QgsFields, QgsField, QgsLineString, QgsWkbTypes # Add others as needed
