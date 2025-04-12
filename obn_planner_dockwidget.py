@@ -3989,39 +3989,39 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
         """
         Complete the deviation calculation by creating deviation paths around obstacles.
-    
+
         This method:
         1. Creates entry and exit points for each obstacle
         2. Generates deviation polygons
         3. Splits conflicted lines
         4. Connects split segments using smooth path planning
         5. Adds to project and styles
-    
+
         Args:
             lines_layer (QgsVectorLayer): Layer containing the survey lines
             obstacle_geometries (list): List of obstacle geometries
             clearance_m (float): Clearance distance in meters
             turn_radius_m (float): Minimum turning radius for the vessel in meters
             debug_mode (bool): If True, enables extensive debugging and visualization
-    
+
         Returns:
             bool: True if successful, False otherwise
         """
         log.info("Starting deviation path creation...")
-    
+
         # Get field indices for tracking
         fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
         fld_created_idx = lines_layer.dataProvider().fieldNameIndex("is_deviation_created")
         fld_merged_idx = lines_layer.dataProvider().fieldNameIndex("is_line_merged")
         fld_linenum_idx = lines_layer.dataProvider().fieldNameIndex("LineNum")
-    
+
         # Distance along reference line for entry/exit points (meters)
-        entry_exit_distance = max(1000.0, turn_radius_m * 2)
-    
+        entry_exit_distance = max(800.0, turn_radius_m * 1.5)
+
         # Create a layer for the deviation paths
         deviation_paths_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Deviation_Paths", "memory")
         deviation_provider = deviation_paths_layer.dataProvider()
-    
+
         # Add fields to deviation layer
         deviation_provider.addAttributes([
             QgsField("LineNum", QVariant.Int),
@@ -4030,38 +4030,81 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             QgsField("ObstacleID", QVariant.Int)
         ])
         deviation_paths_layer.updateFields()
-    
+
         # Create a layer for the split lines to be visualized in debug mode
         unified_split_layer = None
         unified_provider = None
-    
+
+        # Debugging counters for visual feedback
+        processed_lines_count = 0
+        visualized_segments_count = 0
+
         if debug_mode:
-            unified_split_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Split_Survey_Lines", "memory")
+            # Create the layer with a more descriptive name
+            unified_split_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Debug_Split_Survey_Lines", "memory")
             unified_provider = unified_split_layer.dataProvider()
-    
-            # Add fields to split lines layer
+
+            # Add fields with additional ProcessingStage field
             unified_provider.addAttributes([
                 QgsField("LineNum", QVariant.Int),
                 QgsField("OriginalFID", QVariant.Int),
-                QgsField("SegmentType", QVariant.String),  # "Outside" or "Inside"
-                QgsField("ObstacleID", QVariant.Int)
+                QgsField("SegmentType", QVariant.String),  # "Outside", "Inside", "Boundary"
+                QgsField("ObstacleID", QVariant.Int),
+                QgsField("ProcessingStage", QVariant.String)  # To track which stage generated this
             ])
             unified_split_layer.updateFields()
-    
+
+            # Add layer to project immediately for real-time visualization
+            QgsProject.instance().addMapLayer(unified_split_layer)
+
+            # Apply distinct styling based on SegmentType
+            categories = []
+
+            # Outside segments (green)
+            outside_symbol = QgsLineSymbol.createSimple({
+                'line_color': '0,200,0',
+                'line_width': '1.2',
+                'line_style': 'solid'
+            })
+            outside_category = QgsRendererCategory("Outside", outside_symbol, "Outside segments")
+            categories.append(outside_category)
+
+            # Inside segments (red)
+            inside_symbol = QgsLineSymbol.createSimple({
+                'line_color': '200,0,0',
+                'line_width': '1.2',
+                'line_style': 'solid'
+            })
+            inside_category = QgsRendererCategory("Inside", inside_symbol, "Inside segments (to be removed)")
+            categories.append(inside_category)
+
+            # Boundary points/segments (blue)
+            boundary_symbol = QgsLineSymbol.createSimple({
+                'line_color': '0,0,200',
+                'line_width': '1.5',
+                'line_style': 'dot'
+            })
+            boundary_category = QgsRendererCategory("Boundary", boundary_symbol, "Boundary intersection")
+            categories.append(boundary_category)
+
+            # Apply categorized renderer
+            renderer = QgsCategorizedSymbolRenderer("SegmentType", categories)
+            unified_split_layer.setRenderer(renderer)
+
         # Store for split lines that need to be deleted
         segments_to_delete = []
         segments_to_add = []
-    
+
         # Process each obstacle separately
         for obs_idx, ref_line_info in self.all_reference_lines.items():
             log.info(f"Processing deviation for obstacle {obs_idx}...")
-    
+
             # Get middle reference line info
             middle_line_geom = ref_line_info['geom']
             middle_line_num = ref_line_info['num']
             middle_line_heading = ref_line_info['heading']
             obstacle_geom = ref_line_info.get('obstacle_geom')
-    
+
             # Get peak points for this obstacle
             peak_info = self.all_peaks.get(obs_idx)
             if not peak_info or not middle_line_geom or not obstacle_geom:
@@ -4070,11 +4113,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             
             peak_A = peak_info['A']
             peak_B = peak_info['B']
-    
+
             # STEP 5: Calculate Entry and Exit Points
             # --------------------------------------
             log.debug(f"Calculating entry/exit points for obstacle {obs_idx}")
-    
+
             # Calculate entry/exit points from obstacle center
             obstacle_center = self.obstacle_centers.get(obs_idx)
             if not obstacle_center:
@@ -4087,11 +4130,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 middle_line_heading,
                 entry_exit_distance  # Use configured distance
             )
-    
+
             # STEP 6: Create Deviation Polygon
             # -------------------------------
             log.debug(f"Creating deviation polygon for obstacle {obs_idx}")
-    
+
+            # Enhanced debug points inspection
+            log.debug(f"Entry point: ({entry_point.x():.2f}, {entry_point.y():.2f})")
+            log.debug(f"Peak A: ({peak_A.x():.2f}, {peak_A.y():.2f})")
+            log.debug(f"Exit point: ({exit_point.x():.2f}, {exit_point.y():.2f})")
+            log.debug(f"Peak B: ({peak_B.x():.2f}, {peak_B.y():.2f})")
+
             # Create polygon from entry, peak A, exit, peak B
             # This polygon represents the area where lines need to be split
             polygon_points = [
@@ -4101,72 +4150,341 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 QgsPointXY(peak_B),
                 QgsPointXY(entry_point)  # Close the polygon
             ]
-    
+
             deviation_poly = QgsGeometry.fromPolygonXY([polygon_points])
-            
+            self._log_debug_geom("Deviation Polygon Created", deviation_poly, "info")
+
+            # Check if polygon is valid
+            if not deviation_poly.isGeosValid():
+                log.warning(f"Deviation polygon for obstacle {obs_idx} is not geometrically valid")
+                # Try to fix the geometry
+                fixed_poly = deviation_poly.makeValid()
+                if fixed_poly.isGeosValid():
+                    log.info("Successfully fixed the deviation polygon geometry")
+                    deviation_poly = fixed_poly
+                    self._log_debug_geom("Fixed Deviation Polygon", deviation_poly, "info")
+                else:
+                    log.error("Could not fix deviation polygon geometry - operations may fail")
+
             # Create a boundary geometry from the polygon points
             # This will be used for intersection tests instead of calling .boundary()
             deviation_boundary = QgsGeometry.fromPolylineXY(polygon_points)
-    
+            self._log_debug_geom("Deviation Boundary Created", deviation_boundary, "info")
+
             # STEP 7: Split Conflicted Lines
             # -----------------------------
             log.debug(f"Splitting conflicted lines for obstacle {obs_idx}")
-    
+
             # Get group of lines that conflict with this obstacle
             group_lines = ref_line_info.get('group_lines', [])
-    
+
             # Create a feature for each segment
             for line_item in group_lines:
+                processed_lines_count += 1
                 fid, line_geom, line_num, heading, _ = line_item
-    
+
+                log.debug(f"Processing line {line_num} (FID={fid})")
+                self._log_debug_geom(f"Line {line_num} Geometry", line_geom, "debug")
+
                 if line_geom.isEmpty():
+                    log.warning(f"Line {line_num} geometry is empty, skipping")
                     continue
                 
                 # Calculate line start/end points
                 line_points = line_geom.asPolyline()
                 if not line_points or len(line_points) < 2:
+                    log.warning(f"Line {line_num} has insufficient points ({len(line_points) if line_points else 0}), skipping")
                     continue
                 
-                # Find intersection with deviation polygon
-                if not line_geom.intersects(deviation_poly):
-                    log.warning(f"Line {line_num} does not intersect deviation polygon")
+                # Check if line actually intersects with deviation polygon
+                intersection_test = line_geom.intersects(deviation_poly)
+                log.info(f"Line {line_num} intersects deviation polygon: {intersection_test}")
+
+                if not intersection_test:
+                    log.warning(f"Line {line_num} does not intersect deviation polygon, skipping")
                     continue
                 
                 # Store the original feature for deletion and mark as conflicted
                 segments_to_delete.append(fid)
                 if fld_conflicted_idx >= 0:
                     lines_layer.changeAttributeValue(fid, fld_conflicted_idx, True)
-    
-                # Split the line with the deviation polygon
-                # We need BOTH the part inside (for removal) and outside (for keeping)
-                # First get the part that's outside the polygon
-                outside_parts = line_geom.difference(deviation_poly)
-                inside_parts = line_geom.intersection(deviation_poly)
-    
-                # Add the outside parts back to the lines layer (keep these)
-                if not outside_parts.isEmpty():
-                    if outside_parts.type() == QgsWkbTypes.LineGeometry:
-                        if outside_parts.isMultipart():
-                            for part_idx, part in enumerate(outside_parts.asMultiPolyline()):
-                                if len(part) < 2:
-                                    continue
-                                
-                                # Create a new feature for each outside part
+
+                # Check specific intersection details
+                intersection_result = line_geom.intersection(deviation_poly)
+                self._log_debug_geom(f"Line {line_num} intersection result", intersection_result, "info")
+
+                # Test boundary intersection specifically
+                boundary_intersection = line_geom.intersects(deviation_boundary)
+                log.info(f"Line {line_num} intersects deviation boundary: {boundary_intersection}")
+
+                boundary_intersection_result = line_geom.intersection(deviation_boundary)
+                self._log_debug_geom(f"Line {line_num} boundary intersection", boundary_intersection_result, "info")
+
+                # IMPROVED APPROACH: Explicitly check and handle problematic cases
+                intersection_points = []
+
+                if line_geom.intersects(deviation_boundary):
+                    intersection_result = line_geom.intersection(deviation_boundary)
+                    self._log_debug_geom("Boundary intersection result", intersection_result, "info")
+
+                    # Check if result is valid
+                    if not intersection_result.isEmpty():
+                        if intersection_result.type() == QgsWkbTypes.PointGeometry:
+                            # Handle point geometry
+                            if intersection_result.isMultipart():
+                                # Handle multiple intersection points
+                                multi_points = intersection_result.asMultiPoint()
+                                log.info(f"Found {len(multi_points)} intersection points with boundary")
+                                intersection_points.extend(multi_points)
+                            else:
+                                # Single intersection point
+                                single_point = intersection_result.asPoint()
+                                log.info(f"Found single intersection point with boundary: ({single_point.x():.2f}, {single_point.y():.2f})")
+                                intersection_points.append(single_point)
+                        else:
+                            # Unexpected geometry type - possibly due to overlapping features or precision issues
+                            log.warning(f"Unexpected geometry type ({intersection_result.type()}) from boundary intersection")
+                            # Fallback approach: buffer the boundary slightly and try again
+                            buffered_boundary = deviation_boundary.buffer(0.01, 5)
+                            self._log_debug_geom("Buffered boundary", buffered_boundary, "debug")
+                            retry_result = line_geom.intersection(buffered_boundary)
+                            self._log_debug_geom("Retry boundary intersection", retry_result, "info")
+
+                            if retry_result.type() == QgsWkbTypes.PointGeometry:
+                                if retry_result.isMultipart():
+                                    multi_points = retry_result.asMultiPoint()
+                                    log.info(f"Retry found {len(multi_points)} intersection points")
+                                    intersection_points.extend(multi_points)
+                                else:
+                                    point = retry_result.asPoint()
+                                    log.info(f"Retry found single intersection point")
+                                    intersection_points.append(point)
+                else:
+                    log.warning(f"Line {line_num} does not intersect with boundary - checking if contained within")
+                    # Special case: line might be entirely inside or outside
+                    if line_geom.within(deviation_poly):
+                        log.info(f"Line {line_num} is entirely INSIDE deviation polygon - no splitting needed")
+                        # Handle as special case - mark for deletion with no replacement
+                        segments_to_delete.append(fid)
+                        continue
+                    else:
+                        # Try difference operation to confirm if it's outside
+                        diff_result = line_geom.difference(deviation_poly)
+                        self._log_debug_geom("Difference result", diff_result, "info")
+
+                        if not diff_result.isEmpty() and diff_result.equals(line_geom):
+                            log.info(f"Line {line_num} is entirely OUTSIDE deviation polygon - keep unchanged")
+                            # No action needed as line doesn't conflict
+                            continue
+
+                # Reset line_segments for each line to avoid using old data
+                line_segments = []
+
+                # If we found intersection points with the boundary, use them to precisely split the line
+                if len(intersection_points) >= 2:
+                    # Sort intersection points by distance along the line
+                    line_pts = line_geom.asPolyline()
+                    line_length = 0
+
+                    # Calculate cumulative length along the line
+                    cumulative_lengths = [0]
+                    for i in range(1, len(line_pts)):
+                        line_length += math.sqrt(
+                            (line_pts[i].x() - line_pts[i-1].x())**2 + 
+                            (line_pts[i].y() - line_pts[i-1].y())**2
+                        )
+                        cumulative_lengths.append(line_length)
+
+                    # Map each intersection point to its position along the line
+                    intersection_positions = []
+                    for pt in intersection_points:
+                        min_dist = float('inf')
+                        min_idx = 0
+                        min_pos = 0
+
+                        # Find closest line segment
+                        for i in range(len(line_pts) - 1):
+                            p1 = line_pts[i]
+                            p2 = line_pts[i+1]
+
+                            # Calculate projection onto line segment
+                            segment_length = math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
+                            if segment_length < 1e-8:  # Near zero length
+                                continue
+
+                            # Vector from p1 to pt
+                            v1x = pt.x() - p1.x()
+                            v1y = pt.y() - p1.y()
+
+                            # Unit vector along segment
+                            vx = (p2.x() - p1.x()) / segment_length
+                            vy = (p2.y() - p1.y()) / segment_length
+
+                            # Projection length
+                            proj = v1x * vx + v1y * vy
+
+                            # Clamp to segment
+                            proj = max(0, min(segment_length, proj))
+
+                            # Calculate distance to projection
+                            proj_x = p1.x() + proj * vx
+                            proj_y = p1.y() + proj * vy
+                            dist = math.sqrt((pt.x() - proj_x)**2 + (pt.y() - proj_y)**2)
+
+                            if dist < min_dist:
+                                min_dist = dist
+                                min_idx = i
+                                min_pos = cumulative_lengths[i] + proj
+
+                        # If this point is close enough to the line, add to positions
+                        if min_dist < 1.0:  # Tolerance in map units
+                            intersection_positions.append((pt, min_pos))
+
+                    # Sort by position along line
+                    intersection_positions.sort(key=lambda x: x[1])
+
+                    # Only keep the first and last intersection points
+                    if len(intersection_positions) >= 2:
+                        entry_int_pt = intersection_positions[0][0]
+                        exit_int_pt = intersection_positions[-1][0]
+
+                        # Create line segments
+                        # 1. From start to entry
+                        # 2. From exit to end
+                        start_to_entry = self._create_line_segment_from_point(line_pts, entry_int_pt, False)
+                        exit_to_end = self._create_line_segment_from_point(line_pts, exit_int_pt, True)
+
+                        if start_to_entry and not start_to_entry.isEmpty():
+                            # Create new feature for first segment (outside)
+                            new_feat = QgsFeature()
+                            new_feat.setGeometry(start_to_entry)
+
+                            # Copy attributes from original feature
+                            feat = lines_layer.getFeature(fid)
+                            attrs = feat.attributes()
+                            new_feat.setAttributes(attrs)
+
+                            # Add to batch
+                            segments_to_add.append(new_feat)
+
+                            # Add to debug layer
+                            if debug_mode and unified_provider:
+                                debug_feat = QgsFeature()
+                                debug_feat.setGeometry(start_to_entry)
+                                debug_feat.setAttributes([
+                                    line_num,
+                                    fid,
+                                    "Outside",
+                                    obs_idx
+                                ])
+                                unified_provider.addFeature(debug_feat)
+                                visualized_segments_count += 1
+
+                        if exit_to_end and not exit_to_end.isEmpty():
+                            # Create new feature for second segment (outside)
+                            new_feat = QgsFeature()
+                            new_feat.setGeometry(exit_to_end)
+
+                            # Copy attributes from original feature
+                            feat = lines_layer.getFeature(fid)
+                            attrs = feat.attributes()
+                            new_feat.setAttributes(attrs)
+
+                            # Add to batch
+                            segments_to_add.append(new_feat)
+
+                            # Add to debug layer
+                            if debug_mode and unified_provider:
+                                debug_feat = QgsFeature()
+                                debug_feat.setGeometry(exit_to_end)
+                                debug_feat.setAttributes([
+                                    line_num,
+                                    fid,
+                                    "Outside",
+                                    obs_idx
+                                ])
+                                unified_provider.addFeature(debug_feat)
+                                visualized_segments_count += 1
+
+                        # Add the inside part for debug visualization
+                        if debug_mode and unified_provider:
+                            entry_to_exit = self._create_line_segment_between_points(
+                                line_pts, entry_int_pt, exit_int_pt
+                            )
+
+                            if entry_to_exit and not entry_to_exit.isEmpty():
+                                debug_feat = QgsFeature()
+                                debug_feat.setGeometry(entry_to_exit)
+                                debug_feat.setAttributes([
+                                    line_num,
+                                    fid,
+                                    "Inside",
+                                    obs_idx
+                                ])
+                                unified_provider.addFeature(debug_feat)
+                                visualized_segments_count += 1
+
+                        # Now use the entry and exit points for path planning
+                        line_segments = []
+                        line_segments.append((entry_int_pt, start_to_entry))
+                        line_segments.append((exit_int_pt, exit_to_end))
+
+                    else:
+                        # Fallback to standard intersection if we couldn't find proper boundary points
+                        # Split the line with the deviation polygon using the standard difference method
+                        outside_parts = line_geom.difference(deviation_poly)
+                        inside_parts = line_geom.intersection(deviation_poly)
+
+                        # Process outside parts (to keep)
+                        if not outside_parts.isEmpty() and outside_parts.type() == QgsWkbTypes.LineGeometry:
+                            # Handle multi-part geometries
+                            if outside_parts.isMultipart():
+                                for part in outside_parts.asMultiPolyline():
+                                    if len(part) < 2:
+                                        continue
+                                    
+                                    # Create feature for each part
+                                    new_geom = QgsGeometry.fromPolylineXY(part)
+                                    new_feat = QgsFeature()
+                                    new_feat.setGeometry(new_geom)
+
+                                    # Copy attributes
+                                    feat = lines_layer.getFeature(fid)
+                                    attrs = feat.attributes()
+                                    new_feat.setAttributes(attrs)
+
+                                    # Add to batch
+                                    segments_to_add.append(new_feat)
+
+                                    # Add to debug layer
+                                    if debug_mode and unified_provider:
+                                        debug_feat = QgsFeature()
+                                        debug_feat.setGeometry(new_geom)
+                                        debug_feat.setAttributes([
+                                            line_num,
+                                            fid,
+                                            "Outside",
+                                            obs_idx
+                                        ])
+                                        unified_provider.addFeature(debug_feat)
+                                        visualized_segments_count += 1
+                            else:
+                                # Single part outside
                                 new_feat = QgsFeature()
-                                new_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
-    
-                                # Copy attributes from original feature
+                                new_feat.setGeometry(outside_parts)
+
+                                # Copy attributes
                                 feat = lines_layer.getFeature(fid)
                                 attrs = feat.attributes()
                                 new_feat.setAttributes(attrs)
-    
-                                # Add to batch for adding later
+
+                                # Add to batch
                                 segments_to_add.append(new_feat)
-    
-                                # Add to debug layer if needed
+
+                                # Add to debug layer
                                 if debug_mode and unified_provider:
                                     debug_feat = QgsFeature()
-                                    debug_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
+                                    debug_feat.setGeometry(outside_parts)
                                     debug_feat.setAttributes([
                                         line_num,
                                         fid,
@@ -4174,20 +4492,126 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                         obs_idx
                                     ])
                                     unified_provider.addFeature(debug_feat)
+                                    visualized_segments_count += 1
+
+                        # For debugging, add inside parts too
+                        if debug_mode and unified_provider and not inside_parts.isEmpty():
+                            if inside_parts.type() == QgsWkbTypes.LineGeometry:
+                                if inside_parts.isMultipart():
+                                    for part in inside_parts.asMultiPolyline():
+                                        if len(part) < 2:
+                                            continue
+                                        
+                                        debug_feat = QgsFeature()
+                                        debug_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
+                                        debug_feat.setAttributes([
+                                            line_num,
+                                            fid,
+                                            "Inside",
+                                            obs_idx
+                                        ])
+                                        unified_provider.addFeature(debug_feat)
+                                        visualized_segments_count += 1
+                                else:
+                                    debug_feat = QgsFeature()
+                                    debug_feat.setGeometry(inside_parts)
+                                    debug_feat.setAttributes([
+                                        line_num,
+                                        fid,
+                                        "Inside",
+                                        obs_idx
+                                    ])
+                                    unified_provider.addFeature(debug_feat)
+                                    visualized_segments_count += 1
+
+                        # Prepare segments for deviation paths - find parts that intersect with the boundary
+                        segments_for_planning = []
+                        if outside_parts.type() == QgsWkbTypes.LineGeometry:
+                            if outside_parts.isMultipart():
+                                for seg in outside_parts.asMultiPolyline():
+                                    if len(seg) >= 2:
+                                        seg_geom = QgsGeometry.fromPolylineXY(seg)
+                                        if seg_geom.intersects(deviation_boundary):
+                                            centroid = seg_geom.centroid().asPoint()
+                                            segments_for_planning.append((centroid, seg_geom))
+                            else:
+                                seg_geom = outside_parts
+                                if seg_geom.intersects(deviation_boundary):
+                                    centroid = seg_geom.centroid().asPoint()
+                                    segments_for_planning.append((centroid, seg_geom))
+
+                        # Now extract entry and exit segments based on proximity to entry/exit points
+                        if len(segments_for_planning) >= 2:
+                            # Sort by distance to entry point
+                            entry_segments = sorted(segments_for_planning, 
+                                                   key=lambda x: QgsGeometry.fromPointXY(x[0]).distance(
+                                                       QgsGeometry.fromPointXY(QgsPointXY(entry_point))))
+
+                            # Sort by distance to exit point
+                            exit_segments = sorted(segments_for_planning,
+                                                  key=lambda x: QgsGeometry.fromPointXY(x[0]).distance(
+                                                      QgsGeometry.fromPointXY(QgsPointXY(exit_point))))
+
+                            # Use closest segment to entry and exit
+                            line_segments = []
+                            line_segments.append((entry_segments[0][0], entry_segments[0][1]))
+
+                            # If more than one segment, add exit segment if different from entry
+                            if len(exit_segments) > 1 and exit_segments[0][1] != entry_segments[0][1]:
+                                line_segments.append((exit_segments[0][0], exit_segments[0][1]))
+                else:
+                    # Fallback to standard intersection if we couldn't find proper boundary points
+                    # Split the line with the deviation polygon using the standard difference method
+                    outside_parts = line_geom.difference(deviation_poly)
+                    inside_parts = line_geom.intersection(deviation_poly)
+
+                    # Process outside parts (to keep)
+                    if not outside_parts.isEmpty() and outside_parts.type() == QgsWkbTypes.LineGeometry:
+                        # Handle multi-part geometries
+                        if outside_parts.isMultipart():
+                            for part in outside_parts.asMultiPolyline():
+                                if len(part) < 2:
+                                    continue
+                                
+                                # Create feature for each part
+                                new_geom = QgsGeometry.fromPolylineXY(part)
+                                new_feat = QgsFeature()
+                                new_feat.setGeometry(new_geom)
+
+                                # Copy attributes
+                                feat = lines_layer.getFeature(fid)
+                                attrs = feat.attributes()
+                                new_feat.setAttributes(attrs)
+
+                                # Add to batch
+                                segments_to_add.append(new_feat)
+
+                                # Add to debug layer
+                                if debug_mode and unified_provider:
+                                    debug_feat = QgsFeature()
+                                    debug_feat.setGeometry(new_geom)
+                                    debug_feat.setAttributes([
+                                        line_num,
+                                        fid,
+                                        "Outside",
+                                        obs_idx
+                                    ])
+                                    unified_provider.addFeature(debug_feat)
+                                    visualized_segments_count += 1
                         else:
                             # Single part outside
                             new_feat = QgsFeature()
                             new_feat.setGeometry(outside_parts)
-    
-                            # Copy attributes from original feature
+
+                            # Copy attributes
                             feat = lines_layer.getFeature(fid)
                             attrs = feat.attributes()
                             new_feat.setAttributes(attrs)
-    
-                            # Add to batch for adding later
+
+                            # Add to batch
                             segments_to_add.append(new_feat)
-    
-                            # Add to debug layer if needed
+
+                            # Add to debug layer
                             if debug_mode and unified_provider:
                                 debug_feat = QgsFeature()
                                 debug_feat.setGeometry(outside_parts)
@@ -4198,17 +4622,29 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                     obs_idx
                                 ])
                                 unified_provider.addFeature(debug_feat)
-    
-                # For debugging, add the inside parts to the visualization layer
-                if debug_mode and unified_provider and not inside_parts.isEmpty():
-                    if inside_parts.type() == QgsWkbTypes.LineGeometry:
-                        if inside_parts.isMultipart():
-                            for part_idx, part in enumerate(inside_parts.asMultiPolyline()):
-                                if len(part) < 2:
-                                    continue
-                                
+                                visualized_segments_count += 1
+
+                    # For debugging, add inside parts too
+                    if debug_mode and unified_provider and not inside_parts.isEmpty():
+                        if inside_parts.type() == QgsWkbTypes.LineGeometry:
+                            if inside_parts.isMultipart():
+                                for part in inside_parts.asMultiPolyline():
+                                    if len(part) < 2:
+                                        continue
+                                    
+                                    debug_feat = QgsFeature()
+                                    debug_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
+                                    debug_feat.setAttributes([
+                                        line_num,
+                                        fid,
+                                        "Inside",
+                                        obs_idx
+                                    ])
+                                    unified_provider.addFeature(debug_feat)
+                                    visualized_segments_count += 1
+                            else:
                                 debug_feat = QgsFeature()
-                                debug_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
+                                debug_feat.setGeometry(inside_parts)
                                 debug_feat.setAttributes([
                                     line_num,
                                     fid,
@@ -4216,37 +4652,65 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                     obs_idx
                                 ])
                                 unified_provider.addFeature(debug_feat)
+                                visualized_segments_count += 1
+
+                    # Now extract the segments for path planning
+                    # First find segment endpoints that intersect with deviation polygon boundary
+                    segments_for_planning = []
+                    if outside_parts.type() == QgsWkbTypes.LineGeometry:
+                        if outside_parts.isMultipart():
+                            for seg in outside_parts.asMultiPolyline():
+                                if len(seg) >= 2:
+                                    seg_geom = QgsGeometry.fromPolylineXY(seg)
+                                    if seg_geom.intersects(deviation_boundary):
+                                        # Find closest point to boundary
+                                        start_pt = seg[0]
+                                        end_pt = seg[-1]
+
+                                        # Determine which endpoint is closest to the boundary
+                                        start_dist = QgsGeometry.fromPointXY(start_pt).distance(deviation_boundary)
+                                        end_dist = QgsGeometry.fromPointXY(end_pt).distance(deviation_boundary)
+
+                                        boundary_pt = start_pt if start_dist < end_dist else end_pt
+                                        segments_for_planning.append((boundary_pt, seg_geom))
                         else:
-                            # Single part inside
-                            debug_feat = QgsFeature()
-                            debug_feat.setGeometry(inside_parts)
-                            debug_feat.setAttributes([
-                                line_num,
-                                fid,
-                                "Inside",
-                                obs_idx
-                            ])
-                            unified_provider.addFeature(debug_feat)
-    
-                # Now extract the segments for path planning
-                line_segments = []
-    
-                # Find the segments that intersect with the deviation polygon boundary
-                # These will be our connection points for the smooth paths
-                if outside_parts.type() == QgsWkbTypes.LineGeometry:
-                    if outside_parts.isMultipart():
-                        for seg in outside_parts.asMultiPolyline():
-                            if len(seg) >= 2:
-                                seg_geom = QgsGeometry.fromPolylineXY(seg)
-                                # Use deviation_boundary instead of deviation_poly.boundary()
-                                if seg_geom.intersects(deviation_boundary):
-                                    line_segments.append(seg_geom)
-                    else:
-                        seg_geom = outside_parts
-                        # Use deviation_boundary instead of deviation_poly.boundary()
-                        if seg_geom.intersects(deviation_boundary):
-                            line_segments.append(seg_geom)
-    
+                            seg_geom = outside_parts
+                            if seg_geom.intersects(deviation_boundary):
+                                seg_pts = seg_geom.asPolyline()
+                                if len(seg_pts) >= 2:
+                                    start_pt = seg_pts[0]
+                                    end_pt = seg_pts[-1]
+
+                                    # Determine which endpoint is closest to the boundary
+                                    start_dist = QgsGeometry.fromPointXY(start_pt).distance(deviation_boundary)
+                                    end_dist = QgsGeometry.fromPointXY(end_pt).distance(deviation_boundary)
+
+                                    boundary_pt = start_pt if start_dist < end_dist else end_pt
+                                    segments_for_planning.append((boundary_pt, seg_geom))
+
+                    # If we found segments, add them to line_segments
+                    if segments_for_planning:
+                        # Sort by distance to entry and exit points
+                        entry_dists = [(i, QgsGeometry.fromPointXY(QgsPointXY(entry_point)).distance(
+                                       QgsGeometry.fromPointXY(pt))) 
+                                       for i, (pt, _) in enumerate(segments_for_planning)]
+                        exit_dists = [(i, QgsGeometry.fromPointXY(QgsPointXY(exit_point)).distance(
+                                       QgsGeometry.fromPointXY(pt))) 
+                                       for i, (pt, _) in enumerate(segments_for_planning)]
+
+                        # Get indices of closest segments
+                        entry_idx = min(entry_dists, key=lambda x: x[1])[0]
+
+                        # Add the entry segment
+                        line_segments.append(segments_for_planning[entry_idx])
+
+                        # If enough segments, add exit segment if different
+                        if len(segments_for_planning) > 1:
+                            exit_idx = min(exit_dists, key=lambda x: x[1])[0]
+                            if exit_idx != entry_idx:
+                                line_segments.append(segments_for_planning[exit_idx])
+
+                # If we have segments identified for path planning, continue
                 if not line_segments:
                     log.warning(f"No valid line segments found for path planning, line {line_num}")
                     continue
@@ -4254,151 +4718,109 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 # STEP 8: Connect Segments with Path
                 # ---------------------------------
                 log.debug(f"Connecting line segments for line {line_num}")
-    
-                # Find the segment closest to the entry point
+
+                # Find the segments closest to entry and exit points
                 entry_segment, exit_segment = None, None
-                entry_dist, exit_dist = float('inf'), float('inf')
-    
-                # Use peak point to identify entry vs exit segment
-                peak_geom = QgsGeometry.fromPointXY(QgsPointXY(peak_A))
-    
-                for seg in line_segments:
-                    seg_centroid = seg.centroid().asPoint()
-    
-                    # Distance to peak helps determine if it's entry or exit segment
-                    peak_dist = QgsGeometry.fromPointXY(seg_centroid).distance(peak_geom)
-    
-                    # Distance to entry point
-                    entry_end_dist = QgsGeometry.fromPointXY(seg_centroid).distance(
-                        QgsGeometry.fromPointXY(QgsPointXY(entry_point))
-                    )
-    
-                    # Distance to exit point
-                    exit_end_dist = QgsGeometry.fromPointXY(seg_centroid).distance(
-                        QgsGeometry.fromPointXY(QgsPointXY(exit_point))
-                    )
-    
-                    # Compare against previous best match
-                    if entry_end_dist < entry_dist:
-                        entry_dist = entry_end_dist
-                        entry_segment = seg
-    
-                    if exit_end_dist < exit_dist:
-                        exit_dist = exit_end_dist
-                        exit_segment = seg
-    
-                # If both segments are found, create connecting path
+                entry_point_match, exit_point_match = None, None
+
+                # Use the first segment as entry if only one segment
+                if len(line_segments) == 1:
+                    entry_point_match = line_segments[0][0]
+                    entry_segment = line_segments[0][1]
+                    exit_point_match = line_segments[0][0]  # Same point for exit too
+                    exit_segment = line_segments[0][1]
+                elif len(line_segments) >= 2:
+                    # Extract points and segments
+                    entry_point_match = line_segments[0][0]
+                    entry_segment = line_segments[0][1]
+                    exit_point_match = line_segments[1][0]
+                    exit_segment = line_segments[1][1]
+
+                # If we have both entry and exit segments, create the connecting path
                 if entry_segment and exit_segment:
-                    # Extract segment endpoints
-                    entry_segment_points = entry_segment.asPolyline()
-                    exit_segment_points = exit_segment.asPolyline()
-    
-                    if not entry_segment_points or not exit_segment_points:
-                        log.warning(f"Invalid segment points for line {line_num}")
-                        continue
-                    
-                    # Determine which endpoints to connect
-                    entry_start = entry_segment_points[0]
-                    entry_end = entry_segment_points[-1]
-                    exit_start = exit_segment_points[0]
-                    exit_end = exit_segment_points[-1]
-    
-                    # Calculate heading at segment endpoints
-                    entry_heading = self._calculate_segment_heading(entry_segment)
-                    exit_heading = self._calculate_segment_heading(exit_segment, start=False)
-    
-                    # Decide which endpoint of each segment to use
-                    # For entry segment: use the end closest to entry_point
-                    if QgsGeometry.fromPointXY(entry_start).distance(QgsGeometry.fromPointXY(QgsPointXY(entry_point))) < \
-                       QgsGeometry.fromPointXY(entry_end).distance(QgsGeometry.fromPointXY(QgsPointXY(entry_point))):
-                        entry_connect = entry_start
-                        entry_heading = self._calculate_segment_heading(entry_segment, start=True)
-                    else:
-                        entry_connect = entry_end
-                        entry_heading = self._calculate_segment_heading(entry_segment, start=False)
-    
-                    # For exit segment: use the end closest to exit_point
-                    if QgsGeometry.fromPointXY(exit_start).distance(QgsGeometry.fromPointXY(QgsPointXY(exit_point))) < \
-                       QgsGeometry.fromPointXY(exit_end).distance(QgsGeometry.fromPointXY(QgsPointXY(exit_point))):
-                        exit_connect = exit_start
-                        exit_heading = self._calculate_segment_heading(exit_segment, start=True)
-                    else:
-                        exit_connect = exit_end
-                        exit_heading = self._calculate_segment_heading(exit_segment, start=False)
-    
+                    # Calculate heading at entry and exit points
+                    entry_heading = self._calculate_segment_heading(entry_segment, from_point=entry_point_match)
+                    exit_heading = self._calculate_segment_heading(exit_segment, from_point=exit_point_match)
+
                     # STEP 9: Use Peak Point
                     # ---------------------
                     # Decide which peak point to use based on heading
                     peak_point = QgsPointXY(peak_A)  # Default to peak A
-    
+
                     # If the heading direction is more aligned with peak B, use it instead
                     heading_vec_x = math.sin(math.radians(heading))
                     heading_vec_y = math.cos(math.radians(heading))
-    
+
                     vec_to_A_x = peak_A.x() - obstacle_center.x()
                     vec_to_A_y = peak_A.y() - obstacle_center.y()
-    
+
                     # Dot product to determine alignment
                     dot_product_A = heading_vec_x * vec_to_A_x + heading_vec_y * vec_to_A_y
-    
+
                     if dot_product_A < 0:
                         # Use peak B if the alignment with A is negative
                         peak_point = QgsPointXY(peak_B)
-    
+
                     # STEP 10: Smooth with Dubins Paths
                     # ---------------------------------
                     log.debug(f"Creating smooth deviation path for line {line_num}")
-    
+
                     # Create Dubins path from entry to peak
                     try:
                         from . import dubins_path
-    
-                        # First convert to proper format with heading information
+
+                        # Ensure entry_point_match and exit_point_match are QgsPointXY objects
+                        if not isinstance(entry_point_match, QgsPointXY):
+                            entry_point_match = QgsPointXY(entry_point_match)
+
+                        if not isinstance(exit_point_match, QgsPointXY):
+                            exit_point_match = QgsPointXY(exit_point_match)
+
+                        # Convert to proper format with heading information
                         entry_point_with_heading = (
-                            entry_connect.x(),
-                            entry_connect.y(), 
+                            entry_point_match.x(),
+                            entry_point_match.y(), 
                             math.radians(entry_heading)
                         )
-    
+
                         peak_point_with_heading = (
                             peak_point.x(),
                             peak_point.y(),
                             math.radians(middle_line_heading + 90.0)  # Perpendicular to reference
                         )
-    
+
                         exit_point_with_heading = (
-                            exit_connect.x(),
-                            exit_connect.y(),
+                            exit_point_match.x(),
+                            exit_point_match.y(),
                             math.radians(exit_heading)
                         )
-    
+
                         # Call with proper parameters
                         entry_peak_result = dubins_path.dubins_path(
                             entry_point_with_heading,
                             peak_point_with_heading,
                             turn_radius_m
                         )
-    
+
                         peak_exit_result = dubins_path.dubins_path(
                             peak_point_with_heading,
                             exit_point_with_heading,
                             turn_radius_m
                         )
-    
-                        # Important: Check what the dubins_path function actually returns
-                        # If it returns a tuple of points, convert to a QgsGeometry
+
+                        # Check what the dubins_path function returns and convert to geometry
                         if isinstance(entry_peak_result, tuple) or isinstance(entry_peak_result, list):
                             # Convert point tuples to QgsPointXY objects and create a polyline geometry
                             entry_peak_points = [QgsPointXY(pt[0], pt[1]) for pt in entry_peak_result]
                             peak_exit_points = [QgsPointXY(pt[0], pt[1]) for pt in peak_exit_result]
-    
+
                             entry_peak_path = QgsGeometry.fromPolylineXY(entry_peak_points)
                             peak_exit_path = QgsGeometry.fromPolylineXY(peak_exit_points)
                         else:
                             # Assuming it already returns a QgsGeometry
                             entry_peak_path = entry_peak_result
                             peak_exit_path = peak_exit_result
-    
+
                         # Add the paths to the deviation layer
                         if entry_peak_path and not entry_peak_path.isEmpty():
                             # Entry to peak feature
@@ -4411,7 +4833,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                 obs_idx
                             ])
                             deviation_provider.addFeature(entry_feat)
-    
+
                         if peak_exit_path and not peak_exit_path.isEmpty():
                             # Peak to exit feature
                             exit_feat = QgsFeature()
@@ -4423,13 +4845,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                 obs_idx
                             ])
                             deviation_provider.addFeature(exit_feat)
-    
+
                     except Exception as e:
                         log.error(f"Error creating Dubins path: {e}")
                         # Fallback to simple connection
-                        entry_peak_geom = QgsGeometry.fromPolylineXY([entry_connect, peak_point])
-                        peak_exit_geom = QgsGeometry.fromPolylineXY([peak_point, exit_connect])
-    
+                        entry_peak_geom = QgsGeometry.fromPolylineXY([QgsPointXY(entry_point_match), peak_point])
+                        peak_exit_geom = QgsGeometry.fromPolylineXY([peak_point, QgsPointXY(exit_point_match)])
+
                         # Add simple connectors
                         entry_feat = QgsFeature()
                         entry_feat.setGeometry(entry_peak_geom)
@@ -4440,7 +4862,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             obs_idx
                         ])
                         deviation_provider.addFeature(entry_feat)
-    
+
                         exit_feat = QgsFeature()
                         exit_feat.setGeometry(peak_exit_geom)
                         exit_feat.setAttributes([
@@ -4450,33 +4872,39 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             obs_idx
                         ])
                         deviation_provider.addFeature(exit_feat)
-    
+
+        # Log processing stats
+        log.info(f"Processed {processed_lines_count} lines, created {visualized_segments_count} visualization segments")
+
         # Apply all the changes to the lines layer after processing all obstacles
         lines_provider = lines_layer.dataProvider()
-    
+
         # First delete all the original segments that were split
         if segments_to_delete:
             log.info(f"Deleting {len(segments_to_delete)} original line segments that were replaced")
             lines_provider.deleteFeatures(segments_to_delete)
-    
+
         # Then add all the new segments outside obstacles
         if segments_to_add:
             log.info(f"Adding {len(segments_to_add)} new line segments outside obstacles")
             lines_provider.addFeatures(segments_to_add)
-    
+
         # Add the debug split lines layer if requested
         if debug_mode and unified_split_layer and unified_provider:
             if unified_provider.featureCount() > 0:
+                log.info(f"Visualizing {unified_provider.featureCount()} split line segments")
+                # Make sure to add the layer to the project BEFORE calling visualize
+                QgsProject.instance().addMapLayer(unified_split_layer, False)  # Add but don't show in legend yet
                 self._visualize_split_lines(unified_split_layer)
             else:
                 log.warning("No split lines to visualize in debug mode")
-    
+
         # STEP 11: Add to Project and Style
         # -------------------------------
         # Only add if we have features
         if deviation_provider.featureCount() > 0:
             deviation_paths_layer.updateExtents()
-    
+
             # Style the deviation paths layer
             symbol = QgsLineSymbol.createSimple({
                 'line_color': '255,0,0',
@@ -4484,58 +4912,328 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 'line_style': 'solid'
             })
             deviation_paths_layer.renderer().setSymbol(symbol)
-    
+
             # Add to project
             QgsProject.instance().addMapLayer(deviation_paths_layer)
             log.info(f"Created deviation paths layer with {deviation_provider.featureCount()} features")
-    
+
             # If there's a map canvas available, refresh it
             if hasattr(self, 'iface') and self.iface:
                 self.iface.mapCanvas().refresh()
-    
+
             return True
         else:
             log.warning("No deviation paths were created.")
             return False
-
-    def _calculate_segment_heading(self, segment_geom, start=True):
+    
+    def _create_line_segment_from_point(self, line_points, target_point, from_target_to_end=True):
         """
-        Calculate the heading (azimuth) of a line segment at either its start or end.
+        Create a line segment from the target point to either the start or end of the line.
+        
+        Args:
+            line_points (list): List of QgsPointXY objects comprising the original line
+            target_point (QgsPointXY): The target point to create segment from/to
+            from_target_to_end (bool): If True, create segment from target point to line end
+                                      If False, create segment from line start to target point
+        
+        Returns:
+            QgsGeometry: The created line segment, or None if invalid
+        """
+        if not line_points or len(line_points) < 2:
+            return None
+        
+        # Find the position on the line closest to the target point
+        min_dist = float('inf')
+        closest_idx = 0
+        closest_proj = None
+        
+        # Iterate through line segments to find closest point
+        for i in range(len(line_points) - 1):
+            p1 = line_points[i]
+            p2 = line_points[i+1]
+            
+            # Calculate projection onto line segment
+            segment_length = math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
+            if segment_length < 1e-8:  # Near zero length
+                continue
+                
+            # Vector from p1 to target
+            v1x = target_point.x() - p1.x()
+            v1y = target_point.y() - p1.y()
+            
+            # Unit vector along segment
+            vx = (p2.x() - p1.x()) / segment_length
+            vy = (p2.y() - p1.y()) / segment_length
+            
+            # Projection length
+            proj = v1x * vx + v1y * vy
+            
+            # Clamp to segment
+            proj = max(0, min(segment_length, proj))
+            
+            # Calculate distance to projection
+            proj_x = p1.x() + proj * vx
+            proj_y = p1.y() + proj * vy
+            dist = math.sqrt((target_point.x() - proj_x)**2 + (target_point.y() - proj_y)**2)
+            
+            if dist < min_dist:
+                min_dist = dist
+                closest_idx = i
+                closest_proj = QgsPointXY(proj_x, proj_y)
+        
+        # If no valid projection found, return None
+        if closest_proj is None:
+            return None
+        
+        # Create new point array for the segment
+        segment_points = []
+        
+        if from_target_to_end:
+            # Start with the target point
+            segment_points.append(QgsPointXY(target_point))
+            
+            # Add rest of the points from the closest segment to the end
+            segment_points.append(closest_proj)
+            segment_points.extend(line_points[closest_idx+1:])
+        else:
+            # Start with line start up to the closest segment
+            segment_points.extend(line_points[:closest_idx+1])
+            segment_points.append(closest_proj)
+            
+            # End with the target point
+            segment_points.append(QgsPointXY(target_point))
+        
+        # Create geometry from points
+        if len(segment_points) >= 2:
+            return QgsGeometry.fromPolylineXY(segment_points)
+        
+        return None
+    
+    def _create_line_segment_between_points(self, line_points, start_point, end_point):
+        """
+        Create a line segment between two points on an existing line.
+        
+        Args:
+            line_points (list): List of QgsPointXY objects comprising the original line
+            start_point (QgsPointXY): The start point to create segment from
+            end_point (QgsPointXY): The end point to create segment to
+        
+        Returns:
+            QgsGeometry: The created line segment, or None if invalid
+        """
+        if not line_points or len(line_points) < 2:
+            return None
+        
+        # Find the positions on the line closest to the start and end points
+        start_info = self._find_closest_point_on_line(line_points, start_point)
+        end_info = self._find_closest_point_on_line(line_points, end_point)
+        
+        if not start_info or not end_info:
+            return None
+        
+        start_idx, start_proj, _ = start_info
+        end_idx, end_proj, _ = end_info
+        
+        # Ensure start comes before end on the line
+        if start_idx > end_idx or (start_idx == end_idx and start_proj > end_proj):
+            start_idx, end_idx = end_idx, start_idx
+            start_proj, end_proj = end_proj, start_proj
+        
+        # Create new point array for the segment
+        segment_points = []
+        
+        # Start with the first projection point
+        segment_points.append(QgsPointXY(start_proj))
+        
+        # Add intermediate points if any
+        if start_idx < end_idx:
+            segment_points.extend(line_points[start_idx+1:end_idx+1])
+        
+        # End with the second projection point
+        segment_points.append(QgsPointXY(end_proj))
+        
+        # Create geometry from points
+        if len(segment_points) >= 2:
+            return QgsGeometry.fromPolylineXY(segment_points)
+        
+        return None
+    
+    def _find_closest_point_on_line(self, line_points, target_point):
+        """
+        Find the closest point on a line to a target point.
+        
+        Args:
+            line_points (list): List of QgsPointXY objects comprising the line
+            target_point (QgsPointXY): The target point to find closest point to
+        
+        Returns:
+            tuple: (segment_index, projection_point, distance) or None if invalid
+        """
+        if not line_points or len(line_points) < 2:
+            return None
+        
+        min_dist = float('inf')
+        closest_idx = 0
+        closest_proj = None
+        
+        # Iterate through line segments to find closest point
+        for i in range(len(line_points) - 1):
+            p1 = line_points[i]
+            p2 = line_points[i+1]
+            
+            # Calculate projection onto line segment
+            segment_length = math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
+            if segment_length < 1e-8:  # Near zero length
+                continue
+                
+            # Vector from p1 to target
+            v1x = target_point.x() - p1.x()
+            v1y = target_point.y() - p1.y()
+            
+            # Unit vector along segment
+            vx = (p2.x() - p1.x()) / segment_length
+            vy = (p2.y() - p1.y()) / segment_length
+            
+            # Projection length
+            proj = v1x * vx + v1y * vy
+            
+            # Clamp to segment
+            proj = max(0, min(segment_length, proj))
+            
+            # Calculate distance to projection
+            proj_x = p1.x() + proj * vx
+            proj_y = p1.y() + proj * vy
+            dist = math.sqrt((target_point.x() - proj_x)**2 + (target_point.y() - proj_y)**2)
+            
+            if dist < min_dist:
+                min_dist = dist
+                closest_idx = i
+                closest_proj = QgsPointXY(proj_x, proj_y)
+        
+        # If no valid projection found, return None
+        if closest_proj is None:
+            return None
+        
+        return (closest_idx, closest_proj, min_dist)
+
+    def _log_debug_geom(self, stage, geom, log_level="debug"):
+        """Detailed geometry debugging logger with extensive information."""
+        if geom is None:
+            log_msg = f"[{stage}] GEOMETRY IS NONE"
+            if log_level == "debug":
+                log.debug(log_msg)
+            elif log_level == "info":
+                log.info(log_msg)
+            elif log_level == "warning":
+                log.warning(log_msg)
+            elif log_level == "error":
+                log.error(log_msg)
+            return
+
+        if geom.isEmpty():
+            log_msg = f"[{stage}] GEOMETRY IS EMPTY"
+        else:
+            geom_type = "Unknown"
+            if geom.type() == QgsWkbTypes.PointGeometry:
+                geom_type = "Point"
+                if geom.isMultipart():
+                    count = len(geom.asMultiPoint())
+                    geom_type = f"MultiPoint ({count} points)"
+                else:
+                    pt = geom.asPoint()
+                    geom_type = f"Point ({pt.x():.4f}, {pt.y():.4f})"
+            elif geom.type() == QgsWkbTypes.LineGeometry:
+                geom_type = "Line"
+                if geom.isMultipart():
+                    count = len(geom.asMultiPolyline())
+                    geom_type = f"MultiLine ({count} segments)"
+                else:
+                    points = geom.asPolyline()
+                    geom_type = f"Line ({len(points)} vertices)"
+            elif geom.type() == QgsWkbTypes.PolygonGeometry:
+                geom_type = "Polygon"
+                if geom.isMultipart():
+                    count = len(geom.asMultiPolygon())
+                    geom_type = f"MultiPolygon ({count} polygons)"
+                else:
+                    rings = geom.asPolygon()
+                    if rings:
+                        geom_type = f"Polygon ({len(rings)} rings, {len(rings[0])} vertices in outer ring)"
+
+            log_msg = f"[{stage}] TYPE: {geom_type}, VALID: {geom.isGeosValid()}"
+
+        if log_level == "debug":
+            log.debug(log_msg)
+        elif log_level == "info":
+            log.info(log_msg)
+        elif log_level == "warning":
+            log.warning(log_msg)
+        elif log_level == "error":
+            log.error(log_msg)
+
+    def _calculate_segment_heading(self, segment_geom, from_point=None, start=True):
+        """
+        Calculate heading (in degrees) for a line segment.
 
         Args:
-            segment_geom (QgsGeometry): Line geometry
-            start (bool): If True, calculate heading at start point, otherwise at end
+            segment_geom (QgsGeometry): Line segment geometry
+            from_point (QgsPointXY, optional): Specific point to calculate heading from
+            start (bool): Whether to calculate from start (True) or end (False) of segment
+                         Only used if from_point is None
 
         Returns:
             float: Heading in degrees (0-360)
         """
         if segment_geom.isEmpty() or segment_geom.type() != QgsWkbTypes.LineGeometry:
-            return 0.0
+            return 0
 
-        line_points = segment_geom.asPolyline()
-        if len(line_points) < 2:
-            return 0.0
+        segment_points = segment_geom.asPolyline()
+        if len(segment_points) < 2:
+            return 0
 
-        if start:
-            # Calculate heading at start point
-            p1 = line_points[0]
-            p2 = line_points[1]
+        # If from_point specified, find closest point and calculate heading from there
+        if from_point is not None:
+            # Convert to QgsPointXY if needed
+            if not isinstance(from_point, QgsPointXY):
+                from_point = QgsPointXY(from_point)
+
+            # Find closest segment
+            closest_info = self._find_closest_point_on_line(segment_points, from_point)
+            if not closest_info:
+                return 0
+
+            segment_idx, _, _ = closest_info
+
+            # Use this segment for heading calculation
+            if segment_idx < len(segment_points) - 1:
+                p1 = segment_points[segment_idx]
+                p2 = segment_points[segment_idx + 1]
+            else:
+                # Use previous segment if at end
+                p1 = segment_points[segment_idx - 1]
+                p2 = segment_points[segment_idx]
         else:
-            # Calculate heading at end point
-            p1 = line_points[-2]
-            p2 = line_points[-1]
+            # Otherwise use start or end of segment
+            if start:
+                p1 = segment_points[0]
+                p2 = segment_points[1]
+            else:
+                p1 = segment_points[-2]
+                p2 = segment_points[-1]
 
-        # Calculate azimuth (heading)
-        delta_x = p2.x() - p1.x()
-        delta_y = p2.y() - p1.y()
+        # Calculate heading (in degrees, clockwise from North)
+        dx = p2.x() - p1.x()
+        dy = p2.y() - p1.y()
 
-        angle_rad = math.atan2(delta_y, delta_x)
+        # Use atan2 to avoid division by zero
+        angle_rad = math.atan2(dx, dy)  # Note: x,y order for consistent bearing
+
+        # Convert to degrees and normalize to 0-360
         angle_deg = math.degrees(angle_rad)
+        if angle_deg < 0:
+            angle_deg += 360
 
-        # Convert to azimuth (0-360, clockwise from north)
-        heading = (90.0 - angle_deg) % 360.0
-
-        return heading
+        return angle_deg
 
     def _visualize_deviation_steps(self):
         """
@@ -4938,6 +5636,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.warning("No features in split lines layer to visualize")
             return False
 
+        # Log feature details for debugging
+        log.info(f"Visualizing {provider.featureCount()} split line features")
+        for feature in split_lines_layer.getFeatures():
+            log.debug(f"Split line feature: LineNum={feature['LineNum']}, Type={feature['SegmentType']}")
+
         # Setup labeling for the split lines layer
         label_settings = QgsPalLayerSettings()
         text_format = QgsTextFormat()
@@ -4966,13 +5669,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         split_lines_layer.setLabelsEnabled(True)
         split_lines_layer.setLabeling(labeling)
 
-        # Create a categorized renderer for inside/outside segments
+        # Create a categorized renderer for inside/outside segments with more distinct styles
         categories = []
 
         # Inside segments (to be removed) - shown in red with dash pattern
         inside_symbol = QgsLineSymbol.createSimple({
             'line_color': '#FF0000',  # Red
-            'line_width': '1.0',
+            'line_width': '1.2',      # Slightly thicker
             'line_style': 'dot',
             'use_custom_dash': '1',
             'customdash': '3;2'
@@ -4982,7 +5685,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # Outside segments (to be kept) - shown in blue with solid line
         outside_symbol = QgsLineSymbol.createSimple({
             'line_color': '#0000FF',  # Blue
-            'line_width': '1.0',
+            'line_width': '1.2',      # Same thickness
             'line_style': 'solid'
         })
         categories.append(QgsRendererCategory("Outside", outside_symbol, "Outside Deviation Polygon (Kept)"))
@@ -5006,19 +5709,25 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             debug_group = root.addGroup("Debug Visualizations")
 
         # Add to project through the group
-        project.addMapLayer(split_lines_layer, False)
+        # Note: The layer should already be added to the project before this method is called
+        if split_lines_layer not in project.mapLayers().values():
+            project.addMapLayer(split_lines_layer, False)
+
         debug_group.addLayer(split_lines_layer)
 
         log.info(f"Added split lines visualization with {provider.featureCount()} segments")
+
+        # Force layer update and refresh
+        split_lines_layer.triggerRepaint()
+        split_lines_layer.updateExtents()
 
         # If there's a map canvas available, refresh it
         if hasattr(self, 'iface') and self.iface:
             self.iface.mapCanvas().refresh()
 
         return True
-
+    
     # --- 7. Simulation and Sequencing ---
-
     def _gather_simulation_parameters(self):
         """
         Reads and validates simulation parameters from the UI.
