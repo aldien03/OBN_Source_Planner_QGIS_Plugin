@@ -1915,126 +1915,539 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
            
     def handle_calculate_deviations(self):
         """
-        Main handler for the Calculate Deviations button.
-        This prepares input parameters, validates inputs, and calls the appropriate 
-        deviation calculation method. It also handles visualizations and error reporting.
+        Handler for the Calculate Deviations button.
+        Performs the deviation calculation process with visualization.
         """
+        log.info("Starting deviation calculation...")
+
         # --- Input Validation ---
+        # Ensure we have the necessary input layers
         lines_layer = self.generated_lines_layer
-        nogo_layer = self.nogo_zone_combo.currentLayer()
-        
-        if not lines_layer:
-            QMessageBox.warning(self, "Input Error", "No survey lines layer is available. Generate lines first.")
+        if not lines_layer or not lines_layer.isValid():
+            QMessageBox.warning(self, "Input Error", "No survey lines layer available. Generate lines first.")
             return False
-            
+
+        nogo_layer = self.nogo_zone_combo.currentLayer()
         if not nogo_layer or not nogo_layer.isValid():
             QMessageBox.warning(self, "Input Error", "Select a valid No-Go Zone layer.")
             return False
-            
+
         # --- Parameter Setup ---
         clearance_m = self.deviationClearanceDoubleSpinBox.value()
         turn_radius_m = self.turnRadiusDoubleSpinBox.value()
-        
+
         # Validate parameter ranges
         if clearance_m <= 0:
             QMessageBox.warning(self, "Parameter Error", "Clearance distance must be greater than zero.")
             return False
-            
+
         if turn_radius_m <= 0:
             QMessageBox.warning(self, "Parameter Error", "Turn radius must be greater than zero.")
             return False
-            
+
         log.info(f"Starting deviation calculation with clearance={clearance_m}m, turn_radius={turn_radius_m}m")
-        
-        # --- Main Processing ---
+
         try:
-            # First, create the parent visualization group for organization
-            viz_group = self._get_or_create_group("Deviation_Visualizations")
-            
-            # Call the main deviation calculation method
-            success = self._calculate_and_apply_deviations_v2(
-                lines_layer, nogo_layer, clearance_m, turn_radius_m
+            # --- Debug Option First ---
+            # Add debug visualization if the user needs it
+            debug_response = QMessageBox.question(
+                self, 
+                "Debug Options", 
+                "Would you like to:\n\n" + 
+                "1. Visualize obstacles and NoGo zones for debugging first?\n" +
+                "2. Run full calculation with detailed logging?\n\n" +
+                "Visualizing first helps debug geometry issues before running the full calculation.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
             )
-            
+
+            if debug_response == QMessageBox.Yes:
+                log.info("Performing debug visualization before calculation...")
+                # Prepare visualization of inputs
+                avoidance_geom = self._prepare_avoidance_geometry(nogo_layer, clearance_m)
+                obstacle_geometries = self._separate_avoidance_geometry(avoidance_geom)
+
+                # Create temporary visualization layers
+                debugging_group = self._add_debug_layers(avoidance_geom, obstacle_geometries, clearance_m)
+                if debugging_group:
+                    QMessageBox.information(self, "Debug Visualization Created", 
+                        "Visualization layers have been added to the map.\n" +
+                        "Review the NoGo zones (with clearance buffer) and separated obstacles.\n\n" +
+                        "Click OK to continue with the full calculation...")
+
+            # --- Run Initial Calculation for Visualization ---
+            calculation_response = QMessageBox.question(
+                self, 
+                "Choose Calculation Method", 
+                "How would you like to proceed?\n\n" +
+                "1. Prepare intermediate components (reference lines, peaks) first\n" +
+                "2. Run full deviation calculation immediately\n\n" +
+                "Option 1 is recommended for debugging geometry issues.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if calculation_response == QMessageBox.Yes:
+                # First phase: Calculate reference lines and peaks only
+                log.info("Calculating intermediate components only...")
+
+                # Start processing without creating final deviation paths
+                # Note: We're deliberately skipping the final _complete_deviation_calculation call
+                success = self._calculate_intermediate_components(
+                    lines_layer, nogo_layer, clearance_m, turn_radius_m, True
+                )
+
+                if success:
+                    log.info("Intermediate components calculated successfully.")
+
+                    # Visualize the intermediate components
+                    self._visualize_deviation_steps()
+
+                    # Ask if user wants to continue with full calculation
+                    continue_response = QMessageBox.question(
+                        self,
+                        "Continue with Deviation Calculation?",
+                        "Intermediate components have been visualized.\n\n" +
+                        "Would you like to proceed with the full deviation calculation?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes
+                    )
+
+                    if continue_response == QMessageBox.No:
+                        log.info("User chose to stop after intermediate visualization.")
+                        return True
+
+                    debug_mode = True  # Enable debug mode for the full calculation
+                else:
+                    log.error("Failed to calculate intermediate components.")
+                    QMessageBox.critical(self, "Calculation Error", 
+                                        "Failed to calculate intermediate components.\n"
+                                        "Check the log for details.")
+                    return False
+            else:
+                debug_mode = False
+
+            # --- Run Full Calculation ---
+            success = self._calculate_and_apply_deviations_v2(
+                lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode
+            )
+
             if success:
-                # Create visualizations for the results
-                try:
-                    self._visualize_peaks_and_tangents()
-                    
-                    # Get reference to current processing results and visualize middle lines
-                    for obs_idx, ref_line in getattr(self, 'all_reference_lines', {}).items():
-                        if 'geom' in ref_line and 'num' in ref_line:
-                            # Create obstacle-specific group
-                            obstacle_group = self._get_or_create_group(
-                                f"Obstacle_{obs_idx}_Details", 
-                                "Deviation_Visualizations"
-                            )
-                            
-                            # Visualize the middle reference line with special styling
-                            self._visualize_middle_reference_line(
-                                ref_line['geom'], 
-                                ref_line['num'],
-                                obs_idx,
-                                parent_group=obstacle_group
-                            )
-                    
-                    # Visualize obstacle centers
-                    for obs_idx, peak_info in getattr(self, 'all_peaks', {}).items():
-                        if peak_info:
-                            obstacle_group = self._get_or_create_group(
-                                f"Obstacle_{obs_idx}_Details", 
-                                "Deviation_Visualizations"
-                            )
-                            
-                            # Add an obstacle center marker
-                            if hasattr(self, 'obstacle_centers') and obs_idx in self.obstacle_centers:
-                                center = self.obstacle_centers[obs_idx]
-                                center_layer = self._create_temporary_point_layer(
-                                    [center],
-                                    f"Obstacle_{obs_idx}_Center",
-                                    "#FF00FF",  # Magenta
-                                    "star",
-                                    10.0,  # Very visible
-                                    parent_group=obstacle_group
-                                )
-                    
-                    log.info("Deviation calculation and visualization completed successfully.")
-                    
-                    # Show success message with visualization details
-                    QMessageBox.information(
-                        self,
-                        "Deviation Calculation Complete",
-                        "Deviation calculation completed successfully.\n\n"
-                        "Visualizations have been added to the map layers panel under 'Deviation_Visualizations'."
-                    )
-                    
-                except Exception as viz_error:
-                    # Visualization error doesn't indicate calculation failure
-                    log.warning(f"Visualization error (calculation still succeeded): {viz_error}")
-                    QMessageBox.warning(
-                        self,
-                        "Visualization Warning",
-                        f"Calculation succeeded, but there was an error creating some visualizations:\n{str(viz_error)}"
-                    )
-                
+                log.info("Deviation calculation completed successfully.")
+                QMessageBox.information(self, "Success", 
+                                       "Deviation calculation completed successfully.\n"
+                                       "Check the results in the map canvas.")
                 return True
             else:
                 log.error("Deviation calculation failed or was aborted.")
-                QMessageBox.critical(
-                    self, 
-                    "Calculation Error", 
-                    "Deviation calculation failed. Check the log for details."
-                )
+                QMessageBox.critical(self, "Calculation Error", 
+                                   "There was an error during deviation calculation.\n"
+                                   "Please check the log for details.")
                 return False
-                
+
         except Exception as e:
-            log.exception(f"Error during deviation calculation: {e}")
+            log.exception(f"Error in deviation calculation: {e}")
             QMessageBox.critical(
                 self, 
-                "Error", 
-                f"Deviation calculation failed with error:\n{str(e)}"
+                "Processing Error", 
+                f"An error occurred during calculation:\n{str(e)}\n\nCheck the log for details."
             )
             return False
+
+    def _calculate_intermediate_components(self, lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode=False):
+        """
+        Calculate just the intermediate components (reference lines, peak points) 
+        without attempting the full deviation path calculation.
+
+        This is useful for debugging geometry issues before running the full calculation.
+
+        Args:
+            lines_layer (QgsVectorLayer): Layer containing the survey lines
+            nogo_layer (QgsVectorLayer): Layer containing the NoGo zones
+            clearance_m (float): Clearance distance in meters
+            turn_radius_m (float): Minimum turning radius for the vessel in meters
+            debug_mode (bool): If True, enables extensive debugging logs
+
+        Returns:
+            bool: True if calculation was successful, False otherwise
+        """
+        log.info("Calculating intermediate components for deviation...")
+
+        project = QgsProject.instance()
+
+        # Store calculation results for visualization
+        self.all_reference_lines = {}
+        self.all_peaks = {}
+
+        # --- Phase 1: Preparation ---
+        if not self._add_deviation_fields(lines_layer):
+            QMessageBox.critical(self, "Setup Error", "Failed to add required deviation fields to the lines layer.")
+            return False
+
+        try:
+            # Prepare avoidance geometry
+            log.debug(f"Preparing avoidance geometry with clearance {clearance_m}m...")
+            avoidance_geom = self._prepare_avoidance_geometry(nogo_layer, clearance_m)
+
+            if not avoidance_geom:
+                log.error("Failed to prepare avoidance geometry.")
+                return False
+
+            # Separate the geometry into distinct components
+            log.debug("Separating avoidance geometry into distinct obstacles...")
+            obstacle_geometries = self._separate_avoidance_geometry(avoidance_geom)
+
+            if not obstacle_geometries:
+                log.error("Failed to separate avoidance geometry into obstacles.")
+                return False
+
+            # --- Identify conflicts & group ---
+            log.debug("Identifying conflicted lines...")
+            conflicted_lines_info = []
+            fld_linenum = lines_layer.fields().lookupField("LineNum")
+            fld_heading = lines_layer.fields().lookupField("Heading")
+
+            # Use spatial index to quickly find potential conflicts
+            idx = QgsSpatialIndex()
+            for feat in lines_layer.getFeatures():
+                idx.insertFeature(feat)
+
+            candidate_ids = idx.intersects(avoidance_geom.boundingBox())
+
+            # Detailed intersection check for candidates
+            conflicted_fids = {}
+            for fid in candidate_ids:
+                feat = lines_layer.getFeature(fid)
+                geom = feat.geometry()
+
+                if not geom or geom.isEmpty():
+                    continue
+
+                if geom.intersects(avoidance_geom):
+                    conflicted_fids[fid] = True
+
+                    if fld_linenum >= 0 and fld_heading >= 0:
+                        line_num = feat[fld_linenum]
+                        heading = feat[fld_heading]
+
+                        if line_num is not None and heading is not None:
+                            conflicted_lines_info.append((fid, geom, line_num, heading))
+
+            if not conflicted_lines_info:
+                log.info("No survey lines conflict with the avoidance zones.")
+                return True
+
+            log.info(f"Found {len(conflicted_lines_info)} conflicted lines.")
+
+            # --- Grouping logic with multiple obstacle support ---
+            obstacle_groups = {}
+
+            # Sort conflicted lines by LineNum
+            conflicted_lines_info.sort(key=lambda item: item[2])
+
+            # Create a mapping of which lines intersect with which obstacles
+            if len(obstacle_geometries) > 1:
+                log.info(f"Processing {len(obstacle_geometries)} distinct obstacles - grouping lines by obstacle")
+
+                # For each line, check which obstacles it intersects
+                for line_idx, (fid, line_geom, line_num, heading) in enumerate(conflicted_lines_info):
+                    line_obstacles = []
+
+                    for obs_idx, obs_geom in enumerate(obstacle_geometries):
+                        if line_geom.intersects(obs_geom):
+                            if obs_idx not in obstacle_groups:
+                                obstacle_groups[obs_idx] = []
+                            obstacle_groups[obs_idx].append((fid, line_geom, line_num, heading, line_idx))
+                            line_obstacles.append(obs_idx)
+
+                    log.debug(f"Line {line_num} intersects obstacles: {line_obstacles}")
+            else:
+                # Just one obstacle - put all lines in the same group
+                obstacle_groups[0] = [(fid, line_geom, line_num, heading, idx) 
+                                     for idx, (fid, line_geom, line_num, heading) in enumerate(conflicted_lines_info)]
+                log.info("Single obstacle detected - all lines in same group")
+
+            # Store results for visualization
+            self.conflicted_lines_info = conflicted_lines_info
+            self.obstacle_groups = obstacle_groups
+            self.obstacle_centers = {}
+
+            # Calculate the middle line for each obstacle group
+            log.debug("Identifying middle reference lines for each obstacle...")
+            middle_lines = {}
+            for obs_idx, group_lines in obstacle_groups.items():
+                if not group_lines:
+                    continue
+
+                # Sort by LineNum (should already be sorted, but ensure it)
+                group_lines.sort(key=lambda x: x[2])
+
+                # Use median approach to find middle line
+                median_idx = len(group_lines) // 2
+                middle_fid, middle_geom, middle_num, middle_heading, orig_idx = group_lines[median_idx]
+
+                # Store middle line info for this obstacle
+                middle_lines[obs_idx] = {
+                    'fid': middle_fid,
+                    'geom': middle_geom,
+                    'num': middle_num,
+                    'heading': middle_heading,
+                    'idx': orig_idx
+                }
+
+                # Store the obstacle geometry for visualization
+                middle_lines[obs_idx]['obstacle_geom'] = obstacle_geometries[obs_idx]
+
+                log.info(f"Obstacle {obs_idx}: Middle reference line identified: {middle_num}")
+
+            if not middle_lines:
+                log.error("Failed to identify any middle reference lines.")
+                return False
+
+            # Process each obstacle independently with its own middle reference line
+            log.info(f"Processing {len(middle_lines)} obstacles with separate reference lines")
+
+            # Store original values for future visualization
+            for obs_idx, middle_line_info in middle_lines.items():
+                middle_line_num = middle_line_info['num']
+                middle_line_geom = middle_line_info['geom']
+                middle_line_heading = middle_line_info['heading']
+                obstacle_geom = middle_line_info.get('obstacle_geom')
+
+                # Store reference information for this obstacle
+                self.all_reference_lines[obs_idx] = {
+                    'num': middle_line_num,
+                    'geom': middle_line_geom,
+                    'heading': middle_line_heading,
+                    'group_lines': obstacle_groups[obs_idx],
+                    'obstacle_geom': obstacle_geom
+                }
+
+                # Store the obstacle center
+                if obstacle_geom:
+                    self.obstacle_centers[obs_idx] = obstacle_geom.centroid().asPoint()
+
+                log.info(f"Obstacle {obs_idx}: Using middle line {middle_line_num} as reference")
+
+            # Calculate avoidance centroid for reference
+            avoidance_centroid = avoidance_geom.centroid().asPoint()
+
+            # Calculate Peak Points for each obstacle
+            for obs_idx, ref_line in self.all_reference_lines.items():
+                middle_line_geom = ref_line['geom']
+                middle_line_heading = ref_line['heading']
+
+                # Use the center of the obstacle 
+                obstacle_geom = obstacle_geometries[obs_idx]
+                obstacle_centroid = obstacle_geom.centroid()
+                mid_pt = obstacle_centroid.asPoint()
+
+                log.debug(f"Using obstacle center at ({mid_pt.x():.1f}, {mid_pt.y():.1f}) for perpendicular rays")
+                middle_line_heading_rad = math.radians(middle_line_heading)
+                perp_angle_rad_A = middle_line_heading_rad + math.pi / 2.0
+                perp_angle_rad_B = middle_line_heading_rad - math.pi / 2.0
+
+                # Extract obstacle boundary 
+                try:
+                    obstacle_boundary = self._extract_obstacle_boundary(obstacle_geom)
+                except Exception as e:
+                    log.warning(f"Could not extract boundary properly: {e}")
+                    obstacle_boundary = obstacle_geom
+
+                log.debug(f"Successfully extracted boundary for obstacle {obs_idx}")
+
+                # Create rays for finding peaks
+                mid_point_xy = QgsPointXY(mid_pt)
+                ray_length = max(obstacle_geom.boundingBox().width() + obstacle_geom.boundingBox().height(), 5000)
+
+                # Ray in direction A
+                ray_A_end_x = mid_pt.x() + ray_length * math.sin(perp_angle_rad_A)
+                ray_A_end_y = mid_pt.y() + ray_length * math.cos(perp_angle_rad_A)
+                ray_A = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(ray_A_end_x, ray_A_end_y)])
+
+                # Ray in direction B
+                ray_B_end_x = mid_pt.x() + ray_length * math.sin(perp_angle_rad_B)
+                ray_B_end_y = mid_pt.y() + ray_length * math.cos(perp_angle_rad_B)
+                ray_B = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(ray_B_end_x, ray_B_end_y)])
+
+                # Find intersection with obstacle boundary
+                intersection_A = ray_A.intersection(obstacle_boundary)
+                intersection_B = ray_B.intersection(obstacle_boundary)
+
+                # Calculate peak positions
+                offset_dist = max(clearance_m * 1.5, 300.0)  # Fallback distance
+                peak_a_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_A)
+                peak_a_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_A)
+                peak_b_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_B)
+                peak_b_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_B)
+
+                # If we found intersection with boundary, use that point instead
+                if intersection_A and not intersection_A.isEmpty():
+                    if intersection_A.type() == QgsWkbTypes.PointGeometry:
+                        # Process point geometry intersections
+                        if intersection_A.isMultipart():
+                            points = intersection_A.asMultiPoint()
+                            if points:
+                                # Find closest point to midpoint
+                                closest_dist = float('inf')
+                                closest_point = None
+                                for pt in points:
+                                    dist = math.sqrt((pt.x() - mid_pt.x())**2 + (pt.y() - mid_pt.y())**2)
+                                    if dist < closest_dist:
+                                        closest_dist = dist
+                                        closest_point = pt
+                                if closest_point:
+                                    peak_a_x = closest_point.x()
+                                    peak_a_y = closest_point.y()
+                        else:
+                            point = intersection_A.asPoint()
+                            peak_a_x = point.x()
+                            peak_a_y = point.y()
+                    else:
+                        # For other geometry types, find closest point
+                        closest_pt = intersection_A.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
+                        if not closest_pt.isEmpty():
+                            peak_a_x = closest_pt.asPoint().x()
+                            peak_a_y = closest_pt.asPoint().y()
+
+                # Similar process for intersection B
+                if intersection_B and not intersection_B.isEmpty():
+                    if intersection_B.type() == QgsWkbTypes.PointGeometry:
+                        if intersection_B.isMultipart():
+                            points = intersection_B.asMultiPoint()
+                            if points:
+                                closest_dist = float('inf')
+                                closest_point = None
+                                for pt in points:
+                                    dist = math.sqrt((pt.x() - mid_pt.x())**2 + (pt.y() - mid_pt.y())**2)
+                                    if dist < closest_dist:
+                                        closest_dist = dist
+                                        closest_point = pt
+                                if closest_point:
+                                    peak_b_x = closest_point.x()
+                                    peak_b_y = closest_point.y()
+                        else:
+                            point = intersection_B.asPoint()
+                            peak_b_x = point.x()
+                            peak_b_y = point.y()
+                    else:
+                        closest_pt = intersection_B.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
+                        if not closest_pt.isEmpty():
+                            peak_b_x = closest_pt.asPoint().x()
+                            peak_b_y = closest_pt.asPoint().y()
+
+                # Store peaks for visualization
+                peak_A = QgsPoint(peak_a_x, peak_a_y)
+                peak_B = QgsPoint(peak_b_x, peak_b_y)
+                self.all_peaks[obs_idx] = {'A': peak_A, 'B': peak_B}
+
+                log.debug(f"Obstacle {obs_idx}: Peak A: {peak_A.x():.1f},{peak_A.y():.1f}, Peak B: {peak_B.x():.1f},{peak_B.y():.1f}")
+
+                # Add entry/exit points for visualization
+                # Calculate entry/exit points from obstacle center along middle line heading
+                obstacle_center = self.obstacle_centers[obs_idx]
+                if obstacle_center:
+                    entry_point, exit_point = self._calculate_entry_exit_points(
+                        obstacle_center, 
+                        middle_line_heading,
+                        1000.0  # Use 1000m distance as requested
+                    )
+                    
+                    # Store for visualization
+                    self.all_reference_lines[obs_idx]['entry_point'] = entry_point
+                    self.all_reference_lines[obs_idx]['exit_point'] = exit_point
+                    
+                    # Create a simple deviation polygon for visualization
+                    entry_pt_xy = entry_point  # Already QgsPointXY
+                    exit_pt_xy = exit_point    # Already QgsPointXY
+                    peak_a_xy = QgsPointXY(peak_A)
+                    peak_b_xy = QgsPointXY(peak_B)
+                    
+                    # Create the polygon points (clockwise order)
+                    polygon_points = [
+                        entry_pt_xy,
+                        peak_a_xy,
+                        exit_pt_xy,
+                        peak_b_xy,
+                        entry_pt_xy  # Close the polygon
+                    ]
+                    
+                    # Create polygon geometry
+                    deviation_polygon = QgsGeometry.fromPolygonXY([polygon_points])
+                    self.all_reference_lines[obs_idx]['deviation_polygon'] = deviation_polygon
+
+                    # Store for visualization
+                    self.all_reference_lines[obs_idx]['entry_point'] = entry_point
+                    self.all_reference_lines[obs_idx]['exit_point'] = exit_point
+
+                    # Create a simple deviation polygon for visualization
+                    entry_pt_xy = QgsPointXY(entry_point)
+                    exit_pt_xy = QgsPointXY(exit_point)
+                    peak_a_xy = QgsPointXY(peak_A)
+                    peak_b_xy = QgsPointXY(peak_B)
+
+                    # Create the polygon points (clockwise order)
+                    polygon_points = [
+                        entry_pt_xy,
+                        peak_a_xy,
+                        exit_pt_xy,
+                        peak_b_xy,
+                        entry_pt_xy  # Close the polygon
+                    ]
+
+                    # Create polygon geometry
+                    deviation_polygon = QgsGeometry.fromPolygonXY([polygon_points])
+                    self.all_reference_lines[obs_idx]['deviation_polygon'] = deviation_polygon
+
+            # All intermediate components calculated successfully
+            log.info("Successfully calculated intermediate components for deviation!")
+            return True
+
+        except Exception as e:
+            log.exception(f"Error calculating intermediate components: {e}")
+            return False
+
+    def _extract_obstacle_boundary(self, obstacle_geom):
+        """
+        Helper method to extract the boundary of an obstacle geometry.
+
+        Args:
+            obstacle_geom (QgsGeometry): The obstacle geometry
+
+        Returns:
+            QgsGeometry: The boundary geometry
+        """
+        if obstacle_geom.type() == QgsWkbTypes.PolygonGeometry:
+            if obstacle_geom.isMultipart():
+                # For multipolygon, use the part with largest area
+                multi_polygon = obstacle_geom.asMultiPolygon()
+                if multi_polygon:
+                    # Find the largest polygon by area
+                    largest_idx = 0
+                    largest_area = 0
+                    for i, polygon in enumerate(multi_polygon):
+                        temp_geom = QgsGeometry.fromPolygonXY(polygon)
+                        area = temp_geom.area()
+                        if area > largest_area:
+                            largest_area = area
+                            largest_idx = i
+
+                    # Get the exterior ring of the largest polygon
+                    if multi_polygon[largest_idx]:
+                        exterior_ring = multi_polygon[largest_idx][0]  # First ring is exterior
+                        return QgsGeometry.fromPolylineXY(exterior_ring)
+            else:
+                # Single polygon
+                polygon = obstacle_geom.asPolygon()
+                if polygon and polygon[0]:  # Check if polygon has rings
+                    exterior_ring = polygon[0]  # First ring is exterior
+                    return QgsGeometry.fromPolylineXY(exterior_ring)
+        elif obstacle_geom.type() == QgsWkbTypes.LineGeometry:
+            # If it's already a line, use it directly
+            return obstacle_geom
+
+        # For other types, just use the original geometry
+        return obstacle_geom
 
     def _prepare_nogo_geometry(self, nogo_layer, clearance_m):
         """
@@ -3040,13 +3453,99 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error merging geometries: {e}")
             return None
 
-    def _calculate_and_apply_deviations_v2(self, lines_layer, nogo_layer, clearance_m, turn_radius_m):
+    def _add_deviation_fields(self, lines_layer):
+        """
+        Add the required fields for deviation tracking to the lines layer.
+
+        Args:
+            lines_layer (QgsVectorLayer): The layer to add fields to
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not lines_layer or not lines_layer.isValid():
+            log.error("Invalid layer provided to _add_deviation_fields")
+            return False
+
+        log.debug(f"Adding deviation tracking fields to layer '{lines_layer.name()}'")
+
+        provider = lines_layer.dataProvider()
+        fields_to_add = []
+
+        # Check which fields are already present
+        existing_fields = [field.name() for field in lines_layer.fields()]
+
+        if "is_conflicted" not in existing_fields:
+            fields_to_add.append(QgsField("is_conflicted", QVariant.Bool))
+
+        if "is_deviation_created" not in existing_fields:
+            fields_to_add.append(QgsField("is_deviation_created", QVariant.Bool))
+
+        if "is_line_merged" not in existing_fields:
+            fields_to_add.append(QgsField("is_line_merged", QVariant.Bool))
+
+        if "Length_m" not in existing_fields:
+            fields_to_add.append(QgsField("Length_m", QVariant.Double, "double", 10, 2))
+
+        # Add fields if any need to be added
+        if fields_to_add:
+            if not provider.addAttributes(fields_to_add):
+                log.error(f"Failed to add fields: {provider.lastError()}")
+                return False
+
+            # Update layer fields
+            lines_layer.updateFields()
+
+            # Initialize all instances of new boolean fields to False
+            features = lines_layer.getFeatures()
+            fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
+            fld_created_idx = lines_layer.dataProvider().fieldNameIndex("is_deviation_created")
+            fld_merged_idx = lines_layer.dataProvider().fieldNameIndex("is_line_merged")
+
+            attr_map = {}
+            for feature in features:
+                attrs = {}
+                if fld_conflicted_idx >= 0:
+                    attrs[fld_conflicted_idx] = False
+                if fld_created_idx >= 0:
+                    attrs[fld_created_idx] = False
+                if fld_merged_idx >= 0:
+                    attrs[fld_merged_idx] = False
+
+                if attrs:
+                    attr_map[feature.id()] = attrs
+
+            if attr_map:
+                if not provider.changeAttributeValues(attr_map):
+                    log.warning("Failed to initialize boolean field values to False")
+
+            log.info(f"Added {len(fields_to_add)} deviation tracking fields to layer.")
+            return True
+        else:
+            log.info("All required deviation fields already exist.")
+            return True
+
+    def _calculate_and_apply_deviations_v2(self, lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode=False):
         """
         Core logic for calculating and applying deviations using the Peak/Tangent approach.
+
+        Args:
+            lines_layer (QgsVectorLayer): Layer containing the survey lines
+            nogo_layer (QgsVectorLayer): Layer containing the NoGo zones
+            clearance_m (float): Clearance distance in meters
+            turn_radius_m (float): Minimum turning radius for the vessel in meters
+            debug_mode (bool): If True, enables extensive debugging logs
+
+        Returns:
+            bool: True if calculation was successful, False otherwise
         """
-        log.info("Starting V2 deviation calculation (Peak/Tangent based)...")
         success_flag = True # Assume success unless something fails critically
         project = QgsProject.instance()
+
+        # Store calculation results for visualization
+        self.all_reference_lines = {}
+        self.all_peaks = {}
+
         # Initialize progress variable at the beginning to avoid UnboundLocalError
         progress = None
 
@@ -3055,95 +3554,142 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             QMessageBox.critical(self, "Setup Error", "Failed to add required deviation fields to the lines layer.")
             return False
 
-        # Initialize fields to False first
+        # Start editing the lines layer if not already in editing mode
         edit_started_here = False
         if not lines_layer.isEditable():
             if not lines_layer.startEditing():
-                 log.error(f"Could not start editing on layer '{lines_layer.name()}'")
-                 QMessageBox.critical(self, "Error", f"Could not start editing layer '{lines_layer.name()}'. Check layer permissions.")
                  return False
             edit_started_here = True
             log.debug(f"Started editing layer: {lines_layer.name()}")
 
-
         try:
+            # --- PREPARE FIELDS ---
+            # Get full field details for better error diagnosis
+            if debug_mode:
+                field_names = [field.name() for field in lines_layer.fields()]
+                log.debug(f"Available fields in layer: {', '.join(field_names)}")
+
             log.debug("Initializing deviation fields...")
             fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
             fld_created_idx = lines_layer.dataProvider().fieldNameIndex("is_deviation_created")
             fld_merged_idx = lines_layer.dataProvider().fieldNameIndex("is_line_merged")
             fld_length_idx = lines_layer.dataProvider().fieldNameIndex("Length_m")
-            
-            if -1 in [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]:
-                missing = [name for name, idx in zip(["is_conflicted", "is_deviation_created", "is_line_merged", "Length_m"],
-                                                      [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]) if idx == -1]
-                raise ValueError(f"Required fields not found in layer: {', '.join(missing)}")
-        except Exception as e:
-            log.error(f"Error initializing fields: {e}")
-            # Add the fields if they're missing
-            self._add_deviation_fields(lines_layer)
 
-            # Use changeAttributeValues for efficiency
+            # Detailed logging of field indices
+            if debug_mode:
+                log.debug(f"Field indices: is_conflicted={fld_conflicted_idx}, " +
+                          f"is_deviation_created={fld_created_idx}, " +
+                          f"is_line_merged={fld_merged_idx}, " +
+                          f"Length_m={fld_length_idx}")
+
+            # Double-check that fields are present
+            if -1 in [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]:
+                still_missing = [name for name, idx in zip(
+                    ["is_conflicted", "is_deviation_created", "is_line_merged", "Length_m"],
+                    [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]
+                ) if idx == -1]
+                raise ValueError(f"Required fields still missing after adding: {', '.join(still_missing)}")
+
+            # Initialize values for tracking fields
+            log.debug("Resetting deviation fields to initial values...")
             init_attrs = {}
-            for feature in lines_layer.getFeatures():
-                init_attrs[feature.id()] = {
-                    fld_conflicted_idx: False,
-                    fld_created_idx: False,
-                    fld_merged_idx: False
-                }
-            if init_attrs:
-                if not lines_layer.dataProvider().changeAttributeValues(init_attrs):
+
+            features = lines_layer.getFeatures()
+            attr_map = {}
+            provider = lines_layer.dataProvider()
+
+            for feature in features:
+                attrs = {}
+                if fld_conflicted_idx >= 0:
+                    attrs[fld_conflicted_idx] = False
+                if fld_created_idx >= 0:
+                    attrs[fld_created_idx] = False
+                if fld_merged_idx >= 0:
+                    attrs[fld_merged_idx] = False
+
+                if attrs:
+                    attr_map[feature.id()] = attrs
+
+            if attr_map:
+                if not provider.changeAttributeValues(attr_map):
                      log.error(f"Failed to initialize deviation fields: {lines_layer.dataProvider().lastError()}")
                      raise RuntimeError("Failed to initialize deviation fields.")
             log.debug("Deviation fields initialized.")
 
-            # Get avoidance geometry for conflict detection
+            # --- PREPARE AVOIDANCE GEOMETRY ---
+            log.debug(f"Preparing avoidance geometry with clearance {clearance_m}m...")
             avoidance_geom = self._prepare_avoidance_geometry(nogo_layer, clearance_m)
+
             if not avoidance_geom:
                 log.error("Failed to prepare avoidance geometry. Aborting deviation calculation.")
                 raise ValueError("Failed to prepare avoidance geometry.") # Raise exception to trigger rollback
-            
-            # Separate the geometry into distinct components by using spatial clustering
-            # This ensures obstacles that are spatially separated are treated independently
-            obstacle_geometries = self._separate_avoidance_geometry(avoidance_geom)
-            log.info(f"Identified {len(obstacle_geometries)} spatially distinct obstacles")
 
-            # --- Phase 2: Identify Conflicts & Group ---
+            if debug_mode:
+                log.debug(f"Avoidance geometry type: {avoidance_geom.type()}, " +
+                          f"Geometry is valid: {avoidance_geom.isGeosValid()}, " +
+                          f"Is multipart: {avoidance_geom.isMultipart()}")
+
+            # Separate the geometry into distinct components by using spatial clustering
+            log.debug("Separating avoidance geometry into distinct obstacles...")
+            obstacle_geometries = self._separate_avoidance_geometry(avoidance_geom)
+
+            if not obstacle_geometries:
+                log.error("Failed to separate avoidance geometry into obstacles. Aborting.")
+                raise ValueError("Failed to separate avoidance geometry into obstacles.")
+
+            if debug_mode:
+                log.debug(f"Identified {len(obstacle_geometries)} distinct obstacle geometries")
+                for i, geom in enumerate(obstacle_geometries):
+                    log.debug(f"Obstacle {i}: Valid: {geom.isGeosValid()}, " +
+                             f"Type: {geom.type()}, Area: {geom.area():.2f}")
+
+            # --- IDENTIFY CONFLICTS & GROUP ---
             log.debug("Identifying conflicted lines...")
             conflicted_lines_info = [] # List of (fid, line_geom, line_num, heading)
             fld_linenum = lines_layer.fields().lookupField("LineNum")
             fld_heading = lines_layer.fields().lookupField("Heading")
 
-            request_geom = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoGeometry).setSubsetOfAttributes([fld_linenum, fld_heading]) # Only need attributes here
+            # Use a spatial request to quickly find candidates
+            log.debug("Building spatial index for conflict detection...")
+            request_geom = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoGeometry).setSubsetOfAttributes([fld_linenum, fld_heading]) 
 
-            # --- Get all features first to build spatial index ---
+            # Get all features first to build spatial index
             all_features = {f.id(): f for f in lines_layer.getFeatures(request_geom)}
             lines_layer.dataProvider().featureCount() # Ensure provider is ready
 
-            # Build spatial index on the *original* geometries
+            # Build spatial index on the original geometries
+            log.debug("Creating spatial index from line features...")
             idx = QgsSpatialIndex()
             for fid, feat in all_features.items():
                 geom = lines_layer.getFeature(fid).geometry() # Get geometry for index
                 if geom and not geom.isNull():
                    idx.insertFeature(feat)
 
+            # Use spatial index to quickly find potential conflicts
+            log.debug("Using spatial index to find potential conflicts...")
             candidate_ids = idx.intersects(avoidance_geom.boundingBox())
-            log.debug(f"Spatial index identified {len(candidate_ids)} potential candidates.")
+            log.debug(f"Found {len(candidate_ids)} potential candidates using spatial index")
 
+            # Detailed intersection check for candidates
             conflicted_fids = {}
             for fid in candidate_ids:
-                feature = lines_layer.getFeature(fid) # Get full feature with geometry now
-                line_geom = feature.geometry()
-                if line_geom and not line_geom.isNull() and line_geom.intersects(avoidance_geom):
-                    line_num_val = feature.attribute(fld_linenum)
-                    heading_val = feature.attribute(fld_heading)
-                    # Add basic validation here
-                    if line_num_val is not None and heading_val is not None:
-                         try:
-                             line_num = int(line_num_val)
-                             heading = float(heading_val)
-                             conflicted_lines_info.append( (fid, line_geom, line_num, heading) )
-                             conflicted_fids[fid] = {fld_conflicted_idx: True} # Prepare for bulk update
-                         except (TypeError, ValueError):
+                feat = lines_layer.getFeature(fid)
+                geom = feat.geometry()
+
+                if not geom or geom.isEmpty():
+                    continue
+
+                if geom.intersects(avoidance_geom):
+                    conflicted_fids[fid] = True
+
+                    # Get LineNum and Heading for this feature if available
+                    if fld_linenum >= 0 and fld_heading >= 0:
+                        line_num = feat[fld_linenum]
+                        heading = feat[fld_heading]
+
+                        if line_num is not None and heading is not None:
+                            conflicted_lines_info.append((fid, geom, line_num, heading))
+                        else:
                              log.warning(f"Invalid attribute value for line FID {fid}. Skipping.")
                     else:
                          log.warning(f"Missing LineNum or Heading for FID {fid}. Skipping.")
@@ -3151,62 +3697,70 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             if not conflicted_lines_info:
                 log.info("No survey lines conflict with the avoidance zones.")
                 if edit_started_here: lines_layer.commitChanges()
-                QMessageBox.information(self, "No Conflicts", "No survey lines intersect the NoGo zones (with clearance).")
                 return True
 
             log.info(f"Found {len(conflicted_lines_info)} conflicted lines.")
 
             # Mark conflicted lines via attribute update
             if conflicted_fids:
-                if not lines_layer.dataProvider().changeAttributeValues(conflicted_fids):
+                log.debug("Marking conflicted lines in attribute table...")
+                conflict_changes = {fid: {fld_conflicted_idx: True} for fid in conflicted_fids.keys()}
+                if not lines_layer.dataProvider().changeAttributeValues(conflict_changes):
                     log.error(f"Failed to mark conflicted lines: {lines_layer.dataProvider().lastError()}")
-                    # Decide whether to proceed or stop based on severity
-                    # For now, let's proceed but be aware
-            # --- End of change ---
+                    # We'll proceed despite this error but note it in the log
 
-            # --- Grouping Logic with Multiple Obstacle Support ---
+            # --- GROUPING LOGIC WITH MULTIPLE OBSTACLE SUPPORT ---
             # Group conflicted lines by which obstacle they intersect
-            obstacle_groups = {}
-            
+            log.debug("Grouping conflicted lines by obstacle...")
+            obstacle_groups = {}  # Dictionary of obstacle_idx -> list of conflicted lines for that obstacle
+
             # First, sort conflicted lines by LineNum for each group
             conflicted_lines_info.sort(key=lambda item: item[2])
-            
+
             # Create a mapping of which lines intersect with which obstacles
             if len(obstacle_geometries) > 1:
                 log.info(f"Processing {len(obstacle_geometries)} distinct obstacles - grouping lines by obstacle")
-                
+
                 # For each line, check which obstacles it intersects
                 for line_idx, (fid, line_geom, line_num, heading) in enumerate(conflicted_lines_info):
                     # Track which obstacles this line intersects
                     line_obstacles = []
-                    
+
                     for obs_idx, obs_geom in enumerate(obstacle_geometries):
                         if line_geom.intersects(obs_geom):
                             if obs_idx not in obstacle_groups:
                                 obstacle_groups[obs_idx] = []
                             obstacle_groups[obs_idx].append((fid, line_geom, line_num, heading, line_idx))
                             line_obstacles.append(obs_idx)
-                    
+
                     log.debug(f"Line {line_num} intersects obstacles: {line_obstacles}")
             else:
                 # Just one obstacle - put all lines in the same group
                 obstacle_groups[0] = [(fid, line_geom, line_num, heading, idx) 
                                      for idx, (fid, line_geom, line_num, heading) in enumerate(conflicted_lines_info)]
                 log.info("Single obstacle detected - all lines in same group")
-            
-            # Calculate the middle line for each obstacle group
+
+            # Store the results for later visualization
+            # This allows the handle_calculate_deviations method to access these
+            # for visualization without recomputing
+            self.conflicted_lines_info = conflicted_lines_info
+            self.obstacle_groups = obstacle_groups
+            self.obstacle_centers = {}
+
+            # STEP 1: Calculate the middle line for each obstacle group
+            log.debug("Identifying middle reference lines for each obstacle...")
             middle_lines = {}
             for obs_idx, group_lines in obstacle_groups.items():
                 if not group_lines:
                     continue
-                    
+
                 # Sort by LineNum (should already be sorted, but ensure it)
                 group_lines.sort(key=lambda x: x[2])
-                
+
                 # Use median approach to find middle line
                 median_idx = len(group_lines) // 2
                 middle_fid, middle_geom, middle_num, middle_heading, orig_idx = group_lines[median_idx]
-                
+
                 # Store middle line info for this obstacle
                 middle_lines[obs_idx] = {
                     'fid': middle_fid,
@@ -3215,402 +3769,995 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     'heading': middle_heading,
                     'idx': orig_idx
                 }
-                
+
+                # Store the obstacle geometry for visualization
+                middle_lines[obs_idx]['obstacle_geom'] = obstacle_geometries[obs_idx]
+
                 log.info(f"Obstacle {obs_idx}: Middle reference line identified: {middle_num} at index {orig_idx}")
-            
+
             # If no obstacles had valid lines, this is an error
             if not middle_lines:
                 log.error("Failed to identify any middle reference lines across all obstacles.")
-                raise RuntimeError("Failed to identify any middle reference lines.")
-            
+                raise RuntimeError("No valid middle reference lines could be identified.")
+
             # Process each obstacle independently with its own middle reference line
             log.info(f"Processing {len(middle_lines)} obstacles with separate reference lines")
-            
-            # Store original values for future enhancements
-            all_reference_lines = {}
-            
-            # Process each obstacle separately
+
+            # Store original values for future enhancements and visualization
             for obs_idx, middle_line_info in middle_lines.items():
                 middle_line_num = middle_line_info['num']
                 middle_line_geom = middle_line_info['geom']
                 middle_line_heading = middle_line_info['heading']
                 middle_line_index = middle_line_info['idx']
-                
+                obstacle_geom = middle_line_info.get('obstacle_geom')
+
                 # Store reference information for this obstacle
-                all_reference_lines[obs_idx] = {
+                self.all_reference_lines[obs_idx] = {
                     'num': middle_line_num,
                     'geom': middle_line_geom,
                     'heading': middle_line_heading,
-                    'idx': middle_line_index,
-                    'group_lines': obstacle_groups[obs_idx]
+                    'group_lines': obstacle_groups[obs_idx],
+                    'obstacle_geom': obstacle_geom
                 }
-                
+
+                # STEP 2: Store the obstacle center (Find Obstacle Center Point)
+                if obstacle_geom:
+                    self.obstacle_centers[obs_idx] = obstacle_geom.centroid().asPoint()
+
                 log.info(f"Obstacle {obs_idx}: Using middle line {middle_line_num} as reference")
 
             # For centroid calculation (used in various places later)
             avoidance_centroid_geom = avoidance_geom.centroid()
             if not avoidance_centroid_geom or avoidance_centroid_geom.isEmpty():
-                log.error("Failed to calculate avoidance zone centroid.")
+                log.error("Cannot calculate avoidance zone centroid.")
                 raise RuntimeError("Cannot calculate avoidance zone centroid.") # Raise exception for rollback
             avoidance_centroid_point = avoidance_centroid_geom.asPoint() # QgsPoint
-            
+
             # Log midpoint distances for debugging (kept for backward compatibility)
             log.debug("Calculating midpoint distances to centroid for conflicted lines:")
             for idx, (fid, geom, num, head) in enumerate(conflicted_lines_info):
                 midpoint_geom = geom.interpolate(geom.length() / 2.0)
-                if midpoint_geom and not midpoint_geom.isEmpty():
+                if not midpoint_geom or not midpoint_geom.isEmpty():
                     midpoint_point = midpoint_geom.asPoint() # QgsPoint
                     dist_sq = midpoint_point.sqrDist(avoidance_centroid_point)
                     log.debug(f"  Line {num}: Midpoint ({midpoint_point.x():.1f}, {midpoint_point.y():.1f}), DistSq = {dist_sq:.2f}")
 
-            if middle_line_num == -1 or middle_line_geom is None or middle_line_heading is None:
-                log.error("Failed to identify the middle reference line (midpoint method).")
-                raise RuntimeError("Failed to identify middle reference line.") # Raise exception
-
-            # Log message is now handled in the calculation method above
-
-            # Calculate Peak Points for each obstacle separately
-            all_peaks = {}
-            
-            # Initialize line to peak assignment dictionary
-            line_to_peak_assignment = {}
-            
-            for obs_idx, ref_line in all_reference_lines.items():
+            # STEPS 3-4: Calculate Peak Points A and B for each obstacle using perpendicular rays
+            for obs_idx, ref_line in self.all_reference_lines.items():
                 middle_line_geom = ref_line['geom']
                 middle_line_heading = ref_line['heading']
-                
+
                 # Calculate the peaks for this obstacle
                 # Use the center of the obstacle instead of midpoint of the line
                 obstacle_geom = obstacle_geometries[obs_idx]
                 obstacle_centroid = obstacle_geom.centroid()
                 mid_pt = obstacle_centroid.asPoint() # Get the center point of the obstacle
                 mid_point_xy = QgsPointXY(mid_pt) # Convert to QgsPointXY for distance calculation
-                
+
                 log.debug(f"Using obstacle center at ({mid_pt.x():.1f}, {mid_pt.y():.1f}) for perpendicular rays")
                 middle_line_heading_rad = math.radians(middle_line_heading)
                 perp_angle_rad_A = middle_line_heading_rad + math.pi / 2.0
                 perp_angle_rad_B = middle_line_heading_rad - math.pi / 2.0
-                
+
                 # Use the obstacle boundary to find intersections with perpendicular rays
-                # Extract the actual boundary from the obstacle geometry
-                # Note: obstacle_geom is already defined above now
-                
-                # Create a line from the obstacle polygon boundary for intersection testing
                 try:
                     # For polygon, the boundary would be the exterior ring - we can convert to a line
+                    obstacle_boundary = None
                     if obstacle_geom.type() == QgsWkbTypes.PolygonGeometry:
-                        if not obstacle_geom.isMultipart():
-                            # Single polygon - get exterior ring directly
-                            poly = obstacle_geom.asPolygon()
-                            if poly and len(poly) > 0:
-                                # The first ring is the exterior ring
-                                obstacle_boundary = QgsGeometry.fromPolylineXY(poly[0])
-                            else:
-                                raise ValueError("Empty polygon geometry")
+                        if obstacle_geom.isMultipart():
+                            # For multipolygon, use the part with largest area
+                            multi_polygon = obstacle_geom.asMultiPolygon()
+                            if multi_polygon:
+                                # Find the largest polygon by area
+                                largest_idx = 0
+                                largest_area = 0
+                                for i, polygon in enumerate(multi_polygon):
+                                    temp_geom = QgsGeometry.fromPolygonXY(polygon)
+                                    area = temp_geom.area()
+                                    if area > largest_area:
+                                        largest_area = area
+                                        largest_idx = i
+
+                                # Get the exterior ring of the largest polygon
+                                if multi_polygon[largest_idx]:
+                                    exterior_ring = multi_polygon[largest_idx][0]  # First ring is exterior
+                                    obstacle_boundary = QgsGeometry.fromPolylineXY(exterior_ring)
                         else:
-                            # Multi-polygon - get all exterior rings
-                            multi_poly = obstacle_geom.asMultiPolygon()
-                            parts = []
-                            for poly in multi_poly:
-                                if poly and len(poly) > 0:
-                                    parts.append(poly[0])  # Add exterior ring of each part
-                            if parts:
-                                obstacle_boundary = QgsGeometry.fromMultiPolylineXY(parts)
-                            else:
-                                raise ValueError("Empty multi-polygon geometry")
+                            # Single polygon
+                            polygon = obstacle_geom.asPolygon()
+                            if polygon and polygon[0]:  # Check if polygon has rings
+                                exterior_ring = polygon[0]  # First ring is exterior
+                                obstacle_boundary = QgsGeometry.fromPolylineXY(exterior_ring)
+                    elif obstacle_geom.type() == QgsWkbTypes.LineGeometry:
+                        # If it's already a line, use it directly
+                        obstacle_boundary = obstacle_geom
                     else:
-                        # If not a polygon, attempt to handle as a line or other geometry
-                        if obstacle_geom.type() == QgsWkbTypes.LineGeometry:
-                            obstacle_boundary = obstacle_geom
-                        else:
-                            # As a last resort, create a small buffer and use its boundary
-                            buffer_geom = obstacle_geom.buffer(0.1, 5)  # Small buffer with 5 segments
-                            if buffer_geom.type() == QgsWkbTypes.PolygonGeometry:
-                                if not buffer_geom.isMultipart():
-                                    poly = buffer_geom.asPolygon()
-                                    obstacle_boundary = QgsGeometry.fromPolylineXY(poly[0])
-                                else:
-                                    multi_poly = buffer_geom.asMultiPolygon()
-                                    parts = [poly[0] for poly in multi_poly if poly and len(poly) > 0]
-                                    obstacle_boundary = QgsGeometry.fromMultiPolylineXY(parts)
-                            else:
-                                # If all else fails, use the original geometry
-                                obstacle_boundary = obstacle_geom
-                                
+                        # For other types, just use the original geometry
+                        obstacle_boundary = obstacle_geom
+
                 except (ValueError, IndexError, AttributeError) as e:
                     log.warning(f"Could not extract boundary properly: {e}")
                     # Fallback to using the original geometry
                     obstacle_boundary = obstacle_geom
-                
+
                 log.debug(f"Successfully extracted boundary for obstacle {obs_idx}")
-                
-                log.debug(f"Calculating peak points using obstacle boundary for obstacle {obs_idx}")
-                
+
                 # Create a ray extending from midpoint in perpendicular directions (longer than needed to ensure intersection)
                 search_distance = obstacle_geom.boundingBox().width() + obstacle_geom.boundingBox().height()
                 ray_length = max(search_distance, 5000)  # Use a larger value to ensure we intersect the boundary
-                
+
                 # Ray in direction A
                 ray_A_end_x = mid_pt.x() + ray_length * math.sin(perp_angle_rad_A)
                 ray_A_end_y = mid_pt.y() + ray_length * math.cos(perp_angle_rad_A)
                 ray_A = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(ray_A_end_x, ray_A_end_y)])
-                
+
                 # Ray in direction B
                 ray_B_end_x = mid_pt.x() + ray_length * math.sin(perp_angle_rad_B)
                 ray_B_end_y = mid_pt.y() + ray_length * math.cos(perp_angle_rad_B)
                 ray_B = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(ray_B_end_x, ray_B_end_y)])
-                
+
                 # Find intersection with obstacle boundary
                 intersection_A = ray_A.intersection(obstacle_boundary)
                 intersection_B = ray_B.intersection(obstacle_boundary)
-                
-                # Use fallback in case of no intersection, but with a better calculation
-                offset_dist = max(clearance_m * 1.5, 300.0)  # More reasonable fallback
+
+                # Use fallback in case of no intersection
+                offset_dist = max(clearance_m * 1.5, 300.0)  # Reasonable fallback
                 peak_a_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_A)
                 peak_a_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_A)
                 peak_b_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_B)
                 peak_b_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_B)
-                
+
                 # If we found intersection with boundary, use that point instead
                 if intersection_A and not intersection_A.isEmpty():
-                    # Create a separate visualization group for this obstacle if not already done
-                    obstacle_group_name = f"Obstacle_{obs_idx}_Visualization"
-                    obstacle_group = self._get_or_create_group(obstacle_group_name, "Debug Visualizations")
-                    
-                    # Visualize the actual intersection for debugging
-                    intersection_A_layer = self._create_temporary_point_layer(
-                        [QgsPoint(intersection_A.asPoint().x(), intersection_A.asPoint().y())], 
-                        f"RayA_Intersection_Obs_{obs_idx}", 
-                        "#00FF00", 
-                        "circle",
-                        parent_group=obstacle_group
-                    )
-                    
                     # Get the closest intersection point to the midpoint
                     if intersection_A.type() == QgsWkbTypes.PointGeometry:
                         if intersection_A.isMultipart():
-                            # Find closest point in multipoint
-                            min_dist = float('inf')
-                            closest_point = None
-                            for pt in intersection_A.asMultiPoint():
-                                dist = mid_point_xy.distance(pt)
-                                if dist < min_dist:
-                                    min_dist = dist
-                                    closest_point = pt
-                            if closest_point:
-                                peak_a_x = closest_point.x()
-                                peak_a_y = closest_point.y()
+                            # Multiple intersection points, find closest one
+                            points = intersection_A.asMultiPoint()
+                            if points:
+                                closest_dist = float('inf')
+                                closest_point = None
+                                for pt in points:
+                                    dist = math.sqrt((pt.x() - mid_pt.x())**2 + (pt.y() - mid_pt.y())**2)
+                                    if dist < closest_dist:
+                                        closest_dist = dist
+                                        closest_point = pt
+                                if closest_point:
+                                    peak_a_x = closest_point.x()
+                                    peak_a_y = closest_point.y()
                         else:
-                            peak_a_x = intersection_A.asPoint().x()
-                            peak_a_y = intersection_A.asPoint().y()
+                            # Single intersection point
+                            point = intersection_A.asPoint()
+                            peak_a_x = point.x()
+                            peak_a_y = point.y()
                     else:
-                        # Try to extract a point if it's a different geometry type
-                        log.debug(f"Unexpected geometry type for intersection A: {intersection_A.type()}")
-                        # For line geometries, use the closest point on the line
-                        if intersection_A.type() == QgsWkbTypes.LineGeometry:
-                            closest_pt = intersection_A.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
-                            if not closest_pt.isEmpty():
-                                peak_a_x = closest_pt.asPoint().x()
-                                peak_a_y = closest_pt.asPoint().y()
-                
+                        # For more complex geometries, try to find the closest point
+                        closest_pt = intersection_A.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
+                        if not closest_pt.isEmpty():
+                            peak_a_x = closest_pt.asPoint().x()
+                            peak_a_y = closest_pt.asPoint().y()
+
                 if intersection_B and not intersection_B.isEmpty():
-                    # Create a separate visualization group for this obstacle if not already done
-                    obstacle_group_name = f"Obstacle_{obs_idx}_Visualization"
-                    obstacle_group = self._get_or_create_group(obstacle_group_name, "Debug Visualizations")
-                    
-                    # Visualize the actual intersection for debugging
-                    intersection_B_layer = self._create_temporary_point_layer(
-                        [QgsPoint(intersection_B.asPoint().x(), intersection_B.asPoint().y())], 
-                        f"RayB_Intersection_Obs_{obs_idx}", 
-                        "#00FF00", 
-                        "circle",
-                        parent_group=obstacle_group
-                    )
-                    
                     # Get the closest intersection point to the midpoint
                     if intersection_B.type() == QgsWkbTypes.PointGeometry:
                         if intersection_B.isMultipart():
-                            # Find closest point in multipoint
-                            min_dist = float('inf')
-                            closest_point = None
-                            for pt in intersection_B.asMultiPoint():
-                                dist = mid_point_xy.distance(pt)
-                                if dist < min_dist:
-                                    min_dist = dist
-                                    closest_point = pt
-                            if closest_point:
-                                peak_b_x = closest_point.x()
-                                peak_b_y = closest_point.y()
+                            # Multiple intersection points, find closest one
+                            points = intersection_B.asMultiPoint()
+                            if points:
+                                closest_dist = float('inf')
+                                closest_point = None
+                                for pt in points:
+                                    dist = math.sqrt((pt.x() - mid_pt.x())**2 + (pt.y() - mid_pt.y())**2)
+                                    if dist < closest_dist:
+                                        closest_dist = dist
+                                        closest_point = pt
+                                if closest_point:
+                                    peak_b_x = closest_point.x()
+                                    peak_b_y = closest_point.y()
                         else:
-                            peak_b_x = intersection_B.asPoint().x()
-                            peak_b_y = intersection_B.asPoint().y()
+                            # Single intersection point
+                            point = intersection_B.asPoint()
+                            peak_b_x = point.x()
+                            peak_b_y = point.y()
                     else:
-                        # Try to extract a point if it's a different geometry type
-                        log.debug(f"Unexpected geometry type for intersection B: {intersection_B.type()}")
-                        # For line geometries, use the closest point on the line
-                        if intersection_B.type() == QgsWkbTypes.LineGeometry:
-                            closest_pt = intersection_B.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
-                            if not closest_pt.isEmpty():
-                                peak_b_x = closest_pt.asPoint().x()
-                                peak_b_y = closest_pt.asPoint().y()
-                
+                        # For more complex geometries, try to find the closest point
+                        closest_pt = intersection_B.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
+                        if not closest_pt.isEmpty():
+                            peak_b_x = closest_pt.asPoint().x()
+                            peak_b_y = closest_pt.asPoint().y()
+
                 # Create Peaks for this obstacle
                 peak_A = QgsPoint(peak_a_x, peak_a_y)
                 peak_B = QgsPoint(peak_b_x, peak_b_y)
 
                 # Store peaks for this obstacle
-                all_peaks[obs_idx] = {'A': peak_A, 'B': peak_B}
-                
+                self.all_peaks[obs_idx] = {'A': peak_A, 'B': peak_B}
+
                 log.debug(f"Obstacle {obs_idx}: Peak A: {peak_A.x():.1f},{peak_A.y():.1f}, Peak B: {peak_B.x():.1f},{peak_B.y():.1f}")
-                
-                # Visualize Peaks for each obstacle - use very bright, highly visible colors
-                peak_a_layer = self._create_temporary_point_layer(
-                    [peak_A], 
-                    f"Peak_A_Obstacle_{obs_idx}", 
-                    "#FF0000", 
-                    "circle",
-                    parent_group=obstacle_group
-                )
-                peak_b_layer = self._create_temporary_point_layer(
-                    [peak_B], 
-                    f"Peak_B_Obstacle_{obs_idx}", 
-                    "#0000FF", 
-                    "triangle",
-                    parent_group=obstacle_group
-                )
-                
-                log.info(f"Created peak points for obstacle {obs_idx}: A={peak_A.x():.1f},{peak_A.y():.1f}, B={peak_B.x():.1f},{peak_B.y():.1f}")
-                
-                # Create a polygon connecting Entry -> Peak A -> Exit -> Peak B
-                try:
-                    if entry_point and exit_point:
-                        # Create entry/exit points with larger markers for better visibility
-                        entry_layer = self._create_temporary_point_layer(
-                            [QgsPoint(entry_point.x(), entry_point.y())], 
-                            f"Entry_Point_{obs_idx}", 
-                            "#00FF00",  # Green
-                            "circle", 
-                            8.0,  # Larger size
-                            parent_group=obstacle_group
-                        )
-                        
-                        exit_layer = self._create_temporary_point_layer(
-                            [QgsPoint(exit_point.x(), exit_point.y())], 
-                            f"Exit_Point_{obs_idx}", 
-                            "#FF00FF",  # Magenta
-                            "triangle", 
-                            8.0,  # Larger size
-                            parent_group=obstacle_group
-                        )
-                        
-                        # Create the deviation polygon
-                        log.debug(f"Creating deviation polygon for obstacle {obs_idx}")
-                        
-                        # Convert to QgsPointXY for polygon creation
-                        entry_pt_xy = QgsPointXY(entry_point)
-                        exit_pt_xy = QgsPointXY(exit_point)
-                        peak_a_xy = QgsPointXY(peak_A.x(), peak_A.y())
-                        peak_b_xy = QgsPointXY(peak_B.x(), peak_B.y())
-                        
-                        # Create the polygon points
-                        polygon_points = [
-                            entry_pt_xy,
-                            peak_a_xy,
-                            exit_pt_xy,
-                            peak_b_xy,
-                            entry_pt_xy  # Close the polygon
-                        ]
-                        
-                        # Create polygon geometry
-                        try:
-                            polygon_geom = QgsGeometry.fromPolygonXY([polygon_points])
-                            
-                            if not polygon_geom.isEmpty():
-                                # Create a semi-transparent polygon
-                                deviation_polygon_layer = self._create_temporary_polygon_layer(
-                                    [polygon_geom],
-                                    f"Deviation_Polygon_{obs_idx}",
-                                    "#55FFAA",  # Teal with alpha
-                                    0.4,  # Alpha (transparency)
-                                    parent_group=obstacle_group
-                                )
-                                
-                                # Also create an outline as a line for better visibility
-                                outline_geom = QgsGeometry.fromPolylineXY(polygon_points)
-                                outline_layer = self._create_temporary_line_layer(
-                                    [outline_geom],
-                                    f"Deviation_Outline_{obs_idx}",
-                                    "#00AA55",  # Darker teal
-                                    1.5,  # Width
-                                    "dash",  # Line style
-                                    parent_group=obstacle_group
-                                )
-                        except Exception as polygon_e:
-                            log.warning(f"Error creating polygon: {polygon_e}")
-                except Exception as e:
-                    log.error(f"Failed to create deviation visualization for obstacle {obs_idx}: {str(e)}")
-                    import traceback
-                    log.debug(traceback.format_exc())
-                
-                # Create a separate visualization group for this obstacle if not already done
-                obstacle_group_name = f"Obstacle_{obs_idx}_Visualization"
-                obstacle_group = self._get_or_create_group(obstacle_group_name, "Debug Visualizations")
-                
-                # Visualize the rays used to calculate intersection with boundary
-                ray_visualizations = [
-                    ray_A, ray_B
-                ]
-                ray_layer = self._create_temporary_line_layer(
-                    ray_visualizations,
-                    f"Rays_Obstacle_{obs_idx}", 
-                    "#00FFFF", 
-                    0.8, 
-                    "dash",
-                    parent_group=obstacle_group
-                )
-                
-                # Create the deviation polygon - check if we have entry/exit points defined
-                # This code assumes these might be defined elsewhere - add a guard
-                if 'entry_point' in locals() and 'exit_point' in locals():
-                    try:
-                        # Create entry/exit points with larger markers for better visibility
-                        entry_layer = self._create_temporary_point_layer(
-                            [QgsPoint(entry_point.x(), entry_point.y())], 
-                            f"Entry_Point_{obs_idx}", 
-                            "#00FF00",  # Green
-                            "circle", 
-                            8.0,  # Larger size
-                            parent_group=obstacle_group
-                        )
-                        
-                        exit_layer = self._create_temporary_point_layer(
-                            [QgsPoint(exit_point.x(), exit_point.y())], 
-                            f"Exit_Point_{obs_idx}", 
-                            "#FF00FF",  # Magenta
-                            "triangle", 
-                            8.0,  # Larger size
-                            parent_group=obstacle_group
-                        )
-                        log.debug(f"Added entry/exit point visualization for obstacle {obs_idx}")
-                    except Exception as viz_error:
-                        log.debug(f"Entry/exit point visualization skipped: {viz_error}")
-            
-            # End of obstacle processing loop
-            # Return results - this is the end of the _calculate_and_apply_deviations_v2 method
-            if edit_started_here:
-                if not lines_layer.commitChanges():
-                    log.error(f"Failed to commit changes to layer '{lines_layer.name()}': {lines_layer.commitErrors()}")
-                    return False
-                    
-            return True
-            
+
+            # STEPS 5-10: Complete the deviation calculation (handled in _complete_deviation_calculation)
+            # This calls the method that implements the remaining steps
+            return self._complete_deviation_calculation(lines_layer, obstacle_geometries, clearance_m, turn_radius_m)
+
         except Exception as e:
             log.exception(f"Error in deviation calculation: {e}")
             if edit_started_here and lines_layer.isEditable():
                 lines_layer.rollBack()
                 log.info("Changes rolled back due to error")
             return False
+
+    def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
+        """
+        Complete the deviation calculation by creating deviation paths around obstacles.
+        
+        This method:
+        1. Creates entry and exit points for each obstacle
+        2. Generates deviation polygons
+        3. Splits conflicted lines
+        4. Connects split segments using smooth path planning
+        
+        Args:
+            lines_layer (QgsVectorLayer): Layer containing the survey lines
+            obstacle_geometries (list): List of obstacle geometries
+            clearance_m (float): Clearance distance in meters
+            turn_radius_m (float): Minimum turning radius for the vessel in meters
+            debug_mode (bool): If True, enables extensive debugging and visualization
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        log.info("Starting deviation path creation...")
+    
+        # Get field indices for tracking
+        fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
+        fld_created_idx = lines_layer.dataProvider().fieldNameIndex("is_deviation_created")
+        fld_merged_idx = lines_layer.dataProvider().fieldNameIndex("is_line_merged")
+        fld_linenum_idx = lines_layer.dataProvider().fieldNameIndex("LineNum")
+    
+        # Distance along reference line for entry/exit points (meters)
+        entry_exit_distance = max(1000.0, turn_radius_m * 2)
+    
+        # Create a layer for the deviation paths
+        deviation_paths_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Deviation_Paths", "memory")
+        deviation_provider = deviation_paths_layer.dataProvider()
+    
+        # Add fields to deviation layer
+        deviation_provider.addAttributes([
+            QgsField("LineNum", QVariant.Int),
+            QgsField("OriginalFID", QVariant.Int),
+            QgsField("DeviationType", QVariant.String),  # "Entry", "Peak", "Exit", "Connector"
+            QgsField("ObstacleID", QVariant.Int)
+        ])
+        deviation_paths_layer.updateFields()
+    
+        # Store for split lines that need to be deleted
+        segments_to_delete = []
+    
+        # Process each obstacle separately
+        for obs_idx, ref_line_info in self.all_reference_lines.items():
+            log.info(f"Processing deviation for obstacle {obs_idx}...")
+    
+            # Get middle reference line info
+            middle_line_geom = ref_line_info['geom']
+            middle_line_num = ref_line_info['num']
+            middle_line_heading = ref_line_info['heading']
+            obstacle_geom = ref_line_info.get('obstacle_geom')
+    
+            # Get peak points for this obstacle
+            peak_info = self.all_peaks.get(obs_idx)
+            if not peak_info or not middle_line_geom or not obstacle_geom:
+                log.warning(f"Missing reference data for obstacle {obs_idx}, skipping")
+                continue
+            
+            peak_A = peak_info['A']
+            peak_B = peak_info['B']
+    
+            # STEP 5: Calculate Entry and Exit Points
+            # --------------------------------------
+            log.debug(f"Calculating entry/exit points for obstacle {obs_idx}")
+    
+            # Calculate entry/exit points from obstacle center
+            obstacle_center = self.obstacle_centers.get(obs_idx)
+            if not obstacle_center:
+                log.error(f"No obstacle center found for obstacle {obs_idx}")
+                continue
+            
+            # Calculate entry and exit points along the heading
+            entry_point, exit_point = self._calculate_entry_exit_points(
+                obstacle_center,
+                middle_line_heading,
+                entry_exit_distance  # Use configured distance
+            )
+    
+            # STEP 6: Create Deviation Polygon
+            # -------------------------------
+            log.debug(f"Creating deviation polygon for obstacle {obs_idx}")
+    
+            # Create polygon from entry, peak A, exit, peak B
+            # This polygon represents the area where lines need to be split
+            polygon_points = [
+                QgsPointXY(entry_point),
+                QgsPointXY(peak_A),
+                QgsPointXY(exit_point),
+                QgsPointXY(peak_B),
+                QgsPointXY(entry_point)  # Close the polygon
+            ]
+            
+            deviation_poly = QgsGeometry.fromPolygonXY([polygon_points])
+            
+            # STEP 7: Split Conflicted Lines
+            # -----------------------------
+            log.debug(f"Splitting conflicted lines for obstacle {obs_idx}")
+            
+            # Get group of lines that conflict with this obstacle
+            group_lines = ref_line_info.get('group_lines', [])
+            
+            # Create a feature for each segment
+            for line_item in group_lines:
+                fid, line_geom, line_num, heading, _ = line_item
                 
+                if line_geom.isEmpty():
+                    continue
+                    
+                # Calculate line start/end points
+                line_points = line_geom.asPolyline()
+                if not line_points or len(line_points) < 2:
+                    continue
+                    
+                # Find intersection with deviation polygon
+                if not line_geom.intersects(deviation_poly):
+                    log.warning(f"Line {line_num} does not intersect deviation polygon")
+                    continue
+                    
+                # Split the line
+                segments = line_geom.intersection(deviation_poly)
+                connected_geom = None
+                
+                # Entry peak exit segments for this line
+                line_segments = []
+                
+                # Extract entry and exit segment geometries
+                if segments.type() == QgsWkbTypes.LineGeometry:
+                    if segments.isMultipart():
+                        for seg in segments.asMultiPolyline():
+                            line_segments.append(QgsGeometry.fromPolylineXY(seg))
+                    else:
+                        line_segments = [segments]
+                
+                if not line_segments:
+                    log.warning(f"No line segments extracted for line {line_num}")
+                    continue
+                    
+                # STEP 8: Connect Segments with Path
+                # ---------------------------------
+                log.debug(f"Connecting line segments for line {line_num}")
+                
+                # Find the segment closest to the entry point
+                entry_segment, exit_segment = None, None
+                entry_dist, exit_dist = float('inf'), float('inf')
+                
+                # Use peak point to identify entry vs exit segment
+                peak_geom = QgsGeometry.fromPointXY(QgsPointXY(peak_A))
+                
+                for seg in line_segments:
+                    seg_centroid = seg.centroid().asPoint()
+                    
+                    # Distance to peak helps determine if it's entry or exit segment
+                    peak_dist = QgsGeometry.fromPointXY(seg_centroid).distance(peak_geom)
+                    
+                    # Distance to entry point
+                    entry_end_dist = QgsGeometry.fromPointXY(seg_centroid).distance(
+                        QgsGeometry.fromPointXY(QgsPointXY(entry_point))
+                    )
+                    
+                    # Distance to exit point
+                    exit_end_dist = QgsGeometry.fromPointXY(seg_centroid).distance(
+                        QgsGeometry.fromPointXY(QgsPointXY(exit_point))
+                    )
+                    
+                    # Compare against previous best match
+                    if entry_end_dist < entry_dist:
+                        entry_dist = entry_end_dist
+                        entry_segment = seg
+                    
+                    if exit_end_dist < exit_dist:
+                        exit_dist = exit_end_dist
+                        exit_segment = seg
+                
+                # If both segments are found, create connecting path
+                if entry_segment and exit_segment:
+                    # Extract segment endpoints
+                    entry_segment_points = entry_segment.asPolyline()
+                    exit_segment_points = exit_segment.asPolyline()
+                    
+                    if not entry_segment_points or not exit_segment_points:
+                        log.warning(f"Invalid segment points for line {line_num}")
+                        continue
+                        
+                    # Determine which endpoints to connect
+                    entry_start = entry_segment_points[0]
+                    entry_end = entry_segment_points[-1]
+                    exit_start = exit_segment_points[0]
+                    exit_end = exit_segment_points[-1]
+                    
+                    # Calculate heading at segment endpoints
+                    entry_heading = self._calculate_segment_heading(entry_segment)
+                    exit_heading = self._calculate_segment_heading(exit_segment, start=False)
+                    
+                    # Decide which endpoint of each segment to use
+                    # For entry segment: use the end closest to entry_point
+                    if QgsGeometry.fromPointXY(entry_start).distance(QgsGeometry.fromPointXY(QgsPointXY(entry_point))) < \
+                       QgsGeometry.fromPointXY(entry_end).distance(QgsGeometry.fromPointXY(QgsPointXY(entry_point))):
+                        entry_connect = entry_start
+                        entry_heading = self._calculate_segment_heading(entry_segment, start=True)
+                    else:
+                        entry_connect = entry_end
+                        entry_heading = self._calculate_segment_heading(entry_segment, start=False)
+                    
+                    # For exit segment: use the end closest to exit_point
+                    if QgsGeometry.fromPointXY(exit_start).distance(QgsGeometry.fromPointXY(QgsPointXY(exit_point))) < \
+                       QgsGeometry.fromPointXY(exit_end).distance(QgsGeometry.fromPointXY(QgsPointXY(exit_point))):
+                        exit_connect = exit_start
+                        exit_heading = self._calculate_segment_heading(exit_segment, start=True)
+                    else:
+                        exit_connect = exit_end
+                        exit_heading = self._calculate_segment_heading(exit_segment, start=False)
+                    
+                    # STEP 9: Use Peak Point
+                    # ---------------------
+                    # Decide which peak point to use based on heading
+                    peak_point = QgsPointXY(peak_A)  # Default to peak A
+                    
+                    # If the heading direction is more aligned with peak B, use it instead
+                    heading_vec_x = math.sin(math.radians(heading))
+                    heading_vec_y = math.cos(math.radians(heading))
+                    
+                    vec_to_A_x = peak_A.x() - obstacle_center.x()
+                    vec_to_A_y = peak_A.y() - obstacle_center.y()
+                    
+                    # Dot product to determine alignment
+                    dot_product_A = heading_vec_x * vec_to_A_x + heading_vec_y * vec_to_A_y
+                    
+                    if dot_product_A < 0:
+                        # Use peak B if the alignment with A is negative
+                        peak_point = QgsPointXY(peak_B)
+                    
+                    # STEP 10: Smooth with Dubins Paths
+                    # ---------------------------------
+                    log.debug(f"Creating smooth deviation path for line {line_num}")
+                    
+                    # Create Dubins path from entry to peak
+                    try:
+                        from . import dubins_path
+                        
+                        # First convert to proper format with heading information
+                        entry_point_with_heading = (
+                            entry_connect.x(),
+                            entry_connect.y(), 
+                            math.radians(entry_heading)
+                        )
+                        
+                        peak_point_with_heading = (
+                            peak_point.x(),
+                            peak_point.y(),
+                            math.radians(middle_line_heading + 90.0)  # Perpendicular to reference
+                        )
+                        
+                        exit_point_with_heading = (
+                            exit_connect.x(),
+                            exit_connect.y(),
+                            math.radians(exit_heading)
+                        )
+                        
+                        # Call with proper parameters
+                        entry_peak_path = dubins_path.dubins_path(
+                            entry_point_with_heading,
+                            peak_point_with_heading,
+                            turn_radius_m
+                        )
+                        
+                        peak_exit_path = dubins_path.dubins_path(
+                            peak_point_with_heading,
+                            exit_point_with_heading,
+                            turn_radius_m
+                        )
+                        
+                        # Add the paths to the deviation layer
+                        if entry_peak_path and not entry_peak_path.isEmpty():
+                            # Entry to peak feature
+                            entry_feat = QgsFeature()
+                            entry_feat.setGeometry(entry_peak_path)
+                            entry_feat.setAttributes([
+                                line_num,
+                                fid,
+                                "Entry-Peak",
+                                obs_idx
+                            ])
+                            deviation_provider.addFeature(entry_feat)
+                        
+                        if peak_exit_path and not peak_exit_path.isEmpty():
+                            # Peak to exit feature
+                            exit_feat = QgsFeature()
+                            exit_feat.setGeometry(peak_exit_path)
+                            exit_feat.setAttributes([
+                                line_num,
+                                fid,
+                                "Peak-Exit",
+                                obs_idx
+                            ])
+                            deviation_provider.addFeature(exit_feat)
+                        
+                    except Exception as e:
+                        log.error(f"Error creating Dubins path: {e}")
+                        # Fallback to simple connection
+                        entry_peak_geom = QgsGeometry.fromPolylineXY([entry_connect, peak_point])
+                        peak_exit_geom = QgsGeometry.fromPolylineXY([peak_point, exit_connect])
+                        
+                        # Add simple connectors
+                        entry_feat = QgsFeature()
+                        entry_feat.setGeometry(entry_peak_geom)
+                        entry_feat.setAttributes([
+                            line_num,
+                            fid,
+                            "Simple-Entry",
+                            obs_idx
+                        ])
+                        deviation_provider.addFeature(entry_feat)
+                        
+                        exit_feat = QgsFeature()
+                        exit_feat.setGeometry(peak_exit_geom)
+                        exit_feat.setAttributes([
+                            line_num,
+                            fid,
+                            "Simple-Exit",
+                            obs_idx
+                        ])
+                        deviation_provider.addFeature(exit_feat)
+        
+        # STEP 11: Add to Project and Style
+        # -------------------------------
+        # Only add if we have features
+        if deviation_provider.featureCount() > 0:
+            deviation_paths_layer.updateExtents()
+            
+            # Style the layer
+            symbol = QgsLineSymbol.createSimple({
+                'line_color': '255,0,0',
+                'line_width': '0.8',
+                'line_style': 'solid'
+            })
+            deviation_paths_layer.renderer().setSymbol(symbol)
+            
+            # Add to project
+            QgsProject.instance().addMapLayer(deviation_paths_layer)
+            log.info(f"Created deviation paths layer with {deviation_provider.featureCount()} features")
+            
+            # If there's a map canvas available, refresh it
+            if hasattr(self, 'iface') and self.iface:
+                self.iface.mapCanvas().refresh()
+            
+            return True
+        else:
+            log.warning("No deviation paths were created.")
+            return False
+
+    def _calculate_segment_heading(self, segment_geom, start=True):
+        """
+        Calculate the heading (azimuth) of a line segment at either its start or end.
+
+        Args:
+            segment_geom (QgsGeometry): Line geometry
+            start (bool): If True, calculate heading at start point, otherwise at end
+
+        Returns:
+            float: Heading in degrees (0-360)
+        """
+        if segment_geom.isEmpty() or segment_geom.type() != QgsWkbTypes.LineGeometry:
+            return 0.0
+
+        line_points = segment_geom.asPolyline()
+        if len(line_points) < 2:
+            return 0.0
+
+        if start:
+            # Calculate heading at start point
+            p1 = line_points[0]
+            p2 = line_points[1]
+        else:
+            # Calculate heading at end point
+            p1 = line_points[-2]
+            p2 = line_points[-1]
+
+        # Calculate azimuth (heading)
+        delta_x = p2.x() - p1.x()
+        delta_y = p2.y() - p1.y()
+
+        angle_rad = math.atan2(delta_y, delta_x)
+        angle_deg = math.degrees(angle_rad)
+
+        # Convert to azimuth (0-360, clockwise from north)
+        heading = (90.0 - angle_deg) % 360.0
+
+        return heading
+
+    def _visualize_deviation_steps(self):
+        """
+        Creates temporary visualization layers to show the steps in the deviation calculation process.
+        Visualizes:
+        - Middle Reference Lines 
+        - Obstacle Center Points
+        - Perpendicular Lines from Center to Peaks
+        - Peak Points A and B
+        - Entry and Exit Points
+        - Deviation Polygons
+
+        This is intended for debugging and understanding the deviation calculation process.
+        """
+        log.info("Creating visualization layers for deviation calculation steps...")
+
+        # Check if we have calculated data to visualize
+        if not hasattr(self, 'all_reference_lines') or not self.all_reference_lines:
+            log.warning("No deviation calculation data available for visualization.")
+            QMessageBox.warning(self, "Visualization Error", 
+                                "No deviation calculation data is available to visualize.\n"
+                                "Please run the calculation first.")
+            return False
+
+        project = QgsProject.instance()
+
+        # Create layers for each component
+        reference_lines_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Debug_Reference_Lines", "memory")
+        center_points_layer = QgsVectorLayer("Point?crs=EPSG:31984", "Debug_Obstacle_Centers", "memory")
+        perpendicular_lines_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Debug_Perpendicular_Lines", "memory")
+        peak_points_layer = QgsVectorLayer("Point?crs=EPSG:31984", "Debug_Peak_Points", "memory")
+        entry_exit_points_layer = QgsVectorLayer("Point?crs=EPSG:31984", "Debug_Entry_Exit_Points", "memory")
+        deviation_polygons_layer = QgsVectorLayer("Polygon?crs=EPSG:31984", "Debug_Deviation_Polygons", "memory")
+
+        # Set up fields for the layers
+        for layer in [reference_lines_layer, center_points_layer, perpendicular_lines_layer, 
+                      peak_points_layer, entry_exit_points_layer, deviation_polygons_layer]:
+            provider = layer.dataProvider()
+            provider.addAttributes([
+                QgsField("ObstacleID", QVariant.Int),
+                QgsField("Description", QVariant.String)
+            ])
+            layer.updateFields()
+
+        # Style the layers for better visualization
+        # Reference Lines - Blue thick lines
+        ref_symbol = QgsLineSymbol.createSimple({
+            'line_color': '#0000FF',  # Blue
+            'line_width': '1.5',
+            'line_style': 'solid'
+        })
+        reference_lines_layer.renderer().setSymbol(ref_symbol)
+
+        # Obstacle Centers - Red large points
+        center_symbol = QgsMarkerSymbol.createSimple({
+            'name': 'circle',
+            'color': '#FF0000',  # Red
+            'size': '4',
+            'outline_style': 'solid',
+            'outline_color': '#000000',
+            'outline_width': '0.5'
+        })
+        center_points_layer.renderer().setSymbol(center_symbol)
+
+        # Perpendicular Lines - Green dashed lines
+        perp_symbol = QgsLineSymbol.createSimple({
+            'line_color': '#00FF00',  # Green
+            'line_width': '1.0',
+            'line_style': 'dash'
+        })
+        perpendicular_lines_layer.renderer().setSymbol(perp_symbol)
+
+        # Peak Points - Orange large points
+        peak_symbol = QgsMarkerSymbol.createSimple({
+            'name': 'circle',
+            'color': '#FFA500',  # Orange
+            'size': '5',
+            'outline_style': 'solid',
+            'outline_color': '#000000',
+            'outline_width': '0.5'
+        })
+        peak_points_layer.renderer().setSymbol(peak_symbol)
+
+        # Entry/Exit Points - Purple diamonds
+        entry_exit_symbol = QgsMarkerSymbol.createSimple({
+            'name': 'diamond',
+            'color': '#800080',  # Purple
+            'size': '5',
+            'outline_style': 'solid',
+            'outline_color': '#000000',
+            'outline_width': '0.5'
+        })
+        entry_exit_points_layer.renderer().setSymbol(entry_exit_symbol)
+
+        # Deviation Polygons - Yellow semi-transparent
+        polygon_symbol = QgsFillSymbol.createSimple({
+            'color': '#FFFF0060',  # Yellow with alpha
+            'outline_color': '#FF9500',  # Orange outline
+            'outline_width': '1.0',
+            'outline_style': 'solid'
+        })
+        deviation_polygons_layer.renderer().setSymbol(polygon_symbol)
+
+        # Populate the layers
+        for obs_idx, ref_line_info in self.all_reference_lines.items():
+            # Add Reference Line
+            if 'geom' in ref_line_info:
+                ref_feat = QgsFeature()
+                ref_feat.setGeometry(ref_line_info['geom'])
+                ref_feat.setAttributes([
+                    obs_idx,
+                    f"Middle Reference Line {ref_line_info.get('num', 'Unknown')}"
+                ])
+                reference_lines_layer.dataProvider().addFeature(ref_feat)
+
+            # Add Obstacle Center Point
+            if obs_idx in self.obstacle_centers:
+                center_point = self.obstacle_centers[obs_idx]
+                center_feat = QgsFeature()
+                center_feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(center_point)))
+                center_feat.setAttributes([
+                    obs_idx,
+                    f"Obstacle Center {obs_idx}"
+                ])
+                center_points_layer.dataProvider().addFeature(center_feat)
+
+            # Add Peak Points
+            if obs_idx in self.all_peaks:
+                peaks = self.all_peaks[obs_idx]
+
+                # Peak A
+                if 'A' in peaks:
+                    peak_a_feat = QgsFeature()
+                    peak_a_feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(peaks['A'])))
+                    peak_a_feat.setAttributes([
+                        obs_idx,
+                        f"Peak A for Obstacle {obs_idx}"
+                    ])
+                    peak_points_layer.dataProvider().addFeature(peak_a_feat)
+
+                # Peak B
+                if 'B' in peaks:
+                    peak_b_feat = QgsFeature()
+                    peak_b_feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(peaks['B'])))
+                    peak_b_feat.setAttributes([
+                        obs_idx,
+                        f"Peak B for Obstacle {obs_idx}"
+                    ])
+                    peak_points_layer.dataProvider().addFeature(peak_b_feat)
+
+                # Perpendicular Lines from Center to Peaks
+                if obs_idx in self.obstacle_centers:
+                    center_point = self.obstacle_centers[obs_idx]
+                    center_xy = QgsPointXY(center_point)
+
+                    # Line to Peak A
+                    if 'A' in peaks:
+                        perp_a_feat = QgsFeature()
+                        perp_a_feat.setGeometry(QgsGeometry.fromPolylineXY([
+                            center_xy, 
+                            QgsPointXY(peaks['A'])
+                        ]))
+                        perp_a_feat.setAttributes([
+                            obs_idx,
+                            f"Center to Peak A {obs_idx}"
+                        ])
+                        perpendicular_lines_layer.dataProvider().addFeature(perp_a_feat)
+
+                    # Line to Peak B
+                    if 'B' in peaks:
+                        perp_b_feat = QgsFeature()
+                        perp_b_feat.setGeometry(QgsGeometry.fromPolylineXY([
+                            center_xy, 
+                            QgsPointXY(peaks['B'])
+                        ]))
+                        perp_b_feat.setAttributes([
+                            obs_idx,
+                            f"Center to Peak B {obs_idx}"
+                        ])
+                        perpendicular_lines_layer.dataProvider().addFeature(perp_b_feat)
+
+            # Add Entry/Exit Points
+            if 'entry_point' in ref_line_info:
+                entry_feat = QgsFeature()
+                entry_feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(ref_line_info['entry_point'])))
+                entry_feat.setAttributes([
+                    obs_idx,
+                    f"Entry Point {obs_idx}"
+                ])
+                entry_exit_points_layer.dataProvider().addFeature(entry_feat)
+
+            if 'exit_point' in ref_line_info:
+                exit_feat = QgsFeature()
+                exit_feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(ref_line_info['exit_point'])))
+                exit_feat.setAttributes([
+                    obs_idx,
+                    f"Exit Point {obs_idx}"
+                ])
+                entry_exit_points_layer.dataProvider().addFeature(exit_feat)
+
+            # Add Deviation Polygon
+            if 'deviation_polygon' in ref_line_info:
+                poly_feat = QgsFeature()
+                poly_feat.setGeometry(ref_line_info['deviation_polygon'])
+                poly_feat.setAttributes([
+                    obs_idx,
+                    f"Deviation Polygon {obs_idx}"
+                ])
+                deviation_polygons_layer.dataProvider().addFeature(poly_feat)
+
+        # Update and add the layers to the project
+        for layer in [deviation_polygons_layer, reference_lines_layer, perpendicular_lines_layer, 
+                      entry_exit_points_layer, peak_points_layer, center_points_layer]:
+            layer.updateExtents()
+            if layer.featureCount() > 0:
+                project.addMapLayer(layer)
+
+        # Refresh the canvas
+        if hasattr(self, 'iface') and self.iface:
+            self.iface.mapCanvas().refresh()
+
+        log.info(f"Created {peak_points_layer.featureCount()} peak points, " +
+                 f"{center_points_layer.featureCount()} center points, " +
+                 f"{entry_exit_points_layer.featureCount()} entry/exit points, " +
+                 f"{deviation_polygons_layer.featureCount()} deviation polygons")
+
+        return True
+
+    def _add_debug_layers(self, avoidance_geom, obstacle_geometries, clearance_m):
+        """
+        Creates temporary visualization layers for debugging the avoidance geometry
+        and individual obstacle geometries.
+
+        Args:
+            avoidance_geom (QgsGeometry): The combined avoidance geometry (buffered NoGo zones)
+            obstacle_geometries (list): List of individual obstacle geometries
+            clearance_m (float): Clearance distance in meters
+
+        Returns:
+            QgsLayerTreeGroup: The group containing the debug layers
+        """
+        log.info("Creating debug visualization layers...")
+
+        project = QgsProject.instance()
+        root = project.layerTreeRoot()
+
+        # Create a group for the debug layers
+        group_name = f"Debug_NoGo_Analysis_{datetime.now().strftime('%H%M%S')}"
+        debug_group = root.addGroup(group_name)
+
+        # Create a layer for the avoidance geometry
+        avoidance_layer = QgsVectorLayer("Polygon?crs=EPSG:31984", f"NoGo_Buffer_{clearance_m}m", "memory")
+        avoidance_provider = avoidance_layer.dataProvider()
+
+        # Add fields
+        avoidance_provider.addAttributes([
+            QgsField("Buffer_m", QVariant.Double),
+            QgsField("Description", QVariant.String)
+        ])
+        avoidance_layer.updateFields()
+
+        # Add the avoidance geometry
+        avoidance_feat = QgsFeature()
+        avoidance_feat.setGeometry(avoidance_geom)
+        avoidance_feat.setAttributes([
+            clearance_m,
+            f"NoGo zones with {clearance_m}m buffer"
+        ])
+        avoidance_provider.addFeature(avoidance_feat)
+
+        # Style the avoidance layer
+        avoidance_symbol = QgsFillSymbol.createSimple({
+            'color': '#FF000040',  # Red with 25% opacity
+            'outline_color': '#FF0000',  # Red outline
+            'outline_width': '0.5',
+            'outline_style': 'solid'
+        })
+        avoidance_layer.renderer().setSymbol(avoidance_symbol)
+
+        # Create a layer for the individual obstacles
+        obstacles_layer = QgsVectorLayer("Polygon?crs=EPSG:31984", "Individual_Obstacles", "memory")
+        obstacles_provider = obstacles_layer.dataProvider()
+
+        # Add fields for obstacles
+        obstacles_provider.addAttributes([
+            QgsField("ObstacleID", QVariant.Int),
+            QgsField("Area_m2", QVariant.Double)
+        ])
+        obstacles_layer.updateFields()
+
+        # Add obstacle geometries
+        for i, obstacle_geom in enumerate(obstacle_geometries):
+            obstacle_feat = QgsFeature()
+            obstacle_feat.setGeometry(obstacle_geom)
+            obstacle_feat.setAttributes([
+                i,
+                obstacle_geom.area()
+            ])
+            obstacles_provider.addFeature(obstacle_feat)
+
+        # Style the obstacles layer with categorized renderer
+        # Using different colors for different obstacles
+        categories = []
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+                  '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
+        # Create a category for each obstacle, cycling through colors
+        for i in range(len(obstacle_geometries)):
+            color_idx = i % len(colors)
+            color = colors[color_idx]
+
+            symbol = QgsFillSymbol.createSimple({
+                'color': f'{color}80',  # Add 50% transparency
+                'outline_color': color,
+                'outline_width': '0.3',
+                'outline_style': 'solid'
+            })
+
+            category = QgsRendererCategory(i, symbol, f"Obstacle {i}")
+            categories.append(category)
+
+        # Create the categorized renderer
+        renderer = QgsCategorizedSymbolRenderer("ObstacleID", categories)
+        obstacles_layer.setRenderer(renderer)
+
+        # Add the layers to the project through the debug group
+        avoidance_layer.updateExtents()
+        obstacles_layer.updateExtents()
+
+        project.addMapLayer(avoidance_layer, False)
+        project.addMapLayer(obstacles_layer, False)
+
+        debug_group.addLayer(avoidance_layer)
+        debug_group.addLayer(obstacles_layer)
+
+        # Refresh the canvas
+        if hasattr(self, 'iface') and self.iface:
+            self.iface.mapCanvas().refresh()
+
+        log.info(f"Created debug visualization with {len(obstacle_geometries)} obstacles")
+        return debug_group
+
+    def _calculate_entry_exit_points(self, obstacle_center, middle_line_heading, distance=1000.0):
+        """
+        Calculate entry and exit points by projecting along the middle line heading
+        from the obstacle center.
+
+        Args:
+            obstacle_center (QgsPointXY): The center point of the obstacle
+            middle_line_heading (float): The heading of the middle reference line in degrees
+            distance (float): The distance to project along the heading in meters
+
+        Returns:
+            tuple: (entry_point, exit_point) as QgsPointXY objects
+        """
+        # Calculate forward and reverse angles in radians
+        forward_angle_rad = math.radians(middle_line_heading)
+        reverse_angle_rad = math.radians((middle_line_heading + 180.0) % 360.0)
+
+        # Calculate offsets for the forward direction (entry point)
+        dx_entry = distance * math.sin(forward_angle_rad)
+        dy_entry = distance * math.cos(forward_angle_rad)
+
+        # Calculate offsets for the reverse direction (exit point)
+        dx_exit = distance * math.sin(reverse_angle_rad)
+        dy_exit = distance * math.cos(reverse_angle_rad)
+
+        # Create entry and exit points
+        entry_point = QgsPointXY(
+            obstacle_center.x() + dx_entry,
+            obstacle_center.y() + dy_entry
+        )
+
+        exit_point = QgsPointXY(
+            obstacle_center.x() + dx_exit,
+            obstacle_center.y() + dy_exit
+        )
+
+        return entry_point, exit_point
 
     # --- 7. Simulation and Sequencing ---
 
