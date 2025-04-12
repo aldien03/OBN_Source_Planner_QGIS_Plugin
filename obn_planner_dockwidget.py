@@ -3989,20 +3989,21 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
         """
         Complete the deviation calculation by creating deviation paths around obstacles.
-        
+    
         This method:
         1. Creates entry and exit points for each obstacle
         2. Generates deviation polygons
         3. Splits conflicted lines
         4. Connects split segments using smooth path planning
-        
+        5. Adds to project and styles
+    
         Args:
             lines_layer (QgsVectorLayer): Layer containing the survey lines
             obstacle_geometries (list): List of obstacle geometries
             clearance_m (float): Clearance distance in meters
             turn_radius_m (float): Minimum turning radius for the vessel in meters
             debug_mode (bool): If True, enables extensive debugging and visualization
-            
+    
         Returns:
             bool: True if successful, False otherwise
         """
@@ -4030,8 +4031,26 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         ])
         deviation_paths_layer.updateFields()
     
+        # Create a layer for the split lines to be visualized in debug mode
+        unified_split_layer = None
+        unified_provider = None
+    
+        if debug_mode:
+            unified_split_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Split_Survey_Lines", "memory")
+            unified_provider = unified_split_layer.dataProvider()
+    
+            # Add fields to split lines layer
+            unified_provider.addAttributes([
+                QgsField("LineNum", QVariant.Int),
+                QgsField("OriginalFID", QVariant.Int),
+                QgsField("SegmentType", QVariant.String),  # "Outside" or "Inside"
+                QgsField("ObstacleID", QVariant.Int)
+            ])
+            unified_split_layer.updateFields()
+    
         # Store for split lines that need to be deleted
         segments_to_delete = []
+        segments_to_add = []
     
         # Process each obstacle separately
         for obs_idx, ref_line_info in self.all_reference_lines.items():
@@ -4082,108 +4101,212 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 QgsPointXY(peak_B),
                 QgsPointXY(entry_point)  # Close the polygon
             ]
-            
+    
             deviation_poly = QgsGeometry.fromPolygonXY([polygon_points])
             
+            # Create a boundary geometry from the polygon points
+            # This will be used for intersection tests instead of calling .boundary()
+            deviation_boundary = QgsGeometry.fromPolylineXY(polygon_points)
+    
             # STEP 7: Split Conflicted Lines
             # -----------------------------
             log.debug(f"Splitting conflicted lines for obstacle {obs_idx}")
-            
+    
             # Get group of lines that conflict with this obstacle
             group_lines = ref_line_info.get('group_lines', [])
-            
+    
             # Create a feature for each segment
             for line_item in group_lines:
                 fid, line_geom, line_num, heading, _ = line_item
-                
+    
                 if line_geom.isEmpty():
                     continue
-                    
+                
                 # Calculate line start/end points
                 line_points = line_geom.asPolyline()
                 if not line_points or len(line_points) < 2:
                     continue
-                    
+                
                 # Find intersection with deviation polygon
                 if not line_geom.intersects(deviation_poly):
                     log.warning(f"Line {line_num} does not intersect deviation polygon")
                     continue
-                    
-                # Split the line
-                segments = line_geom.intersection(deviation_poly)
-                connected_geom = None
                 
-                # Entry peak exit segments for this line
+                # Store the original feature for deletion and mark as conflicted
+                segments_to_delete.append(fid)
+                if fld_conflicted_idx >= 0:
+                    lines_layer.changeAttributeValue(fid, fld_conflicted_idx, True)
+    
+                # Split the line with the deviation polygon
+                # We need BOTH the part inside (for removal) and outside (for keeping)
+                # First get the part that's outside the polygon
+                outside_parts = line_geom.difference(deviation_poly)
+                inside_parts = line_geom.intersection(deviation_poly)
+    
+                # Add the outside parts back to the lines layer (keep these)
+                if not outside_parts.isEmpty():
+                    if outside_parts.type() == QgsWkbTypes.LineGeometry:
+                        if outside_parts.isMultipart():
+                            for part_idx, part in enumerate(outside_parts.asMultiPolyline()):
+                                if len(part) < 2:
+                                    continue
+                                
+                                # Create a new feature for each outside part
+                                new_feat = QgsFeature()
+                                new_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
+    
+                                # Copy attributes from original feature
+                                feat = lines_layer.getFeature(fid)
+                                attrs = feat.attributes()
+                                new_feat.setAttributes(attrs)
+    
+                                # Add to batch for adding later
+                                segments_to_add.append(new_feat)
+    
+                                # Add to debug layer if needed
+                                if debug_mode and unified_provider:
+                                    debug_feat = QgsFeature()
+                                    debug_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
+                                    debug_feat.setAttributes([
+                                        line_num,
+                                        fid,
+                                        "Outside",
+                                        obs_idx
+                                    ])
+                                    unified_provider.addFeature(debug_feat)
+                        else:
+                            # Single part outside
+                            new_feat = QgsFeature()
+                            new_feat.setGeometry(outside_parts)
+    
+                            # Copy attributes from original feature
+                            feat = lines_layer.getFeature(fid)
+                            attrs = feat.attributes()
+                            new_feat.setAttributes(attrs)
+    
+                            # Add to batch for adding later
+                            segments_to_add.append(new_feat)
+    
+                            # Add to debug layer if needed
+                            if debug_mode and unified_provider:
+                                debug_feat = QgsFeature()
+                                debug_feat.setGeometry(outside_parts)
+                                debug_feat.setAttributes([
+                                    line_num,
+                                    fid,
+                                    "Outside",
+                                    obs_idx
+                                ])
+                                unified_provider.addFeature(debug_feat)
+    
+                # For debugging, add the inside parts to the visualization layer
+                if debug_mode and unified_provider and not inside_parts.isEmpty():
+                    if inside_parts.type() == QgsWkbTypes.LineGeometry:
+                        if inside_parts.isMultipart():
+                            for part_idx, part in enumerate(inside_parts.asMultiPolyline()):
+                                if len(part) < 2:
+                                    continue
+                                
+                                debug_feat = QgsFeature()
+                                debug_feat.setGeometry(QgsGeometry.fromPolylineXY(part))
+                                debug_feat.setAttributes([
+                                    line_num,
+                                    fid,
+                                    "Inside",
+                                    obs_idx
+                                ])
+                                unified_provider.addFeature(debug_feat)
+                        else:
+                            # Single part inside
+                            debug_feat = QgsFeature()
+                            debug_feat.setGeometry(inside_parts)
+                            debug_feat.setAttributes([
+                                line_num,
+                                fid,
+                                "Inside",
+                                obs_idx
+                            ])
+                            unified_provider.addFeature(debug_feat)
+    
+                # Now extract the segments for path planning
                 line_segments = []
-                
-                # Extract entry and exit segment geometries
-                if segments.type() == QgsWkbTypes.LineGeometry:
-                    if segments.isMultipart():
-                        for seg in segments.asMultiPolyline():
-                            line_segments.append(QgsGeometry.fromPolylineXY(seg))
+    
+                # Find the segments that intersect with the deviation polygon boundary
+                # These will be our connection points for the smooth paths
+                if outside_parts.type() == QgsWkbTypes.LineGeometry:
+                    if outside_parts.isMultipart():
+                        for seg in outside_parts.asMultiPolyline():
+                            if len(seg) >= 2:
+                                seg_geom = QgsGeometry.fromPolylineXY(seg)
+                                # Use deviation_boundary instead of deviation_poly.boundary()
+                                if seg_geom.intersects(deviation_boundary):
+                                    line_segments.append(seg_geom)
                     else:
-                        line_segments = [segments]
-                
+                        seg_geom = outside_parts
+                        # Use deviation_boundary instead of deviation_poly.boundary()
+                        if seg_geom.intersects(deviation_boundary):
+                            line_segments.append(seg_geom)
+    
                 if not line_segments:
-                    log.warning(f"No line segments extracted for line {line_num}")
+                    log.warning(f"No valid line segments found for path planning, line {line_num}")
                     continue
-                    
+                
                 # STEP 8: Connect Segments with Path
                 # ---------------------------------
                 log.debug(f"Connecting line segments for line {line_num}")
-                
+    
                 # Find the segment closest to the entry point
                 entry_segment, exit_segment = None, None
                 entry_dist, exit_dist = float('inf'), float('inf')
-                
+    
                 # Use peak point to identify entry vs exit segment
                 peak_geom = QgsGeometry.fromPointXY(QgsPointXY(peak_A))
-                
+    
                 for seg in line_segments:
                     seg_centroid = seg.centroid().asPoint()
-                    
+    
                     # Distance to peak helps determine if it's entry or exit segment
                     peak_dist = QgsGeometry.fromPointXY(seg_centroid).distance(peak_geom)
-                    
+    
                     # Distance to entry point
                     entry_end_dist = QgsGeometry.fromPointXY(seg_centroid).distance(
                         QgsGeometry.fromPointXY(QgsPointXY(entry_point))
                     )
-                    
+    
                     # Distance to exit point
                     exit_end_dist = QgsGeometry.fromPointXY(seg_centroid).distance(
                         QgsGeometry.fromPointXY(QgsPointXY(exit_point))
                     )
-                    
+    
                     # Compare against previous best match
                     if entry_end_dist < entry_dist:
                         entry_dist = entry_end_dist
                         entry_segment = seg
-                    
+    
                     if exit_end_dist < exit_dist:
                         exit_dist = exit_end_dist
                         exit_segment = seg
-                
+    
                 # If both segments are found, create connecting path
                 if entry_segment and exit_segment:
                     # Extract segment endpoints
                     entry_segment_points = entry_segment.asPolyline()
                     exit_segment_points = exit_segment.asPolyline()
-                    
+    
                     if not entry_segment_points or not exit_segment_points:
                         log.warning(f"Invalid segment points for line {line_num}")
                         continue
-                        
+                    
                     # Determine which endpoints to connect
                     entry_start = entry_segment_points[0]
                     entry_end = entry_segment_points[-1]
                     exit_start = exit_segment_points[0]
                     exit_end = exit_segment_points[-1]
-                    
+    
                     # Calculate heading at segment endpoints
                     entry_heading = self._calculate_segment_heading(entry_segment)
                     exit_heading = self._calculate_segment_heading(exit_segment, start=False)
-                    
+    
                     # Decide which endpoint of each segment to use
                     # For entry segment: use the end closest to entry_point
                     if QgsGeometry.fromPointXY(entry_start).distance(QgsGeometry.fromPointXY(QgsPointXY(entry_point))) < \
@@ -4193,7 +4316,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     else:
                         entry_connect = entry_end
                         entry_heading = self._calculate_segment_heading(entry_segment, start=False)
-                    
+    
                     # For exit segment: use the end closest to exit_point
                     if QgsGeometry.fromPointXY(exit_start).distance(QgsGeometry.fromPointXY(QgsPointXY(exit_point))) < \
                        QgsGeometry.fromPointXY(exit_end).distance(QgsGeometry.fromPointXY(QgsPointXY(exit_point))):
@@ -4202,66 +4325,80 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     else:
                         exit_connect = exit_end
                         exit_heading = self._calculate_segment_heading(exit_segment, start=False)
-                    
+    
                     # STEP 9: Use Peak Point
                     # ---------------------
                     # Decide which peak point to use based on heading
                     peak_point = QgsPointXY(peak_A)  # Default to peak A
-                    
+    
                     # If the heading direction is more aligned with peak B, use it instead
                     heading_vec_x = math.sin(math.radians(heading))
                     heading_vec_y = math.cos(math.radians(heading))
-                    
+    
                     vec_to_A_x = peak_A.x() - obstacle_center.x()
                     vec_to_A_y = peak_A.y() - obstacle_center.y()
-                    
+    
                     # Dot product to determine alignment
                     dot_product_A = heading_vec_x * vec_to_A_x + heading_vec_y * vec_to_A_y
-                    
+    
                     if dot_product_A < 0:
                         # Use peak B if the alignment with A is negative
                         peak_point = QgsPointXY(peak_B)
-                    
+    
                     # STEP 10: Smooth with Dubins Paths
                     # ---------------------------------
                     log.debug(f"Creating smooth deviation path for line {line_num}")
-                    
+    
                     # Create Dubins path from entry to peak
                     try:
                         from . import dubins_path
-                        
+    
                         # First convert to proper format with heading information
                         entry_point_with_heading = (
                             entry_connect.x(),
                             entry_connect.y(), 
                             math.radians(entry_heading)
                         )
-                        
+    
                         peak_point_with_heading = (
                             peak_point.x(),
                             peak_point.y(),
                             math.radians(middle_line_heading + 90.0)  # Perpendicular to reference
                         )
-                        
+    
                         exit_point_with_heading = (
                             exit_connect.x(),
                             exit_connect.y(),
                             math.radians(exit_heading)
                         )
-                        
+    
                         # Call with proper parameters
-                        entry_peak_path = dubins_path.dubins_path(
+                        entry_peak_result = dubins_path.dubins_path(
                             entry_point_with_heading,
                             peak_point_with_heading,
                             turn_radius_m
                         )
-                        
-                        peak_exit_path = dubins_path.dubins_path(
+    
+                        peak_exit_result = dubins_path.dubins_path(
                             peak_point_with_heading,
                             exit_point_with_heading,
                             turn_radius_m
                         )
-                        
+    
+                        # Important: Check what the dubins_path function actually returns
+                        # If it returns a tuple of points, convert to a QgsGeometry
+                        if isinstance(entry_peak_result, tuple) or isinstance(entry_peak_result, list):
+                            # Convert point tuples to QgsPointXY objects and create a polyline geometry
+                            entry_peak_points = [QgsPointXY(pt[0], pt[1]) for pt in entry_peak_result]
+                            peak_exit_points = [QgsPointXY(pt[0], pt[1]) for pt in peak_exit_result]
+    
+                            entry_peak_path = QgsGeometry.fromPolylineXY(entry_peak_points)
+                            peak_exit_path = QgsGeometry.fromPolylineXY(peak_exit_points)
+                        else:
+                            # Assuming it already returns a QgsGeometry
+                            entry_peak_path = entry_peak_result
+                            peak_exit_path = peak_exit_result
+    
                         # Add the paths to the deviation layer
                         if entry_peak_path and not entry_peak_path.isEmpty():
                             # Entry to peak feature
@@ -4274,7 +4411,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                 obs_idx
                             ])
                             deviation_provider.addFeature(entry_feat)
-                        
+    
                         if peak_exit_path and not peak_exit_path.isEmpty():
                             # Peak to exit feature
                             exit_feat = QgsFeature()
@@ -4286,13 +4423,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                 obs_idx
                             ])
                             deviation_provider.addFeature(exit_feat)
-                        
+    
                     except Exception as e:
                         log.error(f"Error creating Dubins path: {e}")
                         # Fallback to simple connection
                         entry_peak_geom = QgsGeometry.fromPolylineXY([entry_connect, peak_point])
                         peak_exit_geom = QgsGeometry.fromPolylineXY([peak_point, exit_connect])
-                        
+    
                         # Add simple connectors
                         entry_feat = QgsFeature()
                         entry_feat.setGeometry(entry_peak_geom)
@@ -4303,7 +4440,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             obs_idx
                         ])
                         deviation_provider.addFeature(entry_feat)
-                        
+    
                         exit_feat = QgsFeature()
                         exit_feat.setGeometry(peak_exit_geom)
                         exit_feat.setAttributes([
@@ -4313,29 +4450,49 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             obs_idx
                         ])
                         deviation_provider.addFeature(exit_feat)
-        
+    
+        # Apply all the changes to the lines layer after processing all obstacles
+        lines_provider = lines_layer.dataProvider()
+    
+        # First delete all the original segments that were split
+        if segments_to_delete:
+            log.info(f"Deleting {len(segments_to_delete)} original line segments that were replaced")
+            lines_provider.deleteFeatures(segments_to_delete)
+    
+        # Then add all the new segments outside obstacles
+        if segments_to_add:
+            log.info(f"Adding {len(segments_to_add)} new line segments outside obstacles")
+            lines_provider.addFeatures(segments_to_add)
+    
+        # Add the debug split lines layer if requested
+        if debug_mode and unified_split_layer and unified_provider:
+            if unified_provider.featureCount() > 0:
+                self._visualize_split_lines(unified_split_layer)
+            else:
+                log.warning("No split lines to visualize in debug mode")
+    
         # STEP 11: Add to Project and Style
         # -------------------------------
         # Only add if we have features
         if deviation_provider.featureCount() > 0:
             deviation_paths_layer.updateExtents()
-            
-            # Style the layer
+    
+            # Style the deviation paths layer
             symbol = QgsLineSymbol.createSimple({
                 'line_color': '255,0,0',
-                'line_width': '0.8',
+                'line_width': '1.2',
                 'line_style': 'solid'
             })
             deviation_paths_layer.renderer().setSymbol(symbol)
-            
+    
             # Add to project
             QgsProject.instance().addMapLayer(deviation_paths_layer)
             log.info(f"Created deviation paths layer with {deviation_provider.featureCount()} features")
-            
+    
             # If there's a map canvas available, refresh it
             if hasattr(self, 'iface') and self.iface:
                 self.iface.mapCanvas().refresh()
-            
+    
             return True
         else:
             log.warning("No deviation paths were created.")
@@ -4758,6 +4915,107 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         )
 
         return entry_point, exit_point
+
+    def _visualize_split_lines(self, split_lines_layer, fid_map=None):
+        """
+        Enhance the visualization of split lines to clearly show which lines have been split
+        and how they relate to the deviation polygons.
+
+        Args:
+            split_lines_layer (QgsVectorLayer): The layer containing split line segments
+            fid_map (dict, optional): Mapping of original FIDs to line numbers for reference
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not split_lines_layer or not split_lines_layer.isValid():
+            log.error("Invalid split lines layer for visualization")
+            return False
+
+        # Get the layer provider
+        provider = split_lines_layer.dataProvider()
+        if provider.featureCount() == 0:
+            log.warning("No features in split lines layer to visualize")
+            return False
+
+        # Setup labeling for the split lines layer
+        label_settings = QgsPalLayerSettings()
+        text_format = QgsTextFormat()
+        text_format.setSize(9)
+        text_format.setColor(QColor("black"))
+
+        # Add white buffer around text for better visibility
+        buffer = QgsTextBufferSettings()
+        buffer.setEnabled(True)
+        buffer.setSize(1.0)
+        buffer.setColor(QColor("white"))
+        text_format.setBuffer(buffer)
+
+        # Configure the label settings
+        label_settings.setFormat(text_format)
+        label_settings.fieldName = "LineNum" 
+        label_settings.placement = QgsPalLayerSettings.Line
+        label_settings.enabled = True
+
+        # Place label in the middle of the line
+        label_settings.placementFlags = QgsPalLayerSettings.OnLine
+        label_settings.centroidInside = True
+
+        # Apply label settings
+        labeling = QgsVectorLayerSimpleLabeling(label_settings)
+        split_lines_layer.setLabelsEnabled(True)
+        split_lines_layer.setLabeling(labeling)
+
+        # Create a categorized renderer for inside/outside segments
+        categories = []
+
+        # Inside segments (to be removed) - shown in red with dash pattern
+        inside_symbol = QgsLineSymbol.createSimple({
+            'line_color': '#FF0000',  # Red
+            'line_width': '1.0',
+            'line_style': 'dot',
+            'use_custom_dash': '1',
+            'customdash': '3;2'
+        })
+        categories.append(QgsRendererCategory("Inside", inside_symbol, "Inside Deviation Polygon (Removed)"))
+
+        # Outside segments (to be kept) - shown in blue with solid line
+        outside_symbol = QgsLineSymbol.createSimple({
+            'line_color': '#0000FF',  # Blue
+            'line_width': '1.0',
+            'line_style': 'solid'
+        })
+        categories.append(QgsRendererCategory("Outside", outside_symbol, "Outside Deviation Polygon (Kept)"))
+
+        # Apply the categorized renderer
+        renderer = QgsCategorizedSymbolRenderer("SegmentType", categories)
+        split_lines_layer.setRenderer(renderer)
+
+        # Add the layer to the group if it's not already there
+        project = QgsProject.instance()
+        debug_group = None
+
+        # Look for existing debug group or create one
+        root = project.layerTreeRoot()
+        for child in root.children():
+            if isinstance(child, QgsLayerTreeGroup) and "Debug" in child.name():
+                debug_group = child
+                break
+
+        if not debug_group:
+            debug_group = root.addGroup("Debug Visualizations")
+
+        # Add to project through the group
+        project.addMapLayer(split_lines_layer, False)
+        debug_group.addLayer(split_lines_layer)
+
+        log.info(f"Added split lines visualization with {provider.featureCount()} segments")
+
+        # If there's a map canvas available, refresh it
+        if hasattr(self, 'iface') and self.iface:
+            self.iface.mapCanvas().refresh()
+
+        return True
 
     # --- 7. Simulation and Sequencing ---
 
