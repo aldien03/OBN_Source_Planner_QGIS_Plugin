@@ -1915,60 +1915,126 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
            
     def handle_calculate_deviations(self):
         """
-        Handles the 'Calculate Deviations' button click.
-        Initiates the process of finding and creating detours around NoGo zones.
+        Main handler for the Calculate Deviations button.
+        This prepares input parameters, validates inputs, and calls the appropriate 
+        deviation calculation method. It also handles visualizations and error reporting.
         """
-        log.info("Initiating deviation calculation...")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        # --- Input Validation ---
+        lines_layer = self.generated_lines_layer
+        nogo_layer = self.nogo_zone_combo.currentLayer()
+        
+        if not lines_layer:
+            QMessageBox.warning(self, "Input Error", "No survey lines layer is available. Generate lines first.")
+            return False
+            
+        if not nogo_layer or not nogo_layer.isValid():
+            QMessageBox.warning(self, "Input Error", "Select a valid No-Go Zone layer.")
+            return False
+            
+        # --- Parameter Setup ---
+        clearance_m = self.deviationClearanceDoubleSpinBox.value()
+        turn_radius_m = self.turnRadiusDoubleSpinBox.value()
+        
+        # Validate parameter ranges
+        if clearance_m <= 0:
+            QMessageBox.warning(self, "Parameter Error", "Clearance distance must be greater than zero.")
+            return False
+            
+        if turn_radius_m <= 0:
+            QMessageBox.warning(self, "Parameter Error", "Turn radius must be greater than zero.")
+            return False
+            
+        log.info(f"Starting deviation calculation with clearance={clearance_m}m, turn_radius={turn_radius_m}m")
+        
+        # --- Main Processing ---
         try:
-            # --- Get parameters ---
-            lines_layer = self.generated_lines_layer # Use the stored layer reference
-            nogo_layer = self.nogo_zone_combo.currentLayer()
-            clearance_m = self.deviationClearanceDoubleSpinBox.value()
-            turn_radius_m = self.turnRadiusDoubleSpinBox.value()
-
-            # --- Basic Input Validation ---
-            if not lines_layer or not lines_layer.isValid():
-                QMessageBox.warning(self, "Input Error", "Generate survey lines first.")
-                return
-            if not nogo_layer or not nogo_layer.isValid():
-                QMessageBox.warning(self, "Input Error", "Select a valid No-Go Zone layer.")
-                return
-            if clearance_m <= 0:
-                QMessageBox.warning(self, "Input Error", "Deviation Clearance must be positive.")
-                return
-            if turn_radius_m <= 0:
-                QMessageBox.warning(self, "Input Error", "Turn Radius must be positive.")
-                return
-
-            # Add a debug visualization button to the dialog for troubleshooting
-            try:
-                # Add debug visualization if the user needs it
-                if QMessageBox.question(self, "Debug Visualization", 
-                                   "Would you like to create a debug visualization of obstacles first?", 
-                                   QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-                    self._visualize_peaks_and_tangents()
-            except Exception as e:
-                log.exception(f"Error in debug visualization: {e}")
-
-            # --- Run the core deviation logic ---
+            # First, create the parent visualization group for organization
+            viz_group = self._get_or_create_group("Deviation_Visualizations")
+            
+            # Call the main deviation calculation method
             success = self._calculate_and_apply_deviations_v2(
                 lines_layer, nogo_layer, clearance_m, turn_radius_m
             )
-
+            
             if success:
-                log.info("Deviation calculation completed successfully.")
-                # Optionally update the main line data cache if needed for simulation
-                # self.last_line_data = self._prepare_line_data(...) # Re-prepare if simulation needs updated data immediately
+                # Create visualizations for the results
+                try:
+                    self._visualize_peaks_and_tangents()
+                    
+                    # Get reference to current processing results and visualize middle lines
+                    for obs_idx, ref_line in getattr(self, 'all_reference_lines', {}).items():
+                        if 'geom' in ref_line and 'num' in ref_line:
+                            # Create obstacle-specific group
+                            obstacle_group = self._get_or_create_group(
+                                f"Obstacle_{obs_idx}_Details", 
+                                "Deviation_Visualizations"
+                            )
+                            
+                            # Visualize the middle reference line with special styling
+                            self._visualize_middle_reference_line(
+                                ref_line['geom'], 
+                                ref_line['num'],
+                                obs_idx,
+                                parent_group=obstacle_group
+                            )
+                    
+                    # Visualize obstacle centers
+                    for obs_idx, peak_info in getattr(self, 'all_peaks', {}).items():
+                        if peak_info:
+                            obstacle_group = self._get_or_create_group(
+                                f"Obstacle_{obs_idx}_Details", 
+                                "Deviation_Visualizations"
+                            )
+                            
+                            # Add an obstacle center marker
+                            if hasattr(self, 'obstacle_centers') and obs_idx in self.obstacle_centers:
+                                center = self.obstacle_centers[obs_idx]
+                                center_layer = self._create_temporary_point_layer(
+                                    [center],
+                                    f"Obstacle_{obs_idx}_Center",
+                                    "#FF00FF",  # Magenta
+                                    "star",
+                                    10.0,  # Very visible
+                                    parent_group=obstacle_group
+                                )
+                    
+                    log.info("Deviation calculation and visualization completed successfully.")
+                    
+                    # Show success message with visualization details
+                    QMessageBox.information(
+                        self,
+                        "Deviation Calculation Complete",
+                        "Deviation calculation completed successfully.\n\n"
+                        "Visualizations have been added to the map layers panel under 'Deviation_Visualizations'."
+                    )
+                    
+                except Exception as viz_error:
+                    # Visualization error doesn't indicate calculation failure
+                    log.warning(f"Visualization error (calculation still succeeded): {viz_error}")
+                    QMessageBox.warning(
+                        self,
+                        "Visualization Warning",
+                        f"Calculation succeeded, but there was an error creating some visualizations:\n{str(viz_error)}"
+                    )
+                
+                return True
             else:
                 log.error("Deviation calculation failed or was aborted.")
-                # Message shown within the function
-
+                QMessageBox.critical(
+                    self, 
+                    "Calculation Error", 
+                    "Deviation calculation failed. Check the log for details."
+                )
+                return False
+                
         except Exception as e:
-            log.exception("Error during deviation calculation handling.")
-            QMessageBox.critical(self, "Error", f"An unexpected error occurred during deviation calculation:\n{e}")
-        finally:
-            QApplication.restoreOverrideCursor()
+            log.exception(f"Error during deviation calculation: {e}")
+            QMessageBox.critical(
+                self, 
+                "Error", 
+                f"Deviation calculation failed with error:\n{str(e)}"
+            )
+            return False
 
     def _prepare_nogo_geometry(self, nogo_layer, clearance_m):
         """
@@ -7298,6 +7364,270 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error visualizing geometry for '{layer_name}': {e}")
             return False
     
+    def _get_or_create_group(self, group_name, parent_name=None):
+        """Get or create a layer group in the QGIS layer tree.
+
+        Args:
+            group_name (str): Name of the group to get or create
+            parent_name (str, optional): Name of parent group. If None, uses root.
+
+        Returns:
+            QgsLayerTreeGroup: The group object
+        """
+        root = QgsProject.instance().layerTreeRoot()
+
+        # Find parent group if specified
+        if parent_name:
+            parent_groups = root.findGroups(True, parent_name)
+            if parent_groups:
+                parent = parent_groups[0]
+            else:
+                # Create parent group if it doesn't exist
+                parent = root.addGroup(parent_name)
+        else:
+            parent = root
+
+        # Find existing group
+        for child in parent.children():
+            if child.nodeType() == 0 and child.name() == group_name:  # NodeGroup = 0
+                return child
+
+        # Create new group
+        return parent.addGroup(group_name)
+
+    def _create_temporary_point_layer(self, points, layer_name, color="#FF0000", 
+                                     marker_style="circle", size=5.0, parent_group=None):
+        """Create a temporary point layer for visualization.
+
+        Args:
+            points (list): List of QgsPoint objects
+            layer_name (str): Name for the layer
+            color (str): Hex color code (default: red)
+            marker_style (str): Style name ('circle', 'square', 'triangle', 'star')
+            size (float): Size of marker
+            parent_group (QgsLayerTreeGroup, optional): Parent group to add layer to
+
+        Returns:
+            QgsVectorLayer: The created point layer
+        """
+        try:
+            # Create memory layer
+            vl = QgsVectorLayer("Point?crs=epsg:31984", layer_name, "memory")
+            dp = vl.dataProvider()
+
+            # Add description field
+            dp.addAttributes([QgsField("Description", QVariant.String)])
+            vl.updateFields()
+
+            # Create features from points
+            features = []
+            for i, point in enumerate(points):
+                feat = QgsFeature()
+
+                # Handle different point types
+                if isinstance(point, QgsPoint):
+                    feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(point)))
+                elif isinstance(point, QgsPointXY):
+                    feat.setGeometry(QgsGeometry.fromPointXY(point))
+                else:
+                    log.warning(f"Unsupported point type: {type(point)}")
+                    continue
+
+                feat.setAttributes([f"Point {i+1}"])
+                features.append(feat)
+
+            dp.addFeatures(features)
+            vl.updateExtents()
+
+            # Set style properties based on marker_style
+            marker_name = "circle"
+            if marker_style == "square":
+                marker_name = "square"
+            elif marker_style == "triangle":
+                marker_name = "triangle"
+            elif marker_style == "star":
+                marker_name = "star"
+
+            # Create the symbol
+            symbol = QgsMarkerSymbol.createSimple({
+                'name': marker_name,
+                'color': color,
+                'size': str(size)
+            })
+            vl.renderer().setSymbol(symbol)
+
+            # Add to project with optional group
+            QgsProject.instance().addMapLayer(vl, False)  # False = don't add to legend yet
+
+            if parent_group:
+                parent_group.addLayer(vl)
+            else:
+                QgsProject.instance().layerTreeRoot().addLayer(vl)
+
+            log.debug(f"Created temporary point layer: {layer_name}")
+            return vl
+
+        except Exception as e:
+            log.exception(f"Error creating point layer: {e}")
+            return None
+
+    def _create_temporary_line_layer(self, geometries, layer_name, color="#FF0000", 
+                                    width=0.5, line_style="solid", parent_group=None):
+        """Create a temporary line layer for visualization.
+
+        Args:
+            geometries (list): List of QgsGeometry objects representing lines
+            layer_name (str): Name for the layer
+            color (str): Hex color code (default: red)
+            width (float): Line width
+            line_style (str): Style name ('solid', 'dash', 'dot')
+            parent_group (QgsLayerTreeGroup, optional): Parent group to add layer to
+
+        Returns:
+            QgsVectorLayer: The created vector layer
+        """
+        try:
+            # Create a temporary line layer
+            vl = QgsVectorLayer("LineString?crs=epsg:31984", layer_name, "memory")
+            dp = vl.dataProvider()
+
+            # Add fields for additional information
+            dp.addAttributes([
+                QgsField("Length", QVariant.Double, "double", 10, 2),
+                QgsField("Description", QVariant.String, "string", 255)
+            ])
+            vl.updateFields()
+
+            # Add features
+            features = []
+            for i, geometry in enumerate(geometries):
+                if geometry and not geometry.isEmpty():
+                    # Convert to LineString if needed
+                    if geometry.type() != QgsWkbTypes.LineGeometry:
+                        log.warning(f"Geometry {i} is not a line, attempting to convert.")
+                        if geometry.type() == QgsWkbTypes.PointGeometry:
+                            log.warning(f"Cannot convert point to line. Skipping.")
+                            continue
+                        
+                    feat = QgsFeature()
+                    feat.setGeometry(geometry)
+
+                    # Set attributes
+                    length = geometry.length()
+                    feat.setAttributes([
+                        length,
+                        f"Line {i+1} ({length:.2f} m)"
+                    ])
+                    features.append(feat)
+
+            if features:
+                dp.addFeatures(features)
+                vl.updateExtents()
+
+                # Set style properties based on line_style
+                style_props = {
+                    'color': color,
+                    'line_width': str(width)
+                }
+
+                if line_style == 'dash':
+                    style_props['line_style'] = 'dash'
+                    style_props['customdash'] = '4;2'
+                elif line_style == 'dot':
+                    style_props['line_style'] = 'dot'
+                    style_props['customdash'] = '1;2'
+                else:  # Default to solid
+                    style_props['line_style'] = 'solid'
+
+                # Apply style
+                symbol = QgsLineSymbol.createSimple(style_props)
+                vl.renderer().setSymbol(symbol)
+
+                # Add to project with optional group
+                QgsProject.instance().addMapLayer(vl, False)  # False = don't add to legend yet
+
+                if parent_group:
+                    parent_group.addLayer(vl)
+                else:
+                    QgsProject.instance().layerTreeRoot().addLayer(vl)
+
+                log.debug(f"Created temporary line layer: {layer_name}")
+                return vl
+            else:
+                log.warning(f"No features to add to the line layer: {layer_name}")
+                return None
+
+        except Exception as e:
+            log.exception(f"Error creating line layer: {e}")
+            return None
+
+    def _visualize_middle_reference_line(self, line_geom, line_num, obstacle_idx, parent_group=None):
+        """
+        Create a visualization of the middle reference line for an obstacle.
+
+        Args:
+            line_geom (QgsGeometry): Line geometry
+            line_num (int): Line number for identification
+            obstacle_idx (int): Obstacle index
+            parent_group (QgsLayerTreeGroup, optional): Parent group for the layer
+
+        Returns:
+            QgsVectorLayer: The created line layer
+        """
+        if not line_geom or line_geom.isEmpty():
+            log.warning(f"Cannot visualize empty middle reference line for obstacle {obstacle_idx}")
+            return None
+
+        # Create a highlighted version of the line
+        ref_line_layer = self._create_temporary_line_layer(
+            [line_geom],
+            f"Middle_Reference_Line_{obstacle_idx}",
+            "#FFFF00",  # Yellow
+            1.2,  # Slightly thicker
+            "solid",
+            parent_group=parent_group
+        )
+
+        # Add midpoint marker
+        try:
+            midpoint_geom = line_geom.interpolate(line_geom.length() / 2.0)
+            if not midpoint_geom.isEmpty():
+                midpoint = midpoint_geom.asPoint()
+                midpoint_layer = self._create_temporary_point_layer(
+                    [midpoint],
+                    f"Middle_Reference_Line_Midpoint_{obstacle_idx}",
+                    "#FFFF00",  # Yellow
+                    "star",  # Use a star for better visibility
+                    8.0,  # Larger size
+                    parent_group=parent_group
+                )
+
+                # Add label
+                if midpoint_layer:
+                    label_settings = QgsPalLayerSettings()
+                    label_settings.fieldName = "Description"
+                    label_settings.enabled = True
+
+                    text_format = QgsTextFormat()
+                    text_format.setSize(8)
+                    text_format.setColor(QColor("#000000"))
+
+                    buffer_settings = QgsTextBufferSettings()
+                    buffer_settings.setEnabled(True)
+                    buffer_settings.setSize(1)
+                    buffer_settings.setColor(QColor("#FFFFFF"))
+
+                    text_format.setBuffer(buffer_settings)
+                    label_settings.setFormat(text_format)
+
+                    midpoint_layer.setLabeling(QgsVectorLayerSimpleLabeling(label_settings))
+                    midpoint_layer.setLabelsEnabled(True)
+                    midpoint_layer.triggerRepaint()
+        except Exception as e:
+            log.warning(f"Error adding midpoint marker: {e}")
+
+        return ref_line_layer
+
 
     # --- 12. Plugin Lifecycle ---
 
