@@ -59,15 +59,16 @@ else:
 
 
 # --- QGIS Imports ---
-from qgis.core import QgsPointXY, QgsPoint, QgsFeature, QgsGeometry, QgsField, QgsFields,\
-    QgsProject, QgsWkbTypes, QgsCoordinateTransform, QgsCoordinateReferenceSystem,\
-    QgsVectorLayer, QgsRasterLayer, QgsRectangle, QgsPointLocator, NULL, QgsFeatureRequest,\
-    QgsSymbol, QgsLineSymbol, QgsMarkerSymbol, QgsMarkerLineSymbolLayer, QgsRuleBasedRenderer, \
-    QgsPalLayerSettings, QgsTextFormat, QgsTextBufferSettings, QgsRuleBasedLabeling, \
-    QgsVectorLayerSimpleLabeling, QgsProperty, QgsFillSymbol, QgsArrowSymbolLayer,\
-    QgsDistanceArea, QgsSpatialIndex, QgsPoint, QgsRectangle, QgsPalLayerSettings, QgsTextFormat,\
-    QgsRuleBasedLabeling, QgsUnitTypes, QgsRuleBasedRenderer, QgsVectorLayerSimpleLabeling,\
-    QgsGeometryUtils, QgsMapLayerProxyModel, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression
+from qgis.core import (QgsProject, QgsVectorLayer, QgsField, QgsFeature, QgsGeometry, QgsPointXY,
+                   QgsWkbTypes, QgsSymbol, QgsFeatureRequest, QgsMessageLog, QgsRasterLayer,
+                   QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFillSymbol, QgsLineSymbol, QgsMarkerSymbol,
+                   QgsSvgMarkerSymbolLayer, QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer, QgsSimpleFillSymbolLayer,
+                   QgsVectorFileWriter, QgsRectangle, QgsMapLayerProxyModel, QgsFields,
+                   QgsVectorLayerUtils, QgsRasterFileWriter, QgsRasterPipe, QgsRasterBlockFeedback,
+                   QgsPoint, QgsSpatialIndex, QgsDistanceArea, QgsUnitTypes, QgsRendererCategory, QgsCategorizedSymbolRenderer,
+                   QgsPointLocator, NULL, QgsPalLayerSettings, QgsTextFormat, QgsProperty,
+                   QgsRuleBasedLabeling, QgsRuleBasedRenderer, QgsVectorLayerSimpleLabeling, QgsMarkerLineSymbolLayer,
+                   QgsGeometryUtils, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression, QgsArrowSymbolLayer)
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt import QtWidgets, uic, QtCore
 from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt, QDateTime
@@ -3005,17 +3006,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             fld_created_idx = lines_layer.dataProvider().fieldNameIndex("is_deviation_created")
             fld_merged_idx = lines_layer.dataProvider().fieldNameIndex("is_line_merged")
             fld_length_idx = lines_layer.dataProvider().fieldNameIndex("Length_m")
-        except Exception as e:
-            log.error(f"Error initializing fields: {e}")
-            fld_conflicted_idx = -1
-            fld_created_idx = -1
-            fld_merged_idx = -1
-            fld_length_idx = -1
-
+            
             if -1 in [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]:
                 missing = [name for name, idx in zip(["is_conflicted", "is_deviation_created", "is_line_merged", "Length_m"],
                                                       [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]) if idx == -1]
-                raise ValueError(f"Required fields not found after adding: {', '.join(missing)}")
+                raise ValueError(f"Required fields not found in layer: {', '.join(missing)}")
+        except Exception as e:
+            log.error(f"Error initializing fields: {e}")
+            # Add the fields if they're missing
+            self._add_deviation_fields(lines_layer)
 
             # Use changeAttributeValues for efficiency
             init_attrs = {}
@@ -3504,43 +3503,47 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     parent_group=obstacle_group
                 )
                 
-                features.append(feat)
-                
-            dp.addFeatures(features)
+                # Create the deviation polygon - check if we have entry/exit points defined
+                # This code assumes these might be defined elsewhere - add a guard
+                if 'entry_point' in locals() and 'exit_point' in locals():
+                    try:
+                        # Create entry/exit points with larger markers for better visibility
+                        entry_layer = self._create_temporary_point_layer(
+                            [QgsPoint(entry_point.x(), entry_point.y())], 
+                            f"Entry_Point_{obs_idx}", 
+                            "#00FF00",  # Green
+                            "circle", 
+                            8.0,  # Larger size
+                            parent_group=obstacle_group
+                        )
+                        
+                        exit_layer = self._create_temporary_point_layer(
+                            [QgsPoint(exit_point.x(), exit_point.y())], 
+                            f"Exit_Point_{obs_idx}", 
+                            "#FF00FF",  # Magenta
+                            "triangle", 
+                            8.0,  # Larger size
+                            parent_group=obstacle_group
+                        )
+                        log.debug(f"Added entry/exit point visualization for obstacle {obs_idx}")
+                    except Exception as viz_error:
+                        log.debug(f"Entry/exit point visualization skipped: {viz_error}")
             
-            # Set style properties based on line_style
-            style_props = {
-                'color': color,
-                'line_width': str(width)
-            }
-            
-            if line_style == 'dash':
-                style_props['line_style'] = 'dash'
-                style_props['customdash'] = '4;2'
-            elif line_style == 'dot':
-                style_props['line_style'] = 'dot'
-                style_props['customdash'] = '1;2'
-            else:  # Default to solid
-                style_props['line_style'] = 'solid'
-            
-            # Apply style
-            symbol = QgsLineSymbol.createSimple(style_props)
-            vl.renderer().setSymbol(symbol)
-            
-            # Add to project with optional group
-            QgsProject.instance().addMapLayer(vl, False)  # False = don't add to legend yet
-            
-            if parent_group:
-                parent_group.addLayer(vl)
-            else:
-                QgsProject.instance().layerTreeRoot().addLayer(vl)
-                
-            log.debug(f"Created temporary line layer: {layer_name}")
-            return vl
+            # End of obstacle processing loop
+            # Return results - this is the end of the _calculate_and_apply_deviations_v2 method
+            if edit_started_here:
+                if not lines_layer.commitChanges():
+                    log.error(f"Failed to commit changes to layer '{lines_layer.name()}': {lines_layer.commitErrors()}")
+                    return False
+                    
+            return True
             
         except Exception as e:
-            log.exception(f"Error creating line layer: {e}")
-            return None
+            log.exception(f"Error in deviation calculation: {e}")
+            if edit_started_here and lines_layer.isEditable():
+                lines_layer.rollBack()
+                log.info("Changes rolled back due to error")
+            return False
                 
 
     # --- 7. Simulation and Sequencing ---
