@@ -166,7 +166,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # Replace placeholders with QgsMapLayerComboBoxes
         self.sps_layer_combo = self._replace_combo_with_map_layer_combo(self.spsLayerComboBox, self.horizontalLayout, QgsMapLayerProxyModel.PointLayer)
         self.nogo_zone_combo = self._replace_combo_with_map_layer_combo(self.noGoZoneLayerComboBox, self.horizontalLayout_5, QgsMapLayerProxyModel.PolygonLayer)
-        # self.closepass_combo = self._replace_combo_with_map_layer_combo(self.closePassLayerComboBox, self.horizontalLayout_6, QgsMapLayerProxyModel.PolygonLayer)
+        self.closepass_combo = self._replace_combo_with_map_layer_combo(self.closePassLayerComboBox, self.horizontalLayout_6, QgsMapLayerProxyModel.PolygonLayer)
         # Setup Status Filter ComboBox
         self.statusFilterComboBox.clear(); self.statusFilterComboBox.addItems(["To Be Acquired", "Acquired", "All"]); self.statusFilterComboBox.setCurrentIndex(0)
 
@@ -178,10 +178,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.debug("Populated Acquisition Mode ComboBox (Racetrack, Teardrop).")
         else:
             log.warning("UI Warning: acquisitionModeComboBox not found.")
+
         # Connect signals to slots (Connections remain the same)
         self.importSpsButton.clicked.connect(self.handle_sps_import_button)
-        if hasattr(self, 'calculateHeadingsButton'): self.calculateHeadingsButton.clicked.connect(self.handle_calculate_headings)
-        else: log.warning("UI Warning: calculateHeadingsButton not found.")
         self.applyFilterButton.clicked.connect(self.handle_apply_filter)
         if hasattr(self, 'markAcquiredButton'): self.markAcquiredButton.clicked.connect(self.handle_mark_acquired)
         else: log.warning("UI Warning: markAcquiredButton not found.")
@@ -189,8 +188,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         else: log.warning("UI Warning: markTbaButton not found.")
         if hasattr(self, 'generateLinesButton'): self.generateLinesButton.clicked.connect(self.handle_generate_lines)
         else: log.warning("UI Warning: generateLinesButton not found.")
-        if hasattr(self, 'calculateDeviationsButton'): self.calculateDeviationsButton.clicked.connect(self.handle_calculate_deviations)
-        else: log.warning("UI Warning: calculateDeviationsButton not found.")
+        if hasattr(self, 'calculateHeadingsButton'): self.calculateHeadingsButton.clicked.connect(self.handle_calculate_headings)
+        else: log.warning("UI Warning: calculateHeadingsButton not found.")
         if hasattr(self, 'lineListWidget'): self.lineListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         else: log.warning("UI Warning: lineListWidget not found.")
         if hasattr(self, 'runSimulationButton'): self.runSimulationButton.clicked.connect(self.handle_run_simulation)
@@ -221,6 +220,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         layout.addWidget(new_combo)
         log.debug(f"Replaced {placeholder_combo.objectName()} with QgsMapLayerComboBox.")
         return new_combo
+
 
     def _apply_basic_style(self, layer, color_name, line_style='solid', width=0.5):
         """
@@ -260,6 +260,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except Exception as e:
             log.warning(f"Could not apply style to '{layer.name() if layer else 'None'}': {e}")
             return False
+
 
     def _remove_layer_by_name(self, layer_name):
         """
@@ -1005,6 +1006,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # Force layer repaint to show the changes
         source_layer.triggerRepaint()
         log.info("Heading calculation completed")
+
 
     # --- 3. Filtering Active Lines ---
 
@@ -1910,65 +1912,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
             log.debug("Line generation process completed")
 
+
     # --- 6. Deviation Calculation (RRT Based) ---
-           
-    def handle_calculate_deviations(self):
-        """
-        Handles the 'Calculate Deviations' button click.
-        Initiates the process of finding and creating detours around NoGo zones.
-        """
-        log.info("Initiating deviation calculation...")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            # --- Get parameters ---
-            lines_layer = self.generated_lines_layer # Use the stored layer reference
-            nogo_layer = self.nogo_zone_combo.currentLayer()
-            clearance_m = self.deviationClearanceDoubleSpinBox.value()
-            turn_radius_m = self.turnRadiusDoubleSpinBox.value()
-
-            # --- Basic Input Validation ---
-            if not lines_layer or not lines_layer.isValid():
-                QMessageBox.warning(self, "Input Error", "Generate survey lines first.")
-                return
-            if not nogo_layer or not nogo_layer.isValid():
-                QMessageBox.warning(self, "Input Error", "Select a valid No-Go Zone layer.")
-                return
-            if clearance_m <= 0:
-                QMessageBox.warning(self, "Input Error", "Deviation Clearance must be positive.")
-                return
-            if turn_radius_m <= 0:
-                QMessageBox.warning(self, "Input Error", "Turn Radius must be positive.")
-                return
-
-            # Add a debug visualization button to the dialog for troubleshooting
-            try:
-                # Add debug visualization if the user needs it
-                if QMessageBox.question(self, "Debug Visualization", 
-                                   "Would you like to create a debug visualization of obstacles first?", 
-                                   QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-                    self._visualize_peaks_and_tangents()
-            except Exception as e:
-                log.exception(f"Error in debug visualization: {e}")
-
-            # --- Run the core deviation logic ---
-            success = self._calculate_and_apply_deviations_v2(
-                lines_layer, nogo_layer, clearance_m, turn_radius_m
-            )
-
-            if success:
-                log.info("Deviation calculation completed successfully.")
-                # Optionally update the main line data cache if needed for simulation
-                # self.last_line_data = self._prepare_line_data(...) # Re-prepare if simulation needs updated data immediately
-            else:
-                log.error("Deviation calculation failed or was aborted.")
-                # Message shown within the function
-
-        except Exception as e:
-            log.exception("Error during deviation calculation handling.")
-            QMessageBox.critical(self, "Error", f"An unexpected error occurred during deviation calculation:\n{e}")
-        finally:
-            QApplication.restoreOverrideCursor()
-
     def _prepare_nogo_geometry(self, nogo_layer, clearance_m):
         """
         Prepares a single, valid, buffered geometry representing all NoGo zones.
@@ -2523,744 +2468,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         return line_data
 
-    def _prepare_avoidance_geometry(self, nogo_layer, clearance_m, preserve_individual=False):
-        """
-        Prepares buffered geometry representing NoGo zones.
-        Args:
-            nogo_layer: The layer containing NoGo zones
-            clearance_m: Buffer distance in meters
-            preserve_individual: If True, returns a list of individual obstacle geometries;
-                               If False, returns a single combined geometry (default behavior)
-        Returns:
-            If preserve_individual=False: QgsGeometry or None
-            If preserve_individual=True: List of QgsGeometry objects or None
-        """
-        log.debug(f"Preparing NoGo geometry with clearance {clearance_m}m")
-        if not nogo_layer or not nogo_layer.isValid():
-            log.warning("No valid No-Go layer provided.")
-            return None
-
-        all_buffered_geoms = []
-        processed_feats = 0
-        invalid_input_feats = 0
-        buffer_failures = 0
-        feature_request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoFlags) # Need geometry
-
-        # Progress for potentially long buffering
-        progress = QProgressDialog("Buffering NoGo Zones...", "Cancel", 0, nogo_layer.featureCount(), self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(500)
-
-        try:
-            for i, feat in enumerate(nogo_layer.getFeatures(feature_request)):
-                if progress.wasCanceled():
-                    raise UserCancelException("Buffering cancelled.")
-                progress.setValue(i)
-
-                geom = feat.geometry()
-                if not geom or geom.isEmpty() or not is_surface_type(geom.wkbType()):
-                    invalid_input_feats += 1
-                    continue
-
-                # Repair input geometry if necessary
-                if not geom.isGeosValid():
-                    log.debug(f"Repairing invalid input geometry for feature {feat.id()}")
-                    geom = self._repair_geometry(geom)
-                    if not geom:
-                        invalid_input_feats += 1
-                        continue # Repair failed
-
-                # Apply buffer
-                buffered_geom = geom.buffer(clearance_m, 10) # 10 segments per quarter circle
-
-                if not buffered_geom or buffered_geom.isEmpty():
-                    log.warning(f"Buffering failed for feature {feat.id()}")
-                    buffer_failures += 1
-                    continue
-
-                # Repair buffered geometry if necessary
-                if not buffered_geom.isGeosValid():
-                    log.debug(f"Repairing invalid buffered geometry for feature {feat.id()}")
-                    buffered_geom = self._repair_geometry(buffered_geom)
-                    if not buffered_geom:
-                        buffer_failures += 1
-                        continue # Repair failed
-
-                all_buffered_geoms.append(buffered_geom)
-                processed_feats += 1
-
-            progress.setValue(nogo_layer.featureCount())
-
-            if invalid_input_feats > 0:
-                log.warning(f"Skipped {invalid_input_feats} invalid input NoGo features.")
-            if buffer_failures > 0:
-                log.warning(f"Encountered {buffer_failures} buffer/repair failures.")
-
-            if not all_buffered_geoms:
-                log.warning("No valid buffered NoGo geometries generated.")
-                QMessageBox.warning(self,"NoGo Preparation", "No valid NoGo zones found or buffering failed.")
-                return None
-
-            # Return individual geometries or combined geometry based on the preserve_individual flag
-            if preserve_individual:
-                # Return the list of individual buffered geometries
-                if not all_buffered_geoms:
-                    return None
-                
-                log.info(f"Successfully prepared {len(all_buffered_geoms)} individual avoidance geometries from {processed_feats} features.")
-                return all_buffered_geoms
-            else:
-                # Combine all buffered geometries using unaryUnion (original behavior)
-                log.debug(f"Combining {len(all_buffered_geoms)} buffered geometries...")
-                progress.setLabelText("Combining buffered zones...")
-                QApplication.processEvents() # Update UI
-
-                final_avoidance_geom = QgsGeometry.unaryUnion(all_buffered_geoms)
-
-                if not final_avoidance_geom or final_avoidance_geom.isEmpty():
-                    log.error("Failed to combine buffered NoGo zones.")
-                    QMessageBox.critical(self, "Error", "Failed to combine buffered NoGo zones.")
-                    return None
-
-                # Final validation and repair
-                if not final_avoidance_geom.isGeosValid():
-                    log.warning("Combined avoidance geometry is invalid, attempting repair...")
-                    final_avoidance_geom = self._repair_geometry(final_avoidance_geom)
-                    if not final_avoidance_geom:
-                        log.error("Repair of combined avoidance geometry failed.")
-                        QMessageBox.critical(self,"Error", "Repair of combined avoidance geometry failed.")
-                        return None
-
-                log.info(f"Successfully prepared combined avoidance geometry from {processed_feats} features.")
-                return final_avoidance_geom
-                
-        except Exception as e:
-            log.exception(f"Error preparing NoGo avoidance geometry: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to prepare NoGo zones for analysis:\n{e}")
-            return None
-        finally:
-            # Close progress dialog
-            if progress:
-                progress.setValue(nogo_layer.featureCount())
-    
-    def _repair_geometry(self, geom):
-        """
-        Attempts to repair an invalid geometry using QGIS's built-in repair functions.
-        Args:
-            geom (QgsGeometry): The geometry to repair
-        Returns:
-            QgsGeometry: The repaired geometry or None if repair failed
-        """
-        if not geom or geom.isEmpty():
-            return None
-            
-        # Try makeValid first (should be available in all QGIS versions)
-        try:
-            repaired = geom.makeValid()
-            if repaired and not repaired.isEmpty() and repaired.isGeosValid():
-                return repaired
-        except Exception as e:
-            log.warning(f"makeValid failed: {e}")
-            
-        # If makeValid didn't work, try buffer(0)
-        try:
-            buffered = geom.buffer(0, 5)  # 5 segments should be enough for repairs
-            if buffered and not buffered.isEmpty() and buffered.isGeosValid():
-                return buffered
-        except Exception as e:
-            log.warning(f"buffer(0) repair failed: {e}")
-        
-        return None
-        
-    def _separate_avoidance_geometry(self, geometry, max_distance=500):
-        """
-        Breaks a single MultiPolygon geometry into separate obstacle geometries based on spatial proximity.
-        
-        Args:
-            geometry: The input geometry (usually a MultiPolygon)
-            max_distance: Maximum distance (in map units) to consider geometries as part of the same obstacle cluster
-            
-        Returns:
-            List of QgsGeometry objects, each representing a distinct obstacle
-        """
-        if not geometry:
-            return []
-        
-        log.debug(f"Separating avoidance geometry of type {geometry.wkbType()} into distinct obstacles")
-        
-        # If it's already a single polygon, return it as a list with one item
-        if geometry.wkbType() == QgsWkbTypes.Polygon:
-            return [geometry]
-            
-        # For MultiPolygon, extract individual polygons
-        individual_geometries = []
-        
-        if geometry.wkbType() == QgsWkbTypes.MultiPolygon:
-            # Get geometry parts using QGIS API methods
-            multi_geom = geometry.constGet()
-            for i in range(multi_geom.numGeometries()):
-                single_geom = QgsGeometry(multi_geom.geometryN(i).clone())
-                if single_geom and not single_geom.isEmpty():
-                    individual_geometries.append(single_geom)
-        else:
-            # If it's not a MultiPolygon but still a valid geometry, treat it as a single obstacle
-            individual_geometries = [geometry]
-            
-        log.debug(f"Extracted {len(individual_geometries)} individual polygons from input geometry")
-        
-        # If we only have 0 or 1 geometry, no need for clustering
-        if len(individual_geometries) <= 1:
-            return individual_geometries
-            
-        # Perform spatial clustering based on distance
-        clusters = []
-        remaining = individual_geometries.copy()
-        
-        while remaining:
-            # Start a new cluster with the first geometry
-            current_cluster = [remaining.pop(0)]
-            cluster_changed = True
-            
-            # Keep expanding the cluster while we can add geometries to it
-            while cluster_changed:
-                cluster_changed = False
-                current_union = QgsGeometry.unaryUnion(current_cluster)
-                
-                # Check each remaining geometry
-                i = 0
-                while i < len(remaining):
-                    # If this geometry is within max_distance of our cluster, add it
-                    if current_union.distance(remaining[i]) <= max_distance:
-                        current_cluster.append(remaining.pop(i))
-                        cluster_changed = True
-                    else:
-                        i += 1
-            
-            # Add the completed cluster to our list and continue with remaining geometries
-            if current_cluster:
-                clusters.append(QgsGeometry.unaryUnion(current_cluster))
-                
-        log.info(f"Spatial clustering identified {len(clusters)} distinct obstacle groups")
-        return clusters
-        
-    def _add_deviation_fields(self, layer):
-        """
-        Adds required boolean fields for deviation tracking if they don't exist.
-        
-        Args:
-            layer (QgsVectorLayer): The layer to add fields to
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        if not layer or not layer.isValid():
-            log.error("Cannot add deviation fields to invalid layer.")
-            return False
-            
-        required_fields = {
-            "is_conflicted": QVariant.Bool,
-            "is_deviation_created": QVariant.Bool,
-            "is_line_merged": QVariant.Bool
-        }
-        
-        # Add any missing fields
-        provider = layer.dataProvider()
-        existing_fields = {field.name(): field.type() for field in layer.fields()}
-        fields_to_add = []
-        
-        for field_name, field_type in required_fields.items():
-            if field_name not in existing_fields:
-                fields_to_add.append(QgsField(field_name, field_type))
-                
-        if fields_to_add:
-            if not provider.addAttributes(fields_to_add):
-                log.error("Failed to add deviation tracking fields to layer.")
-                return False
-            layer.updateFields()
-            log.info(f"Added {len(fields_to_add)} deviation tracking fields to layer.")
-            
-        return True
-        
-    def _split_geometry_at_distances(self, line_geom, dist1, dist2):
-        """
-        Splits a line geometry into three parts at two specified distances using interpolate_vl.
-        Returns (geom_before, geom_middle, geom_after) or (None, None, None).
-        Ensures dist1 < dist2.
-        """
-        if not line_geom or line_geom.isEmpty() or not is_line_type(line_geom.wkbType()):
-            log.error("Invalid input geometry for splitting.")
-            return None, None, None
-
-        line_length = line_geom.length()
-        if line_length < 1e-6: # Avoid issues with zero-length lines
-             log.warning("Cannot split zero-length geometry.")
-             return None, None, None
-
-
-        # Clamp distances and ensure order
-        d1 = max(0.0, min(dist1, line_length))
-        d2 = max(0.0, min(dist2, line_length))
-
-        if d1 >= d2 - 1e-9: # Use tolerance for float comparison
-            log.warning(f"Split distances are too close or invalid (d1={d1}, d2={d2}). Returning original geometry as 'before'.")
-            # Return the original geometry as the 'before' part, and None for the others
-            return QgsGeometry(line_geom), None, None
-
-
-        try:
-            # Use interpolate_vl which returns a list of points along the line
-            # We need to create LineString geometries from these points
-            
-            # Extract all vertices to a list first to avoid QgsVertexIterator len() error
-            vertex_list = []
-            vertices_iter = line_geom.vertices()
-            while vertices_iter.hasNext():
-                vertex_list.append(vertices_iter.next())
-            
-            if len(vertex_list) < 2:
-                log.warning("Not enough vertices in line geometry for splitting.")
-                return None, None, None
-
-            # Part 1: from start to dist1
-            points_before = []
-            current_dist = 0.0
-            for i in range(len(vertex_list) - 1):
-                p1 = vertex_list[i]
-                p2 = vertex_list[i + 1]
-                segment_len = math.sqrt(p1.sqrDist(p2))
-                if current_dist <= d1:
-                    points_before.append(QgsPointXY(p1)) # Always add the start point of the segment
-                    if current_dist + segment_len > d1:
-                        # This segment contains d1, interpolate
-                        fraction = (d1 - current_dist) / segment_len
-                        interp_x = p1.x() + fraction * (p2.x() - p1.x())
-                        interp_y = p1.y() + fraction * (p2.y() - p1.y())
-                        points_before.append(QgsPointXY(interp_x, interp_y))
-                        break # We have reached d1
-                else:
-                    break # We are past d1
-                current_dist += segment_len
-            geom_before = QgsGeometry.fromPolylineXY(points_before) if len(points_before) >= 2 else QgsGeometry()
-
-            # Part 2: from dist1 to dist2
-            points_middle = []
-            current_dist = 0.0
-            started_middle = False
-            for i in range(len(vertex_list) - 1):
-                p1 = vertex_list[i]
-                p2 = vertex_list[i + 1]
-                segment_len = math.sqrt(p1.sqrDist(p2))
-                segment_end_dist = current_dist + segment_len
-
-                # If the start distance is within this segment
-                if not started_middle and current_dist <= d1 < segment_end_dist:
-                    fraction_start = (d1 - current_dist) / segment_len
-                    start_x = p1.x() + fraction_start * (p2.x() - p1.x())
-                    start_y = p1.y() + fraction_start * (p2.y() - p1.y())
-                    points_middle.append(QgsPointXY(start_x, start_y))
-                    started_middle = True
-
-                # If the end distance is within this segment
-                if started_middle and current_dist <= d2 < segment_end_dist:
-                    fraction_end = (d2 - current_dist) / segment_len
-                    end_x = p1.x() + fraction_end * (p2.x() - p1.x())
-                    end_y = p1.y() + fraction_end * (p2.y() - p1.y())
-                    points_middle.append(QgsPointXY(end_x, end_y))
-                    break # Finished the middle part
-
-                # If the entire segment is within the middle range
-                if started_middle and segment_end_dist <= d2:
-                     # Ensure we don't add duplicate points if start_dist was exactly at a vertex
-                     if not points_middle or points_middle[-1].compare(QgsPointXY(p2), 0.0001) != 0:
-                        points_middle.append(QgsPointXY(p2))
-
-                current_dist += segment_len
-
-            geom_middle = QgsGeometry.fromPolylineXY(points_middle) if len(points_middle) >= 2 else QgsGeometry()
-
-            # Part 3: from dist2 to end
-            points_after = []
-            current_dist = 0.0
-            started_after = False
-            for i in range(len(vertex_list) - 1):
-                p1 = vertex_list[i]
-                p2 = vertex_list[i + 1]
-                segment_len = math.sqrt(p1.sqrDist(p2))
-                segment_end_dist = current_dist + segment_len
-
-                # Find the start of the 'after' segment
-                if not started_after and current_dist <= d2 < segment_end_dist:
-                    fraction_start = (d2 - current_dist) / segment_len
-                    start_x = p1.x() + fraction_start * (p2.x() - p1.x())
-                    start_y = p1.y() + fraction_start * (p2.y() - p1.y())
-                    points_after.append(QgsPointXY(start_x, start_y))
-                    started_after = True
-
-                # Add the rest of the vertices
-                if started_after and i < len(vertex_list) - 1:
-                    if not points_after or points_after[-1].compare(QgsPointXY(p2), 0.0001) != 0:
-                        points_after.append(QgsPointXY(p2))
-
-                current_dist += segment_len
-
-            # Add the last vertex if we haven't already
-            if started_after and vertex_list and len(points_after) > 0:
-                last_vertex = vertex_list[-1]
-                if not points_after[-1].compare(QgsPointXY(last_vertex), 0.0001) == 0:
-                    points_after.append(QgsPointXY(last_vertex))
-
-            geom_after = QgsGeometry.fromPolylineXY(points_after) if len(points_after) >= 2 else QgsGeometry()
-
-            return geom_before, geom_middle, geom_after
-        except Exception as e:
-            log.exception(f"Error splitting geometry at distances: {e}")
-            return None, None, None
-            
-    def _merge_geometries(self, geom_list):
-        """
-        Merges a list of line geometries into a single line geometry.
-        
-        Args:
-            geom_list (list): List of QgsGeometry objects to merge
-            
-        Returns:
-            QgsGeometry: Merged line geometry or None if merge fails
-        """
-        if not geom_list:
-            return None
-            
-        # Filter out empty geometries
-        valid_geoms = [g for g in geom_list if g and not g.isEmpty() and is_line_type(g.wkbType())]
-        
-        if not valid_geoms:
-            return None
-            
-        if len(valid_geoms) == 1:
-            return QgsGeometry(valid_geoms[0])
-            
-        try:
-            # Create a list of points from all geometries
-            all_points = []
-            for geom in valid_geoms:
-                points = []
-                vertices = geom.vertices()
-                while vertices.hasNext():
-                    point = vertices.next()
-                    points.append(QgsPointXY(point))
-                    
-                if points:
-                    if not all_points:
-                        # First geometry - add all points
-                        all_points.extend(points)
-                    else:
-                        # Check if the first point of this geometry is close to the last point of our accumulated points
-                        if points[0].compare(all_points[-1], 0.0001) == 0:
-                            # Skip first point to avoid duplicates, add the rest
-                            all_points.extend(points[1:])
-                        else:
-                            # Geometries don't connect, add a warning but still try to merge
-                            log.warning("Merging discontinuous geometries - result may have jumps.")
-                            all_points.extend(points)
-                        
-            # Create a new geometry from the combined points
-            if len(all_points) >= 2:
-                return QgsGeometry.fromPolylineXY(all_points)
-            else:
-                log.warning("Not enough points to create a valid line geometry after merging.")
-                return None
-                
-        except Exception as e:
-            log.exception(f"Error merging geometries: {e}")
-            return None
-
-    def _calculate_and_apply_deviations_v2(self, lines_layer, nogo_layer, clearance_m, turn_radius_m):
-        """
-        Core logic for calculating and applying deviations using the RRT path planning approach.
-        Args:
-            lines_layer (QgsVectorLayer): Layer containing the survey lines
-            nogo_layer (QgsVectorLayer): Layer containing the NoGo zones
-            clearance_m (float): Clearance distance in meters to add around NoGo zones
-            turn_radius_m (float): Minimum turning radius for the vessel in meters
-            
-        Returns:
-            bool: True if calculation was successful, False otherwise
-        """
-        log.info("Starting RRT-based deviation calculation...")
-        success_flag = True  # Assume success unless something fails critically
-        project = QgsProject.instance()
-        # Initialize progress variable at the beginning to avoid UnboundLocalError
-        progress = None
-
-        # --- Phase 1: Preparation ---
-        if not self._add_deviation_fields(lines_layer):
-            QMessageBox.critical(self, "Setup Error", "Failed to add required deviation fields to the lines layer.")
-            return False
-
-        # Initialize fields to False first
-        edit_started_here = False
-        if not lines_layer.isEditable():
-            if not lines_layer.startEditing():
-                log.error(f"Could not start editing on layer '{lines_layer.name()}'")
-                QMessageBox.critical(self, "Error", f"Could not start editing layer '{lines_layer.name()}'. Check layer permissions.")
-                return False
-            edit_started_here = True
-            log.debug(f"Started editing layer: {lines_layer.name()}")
-
-        try:
-            log.debug("Initializing deviation fields...")
-            fld_conflicted_idx = lines_layer.fields().lookupField("is_conflicted")
-            fld_created_idx = lines_layer.fields().lookupField("is_deviation_created")
-            fld_merged_idx = lines_layer.fields().lookupField("is_line_merged")
-            fld_length_idx = lines_layer.fields().lookupField("Length_m")
-
-            if -1 in [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]:
-                missing = [name for name, idx in zip(["is_conflicted", "is_deviation_created", "is_line_merged", "Length_m"],
-                                                  [fld_conflicted_idx, fld_created_idx, fld_merged_idx, fld_length_idx]) if idx == -1]
-                raise ValueError(f"Required fields not found after adding: {', '.join(missing)}")
-
-            # Use changeAttributeValues for efficiency
-            init_attrs = {}
-            for feature in lines_layer.getFeatures():
-                init_attrs[feature.id()] = {
-                    fld_conflicted_idx: False,
-                    fld_created_idx: False,
-                    fld_merged_idx: False
-                }
-            if init_attrs:
-                if not lines_layer.dataProvider().changeAttributeValues(init_attrs):
-                    log.error(f"Failed to initialize deviation fields: {lines_layer.dataProvider().lastError()}")
-                    raise RuntimeError("Failed to initialize deviation fields.")
-            log.debug("Deviation fields initialized.")
-
-            # Get avoidance geometry for conflict detection
-            avoidance_geom = self._prepare_avoidance_geometry(nogo_layer, clearance_m)
-            if not avoidance_geom:
-                log.error("Failed to prepare avoidance geometry. Aborting deviation calculation.")
-                raise ValueError("Failed to prepare avoidance geometry.")  # Raise exception to trigger rollback
-            
-            # Separate the geometry into distinct components by using spatial clustering
-            # This ensures obstacles that are spatially separated are treated independently
-            obstacle_geometries = self._separate_avoidance_geometry(avoidance_geom)
-            log.info(f"Identified {len(obstacle_geometries)} spatially distinct obstacles")
-
-            # --- Phase 2: Identify Conflicts & Group ---
-            log.debug("Identifying conflicted lines...")
-            conflicted_lines_info = []  # List of (fid, line_geom, line_num, heading)
-            fld_linenum = lines_layer.fields().lookupField("LineNum")
-            fld_heading = lines_layer.fields().lookupField("Heading")
-
-            # Create a spatial index from the obstacles
-            obstacle_idx = QgsSpatialIndex()
-            for i, obs_geom in enumerate(obstacle_geometries):
-                # Create a dummy feature with this geometry
-                f = QgsFeature()
-                f.setId(i)
-                f.setGeometry(obs_geom)
-                obstacle_idx.insertFeature(f)
-
-            # Process each line to identify conflicts
-            progress = QProgressDialog("Identifying conflicted lines...", "Cancel", 0, lines_layer.featureCount(), self)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setMinimumDuration(500)
-
-            for i, feature in enumerate(lines_layer.getFeatures()):
-                if progress.wasCanceled():
-                    raise UserCancelException("User cancelled conflict detection.")
-                progress.setValue(i)
-
-                line_geom = feature.geometry()
-                if not line_geom or line_geom.isEmpty():
-                    continue
-
-                # Quick check using spatial index to eliminate obvious non-conflicts
-                if not obstacle_idx.intersects(line_geom.boundingBox()):
-                    continue
-
-                # Detailed intersection check
-                is_conflicted = False
-                for obs_geom in obstacle_geometries:
-                    if line_geom.intersects(obs_geom):
-                        is_conflicted = True
-                        break
-
-                if is_conflicted:
-                    # Mark as conflicted in the attribute table
-                    lines_layer.changeAttributeValue(feature.id(), fld_conflicted_idx, True)
-                    
-                    # Extract line info for deviation calculation
-                    line_num = feature.attribute(fld_linenum) if fld_linenum >= 0 else "Unknown"
-                    heading = feature.attribute(fld_heading) if fld_heading >= 0 else 0.0
-                    
-                    # Add to our list of conflicts to process
-                    conflicted_lines_info.append((feature.id(), line_geom, line_num, heading))
-
-            progress.setValue(lines_layer.featureCount())
-            log.info(f"Identified {len(conflicted_lines_info)} conflicted lines")
-
-            if not conflicted_lines_info:
-                QMessageBox.information(self, "Deviation Analysis", "No conflicted lines found. All lines clear of NoGo zones.")
-                lines_layer.commitChanges() if edit_started_here else None
-                return True
-
-            # --- Phase 3: Calculate Deviations with RRT ---
-            log.debug("Starting deviation calculation with RRT...")
-            
-            # Check if RRT planner is available
-            if not rrt_planner:
-                log.error("RRT planner module not available. Cannot calculate deviations.")
-                QMessageBox.critical(self, "Module Error", "RRT path planner module is not available. Please check installation.")
-                raise ImportError("RRT planner module not available")
-
-            # Configure progress dialog for deviation calculations
-            progress = QProgressDialog("Calculating deviations...", "Cancel", 0, len(conflicted_lines_info), self)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setMinimumDuration(500)
-
-            # Create a temporary layer for the deviations if requested
-            deviations_layer = QgsVectorLayer("LineString?crs=EPSG:31984", "Deviation_Paths", "memory")
-            deviations_provider = deviations_layer.dataProvider()
-            deviations_provider.addAttributes([
-                QgsField("LineNum", QVariant.Int),
-                QgsField("Length_m", QVariant.Double),
-                QgsField("Type", QVariant.String),
-                QgsField("Original_FID", QVariant.Int)
-            ])
-            deviations_layer.updateFields()
-            
-            # Process each conflicted line
-            for i, (fid, line_geom, line_num, heading) in enumerate(conflicted_lines_info):
-                if progress.wasCanceled():
-                    raise UserCancelException("User cancelled deviation calculations.")
-                
-                progress.setValue(i)
-                progress.setLabelText(f"Calculating deviation for line {line_num}...")
-                log.debug(f"Processing deviation for line {line_num} (FID: {fid})")
-                
-                # Extract start and end points
-                line_points = []
-                vertices_iter = line_geom.vertices()
-                while vertices_iter.hasNext():
-                    point = vertices_iter.next()
-                    line_points.append(QgsPointXY(point))
-                
-                if len(line_points) < 2:
-                    log.warning(f"Line {line_num} has insufficient vertices for deviation calculation.")
-                    continue
-                
-                start_point = line_points[0]
-                end_point = line_points[-1]
-                
-                # Calculate heading angles for start and end
-                start_heading = self._calculate_geom_heading(line_geom) or heading
-                end_heading = (start_heading + 180.0) % 360.0  # Opposite direction
-                
-                try:
-                    # Create RRT planner instance
-                    planner = rrt_planner.RRTPlanner(
-                        start=start_point,
-                        goal=end_point,
-                        obstacles=obstacle_geometries,
-                        bounds_geometry=None,  # Auto-calculate bounds
-                        turning_radius=turn_radius_m,
-                        step_size=turn_radius_m * 2,  # Reasonable step size based on turning radius
-                        start_heading=start_heading,
-                        goal_heading=end_heading,
-                        max_iterations=1000,  # Limit iterations to prevent infinite loops
-                        goal_sample_rate=0.2,  # 20% chance to sample the goal directly
-                        search_radius=turn_radius_m * 10  # Search radius for connecting nodes
-                    )
-                    
-                    # Run the path planning
-                    result_path = planner.plan()
-                    
-                    if result_path and not result_path.isEmpty():
-                        # We successfully found a deviation path
-                        log.info(f"Found valid deviation path for line {line_num}")
-                        
-                        # Mark the line as having a deviation created
-                        lines_layer.changeAttributeValue(fid, fld_created_idx, True)
-                        
-                        # Add the deviation to our temporary layer
-                        deviation_feat = QgsFeature()
-                        deviation_feat.setGeometry(result_path)
-                        deviation_feat.setAttributes([
-                            line_num,
-                            result_path.length(),
-                            "Deviation",
-                            fid
-                        ])
-                        deviations_provider.addFeature(deviation_feat)
-                    else:
-                        log.warning(f"Failed to find deviation path for line {line_num}")
-                    
-                except Exception as e:
-                    log.exception(f"Error calculating deviation for line {line_num}: {e}")
-            
-            progress.setValue(len(conflicted_lines_info))
-            deviations_layer.updateExtents()
-            
-            # Add the deviations layer to the project if it has features
-            if deviations_layer.featureCount() > 0:
-                # Apply a nice style to the deviations layer
-                symbol = QgsLineSymbol.createSimple({
-                    'line_color': '#FF9500',  # Orange
-                    'line_width': '0.8',
-                    'line_style': 'solid'
-                })
-                deviations_layer.renderer().setSymbol(symbol)
-                
-                # Add to project
-                project.addMapLayer(deviations_layer)
-                log.info(f"Created deviations layer with {deviations_layer.featureCount()} features")
-                
-                # Show a success message
-                QMessageBox.information(
-                    self, 
-                    "Deviation Calculation Complete", 
-                    f"Successfully calculated deviations for {deviations_layer.featureCount()} of {len(conflicted_lines_info)} conflicted lines.\n\n" +
-                    "The deviations have been added to the map as a new layer."
-                )
-            else:
-                # No deviations could be calculated
-                QMessageBox.warning(
-                    self, 
-                    "Deviation Calculation Result", 
-                    "No valid deviations could be calculated for the conflicted lines.\n\n" +
-                    "This may be due to obstacles completely blocking the path with no possible route around them.\n" +
-                    "Try adjusting the clearance or turn radius parameters."
-                )
-            
-            # Commit changes to the lines layer
-            if edit_started_here:
-                if not lines_layer.commitChanges():
-                    log.error(f"Failed to commit changes to lines layer: {lines_layer.commitErrors()}")
-                    QMessageBox.warning(self, "Save Error", "Failed to save attribute changes to the lines layer.")
-            
-            return success_flag
-            
-        except Exception as e:
-            log.exception(f"Error during deviation calculation: {e}")
-            QMessageBox.critical(self, "Calculation Error", f"An error occurred during deviation calculation:\n{str(e)}")
-            
-            # Roll back changes if we started editing
-            if edit_started_here and lines_layer.isEditable():
-                lines_layer.rollBack()
-                log.info("Changes rolled back due to error")
-                
-            return False
-            
-        finally:
-            # Clean up progress dialog
-            if progress:
-                progress.setValue(progress.maximum())
-                
-            # Ensure edits are either committed or rolled back
-            if edit_started_here and lines_layer.isEditable():
-                lines_layer.commitChanges() if success_flag else lines_layer.rollBack()
-                
-
     # --- 7. Simulation and Sequencing ---
-
     def _gather_simulation_parameters(self):
         """
         Reads and validates simulation parameters from the UI.
@@ -3699,280 +2907,206 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         return final_line_data, required_layers
 
+
     def handle_run_simulation(self):
         """
-        Main handler: Runs selected algorithm, including deviation calculation,
-        visualizes result, enables editing. Filters out lines that failed deviation.
+        Main handler for running the selected simulation algorithm.
+
+        This function orchestrates the entire simulation process:
+        1. Gathers simulation parameters
+        2. Prepares line data
+        3. Calculates deviations (with future RRT integration point)
+        4. Executes the selected algorithm (Teardrop or Racetrack)
+        5. Visualizes and enables editing of results
+
+        Returns: None
         """
         log.info("Run Simulation button clicked.")
         QApplication.setOverrideCursor(Qt.WaitCursor)
         progress = None
-        self.last_simulation_result = None; self.last_sim_params = None
-        self.last_line_data = None; self.last_required_layers = None
+
+        # Reset simulation state
+        self.last_simulation_result = None
+        self.last_sim_params = None
+        self.last_line_data = None
+        self.last_required_layers = None
         self.last_turn_cache = {}
-        if hasattr(self, 'editFinalizeButton'): self.editFinalizeButton.setEnabled(False)
+
+        if hasattr(self, 'editFinalizeButton'):
+            self.editFinalizeButton.setEnabled(False)
 
         try:
+            # Step 1: Data Gathering & Preparation
             start_prep_time = time.time()
             log.debug("Running Step 1: Data Gathering & Preparation...")
+
             sim_params = self._gather_simulation_parameters()
-            if not sim_params: raise ValueError("Failed to gather parameters")
+            if not sim_params:
+                raise ValueError("Failed to gather simulation parameters")
             self.last_sim_params = sim_params
 
             line_data, required_layers = self._prepare_line_data(sim_params)
-            if not line_data: raise ValueError("Failed to prepare line data")
+            if not line_data:
+                raise ValueError("Failed to prepare line data")
             self.last_required_layers = required_layers
+
             log.info(f"Initial line data preparation complete ({time.time() - start_prep_time:.2f}s). Found {len(line_data)} lines.")
 
-            # --- <<< START Deviation Calculation >>> ---
-            # start_dev_time = time.time()
-            # log.debug("Running Step 2: Calculating Deviations...")
-            # nogo_layer = sim_params.get('nogo_layer')
-            # clearance = sim_params.get('deviation_clearance_m', 100.0)
-            # turn_radius = sim_params.get('turn_radius_meters', 500.0)
+            # Step 2: Deviation Calculation (future RRT integration point)
+            start_dev_time = time.time()
+            log.debug("Running Step 2: Calculating Deviations...")
 
-            # # line_data is modified IN PLACE
-            # # Convert vessel turn rate from degrees per second to degrees per minute
-            # vessel_turn_rate_dps = sim_params.get('vessel_turn_rate_dps', 3.0)
-            # vessel_turn_rate_dpm = vessel_turn_rate_dps * 60.0
+            # Prepare deviation parameters
+            nogo_layer = sim_params.get('nogo_layer')
+            clearance = sim_params.get('deviation_clearance_m', 100.0)
+            turn_radius = sim_params.get('turn_radius_meters', 500.0)
+            # Convert vessel turn rate from degrees per second to degrees per minute
+            vessel_turn_rate_dps = sim_params.get('vessel_turn_rate_dps', 3.0)
+            vessel_turn_rate_dpm = vessel_turn_rate_dps * 60.0
 
-            # line_data = self._calculate_and_apply_deviations(
-            #     line_data, nogo_layer, clearance, turn_radius, vessel_turn_rate_dpm
-            # )
-            # # Store the potentially modified line_data for the editor/visualizer
-            # self.last_line_data = line_data
-            # log.info(f"Deviation calculation complete ({time.time() - start_dev_time:.2f}s).")
-            # --- <<< END Deviation Calculation >>> ---
+            # Apply deviations (line_data is modified in place)
+            line_data = self._calculate_and_apply_deviations(
+                line_data, nogo_layer, clearance, turn_radius, vessel_turn_rate_dpm
+            )
 
-            # Store the unmodified line_data since we're not calculating deviations
+            # Store the potentially modified line_data for the editor/visualizer
             self.last_line_data = line_data
+            log.info(f"Deviation calculation complete ({time.time() - start_dev_time:.2f}s).")
 
+            # Step 3: Filter active lines and validate first line
             selected_mode = sim_params.get('acquisition_mode', 'Racetrack')
             log.info(f"Selected Acquisition Mode: {selected_mode}")
-            log.debug("Running Step 3: Sequencing Algorithm...")
-            start_sim_time = time.time()
-            best_final_sequence_info = None
 
-            # --- Filter out lines marked as failed DURING deviation ---
-            # We're commenting this out since we're not doing deviation calculations
-            # active_line_nums = sorted([ln for ln, data in line_data.items() if not data.get('deviation_failed', False)])
-            # Using all line numbers instead since we're not calculating deviations
-            active_line_nums = sorted(line_data.keys())
+            # Filter out lines marked as failed during deviation
+            active_line_nums = sorted([ln for ln, data in line_data.items() 
+                                      if not data.get('deviation_failed', False)])
 
             if not active_line_nums:
-                log.error("No active lines remain after preparation.")
-                QMessageBox.critical(self, "Sequencing Error", "No usable lines available for sequencing.")
+                log.error("No active lines remain after preparation and deviation failure filtering.")
+                QMessageBox.critical(self, "Sequencing Error", 
+                                    "No usable lines available for sequencing after deviation checks.")
                 raise ValueError("No usable lines for sequencing.")
-            log.info(f"Proceeding with {len(active_line_nums)} lines for sequencing.")
-            # ---
+
+            log.info(f"Proceeding with {len(active_line_nums)} non-failed lines for sequencing.")
 
             all_remaining_lines = set(active_line_nums)
             first_line_num = sim_params['first_line_num']
 
-            # Validate first line *against the filtered list* - commented out deviation checks
+            # Validate first line against the filtered list
             if first_line_num not in all_remaining_lines:
-                # Removed deviation failure check
-                # if first_line_num in line_data and line_data[first_line_num].get('deviation_failed'):
-                #     log.error(f"Specified first line {first_line_num} failed deviation calculation and cannot be used to start the sequence.")
-                #     QMessageBox.critical(self, "Start Line Error", f"The specified start line ({first_line_num}) failed the deviation calculation. Please choose a different start line or resolve the deviation issue.")
-                #     raise ValueError(f"Specified first line {first_line_num} failed deviation.")
-                # else:
-                log.warning(f"Specified first line {first_line_num} not in active line list. Using first available: {active_line_nums[0]}")
-                first_line_num = active_line_nums[0]
-
-            # ================================================
-            # --- BRANCH BASED ON SELECTED MODE ---
-            # ================================================
-            if selected_mode == "Teardrop":
-                log.info("Starting Teardrop Simulation...")
-                start_reciprocal_teardrop = (sim_params['first_heading_option'] == "High to Low SP (Reciprocal)")
-                log.info(f"Teardrop starting direction: {'Reciprocal' if start_reciprocal_teardrop else 'Normal'}")
-
-                current_seq = [first_line_num]
-                first_line_info = line_data.get(first_line_num)
-                if not first_line_info: raise ValueError(f"Line data missing for first line {first_line_num}")
-
-                initial_cost = 0.0
-                line_time = first_line_info['length'] / sim_params['avg_shooting_speed_mps'] if sim_params['avg_shooting_speed_mps'] > 0 else 0.0
-                runin_time = 0.0
-                runin_geom = self._find_runin_geom(required_layers['runins'], first_line_num, "End" if start_reciprocal_teardrop else "Start")
-                if runin_geom: runin_time = self._calculate_runin_time(runin_geom, sim_params)
-                initial_cost += runin_time + line_time
-
-                current_exit_pt, current_exit_hdg = self._get_next_exit_state(first_line_num, start_reciprocal_teardrop, line_data)
-                if current_exit_pt is None or current_exit_hdg is None: raise ValueError("Exit state error after first line (Teardrop init)")
-
-                initial_remaining = all_remaining_lines - {first_line_num}
-                initial_direction_str = 'high_to_low' if start_reciprocal_teardrop else 'low_to_high'
-                initial_state = {
-                    'last_line_num': first_line_num, 'exit_pt': current_exit_pt, 'exit_hdg': current_exit_hdg,
-                    'is_reciprocal': start_reciprocal_teardrop, 'remaining_lines': initial_remaining,
-                    'line_directions': {first_line_num: initial_direction_str}
-                }
-
-                current_state = initial_state
-                current_cost = initial_cost
-
-                if current_state['remaining_lines']:
-                    progress = QProgressDialog(f"Running Teardrop Simulation...", "Cancel", 0, len(all_remaining_lines), self)
-                    progress.setWindowModality(Qt.WindowModal); progress.setMinimumDuration(500);
-                    seq_step = 1; progress.setValue(seq_step)
-                    while current_state['remaining_lines']:
-                        if progress.wasCanceled(): raise Exception("Simulation cancelled by user.")
-                        progress.setValue(seq_step)
-
-                        last_line_num = current_state['last_line_num']
-                        exit_pt = current_state['exit_pt']
-                        exit_hdg = current_state['exit_hdg']
-                        remaining_lines = current_state['remaining_lines']
-
-                        next_line_num = self._determine_next_line(last_line_num, remaining_lines, line_data)
-                        if next_line_num is None: break # No more lines
-
-                        next_is_reciprocal = not current_state['is_reciprocal']
-                        next_line_info = line_data.get(next_line_num)
-                        if not next_line_info: raise ValueError(f"Line data missing for next line {next_line_num}")
-                        chosen_direction_str = 'high_to_low' if next_is_reciprocal else 'low_to_high'
-                        current_state['line_directions'][next_line_num] = chosen_direction_str
-
-                        p_entry, h_entry = self._get_entry_details(next_line_info, next_is_reciprocal)
-                        if not p_entry or h_entry is None or not exit_pt or exit_hdg is None:
-                            log.error(f"Teardrop: Missing data for turn {last_line_num}->{next_line_num}. Stop.")
-                            break
-
-                        turn_geom, turn_length, turn_time = self._get_cached_turn(last_line_num, next_line_num, next_is_reciprocal, exit_pt, exit_hdg, p_entry, h_entry, sim_params, self.last_turn_cache)
-                        if turn_geom is None or turn_time is None:
-                            log.error(f"Teardrop: Turn calculation failed {last_line_num}->{next_line_num}. Stop.")
-                            break
-                        current_cost += turn_time
-
-                        new_exit_pt, new_exit_hdg, runin_time_step, line_time_step = self._simulate_add_line(next_line_num, next_is_reciprocal, line_data, required_layers, sim_params)
-                        if new_exit_pt is None or new_exit_hdg is None: raise ValueError(f"Exit state error after line {next_line_num} (Teardrop loop)")
-                        current_cost += runin_time_step + line_time_step
-
-                        current_seq.append(next_line_num)
-                        current_state = {
-                            'last_line_num': next_line_num, 'exit_pt': new_exit_pt, 'exit_hdg': new_exit_hdg,
-                            'is_reciprocal': next_is_reciprocal,
-                            'remaining_lines': remaining_lines - {next_line_num},
-                            'line_directions': current_state['line_directions']
-                        }
-                        seq_step += 1; progress.setValue(seq_step); QApplication.processEvents()
-                    if 'progress' in locals() and progress: progress.setValue(len(all_remaining_lines))
+                if first_line_num in line_data and line_data[first_line_num].get('deviation_failed'):
+                    log.error(f"Specified first line {first_line_num} failed deviation calculation and cannot be used.")
+                    QMessageBox.critical(self, "Start Line Error", 
+                                        f"The specified start line ({first_line_num}) failed the deviation calculation. "
+                                        f"Please choose a different start line or resolve the deviation issue.")
+                    raise ValueError(f"Specified first line {first_line_num} failed deviation.")
                 else:
-                    log.info("Only one line to process for Teardrop.")
-                best_final_sequence_info = {'seq': current_seq, 'cost': current_cost, 'state': current_state}
+                    log.warning(f"Specified first line {first_line_num} not in active/non-failed list. "
+                               f"Using first available: {active_line_nums[0]}")
+                    first_line_num = active_line_nums[0]
+
+            # Step 4: Run the selected algorithm
+            log.debug("Running Step 3: Sequencing Algorithm...")
+            start_sim_time = time.time()
+
+            if selected_mode == "Teardrop":
+                best_final_sequence_info = self._run_teardrop_algorithm(
+                    first_line_num, active_line_nums, all_remaining_lines, line_data, 
+                    required_layers, sim_params, self.last_turn_cache
+                )
                 log.info(f"Teardrop Simulation complete ({time.time() - start_sim_time:.2f}s).")
 
             elif selected_mode == "Racetrack":
-                log.info("Starting True Interleaved Racetrack Algorithm...")
-                if not active_line_nums: raise ValueError("No active lines found.")
-
-                turn_radius = sim_params.get('turn_radius_meters', 900.0); line_interval = self._calculate_most_common_interval_from_lines(required_layers['lines']); ideal_jump_count = 1;
-                if line_interval and line_interval > 1.0:
-                    try: ideal_jump_count = max(1, int(round((turn_radius * 2.0) / line_interval)))
-                    except Exception as e: log.error(f"Error calculating ideal jump: {e}. Falling back to jump=1.")
-                else: log.warning("Could not determine valid line interval. Falling back to jump=1.")
-                log.info(f"Calculated Ideal Racetrack Jump = {ideal_jump_count} lines")
-
-                generated_racetrack_sequence = self._generate_interleaved_racetrack_sequence(
-                    active_line_nums, first_line_num, ideal_jump_count
+                best_final_sequence_info = self._run_racetrack_algorithm(
+                    first_line_num, active_line_nums, line_data, 
+                    required_layers, sim_params, self.last_turn_cache
                 )
-                if not generated_racetrack_sequence: raise ValueError("Failed to generate interleaved racetrack sequence.")
-                log.debug(f"Generated Interleaved Racetrack Sequence: {generated_racetrack_sequence}")
+                log.info(f"Racetrack Simulation complete ({time.time() - start_sim_time:.2f}s).")
 
-                log.debug("Evaluating Interleaved Sequence - Start Normal (Low->High)")
-                cost_normal, directions_normal = self._calculate_sequence_time( generated_racetrack_sequence, False, sim_params, line_data, required_layers, self.last_turn_cache )
-                log.debug("Evaluating Interleaved Sequence - Start Reciprocal (High->Low)")
-                cost_recip, directions_recip = self._calculate_sequence_time( generated_racetrack_sequence, True, sim_params, line_data, required_layers, self.last_turn_cache )
+            else:
+                raise ValueError(f"Unknown Acquisition Mode: {selected_mode}")
 
-                normal_ok = cost_normal is not None; recip_ok = cost_recip is not None
-                if not normal_ok and not recip_ok: raise ValueError("Both Racetrack sequence timing calculations failed.")
-
-                user_prefers_reciprocal = (sim_params['first_heading_option'] == "High to Low SP (Reciprocal)")
-                final_sequence = generated_racetrack_sequence
-                final_cost_seconds = 0; final_directions = {}
-
-                if user_prefers_reciprocal:
-                    if recip_ok: log.info("Selecting Reciprocal start (User Pref)."); final_cost_seconds = cost_recip; final_directions = directions_recip
-                    elif normal_ok: log.warning("User pref Recip failed. Falling back to Normal."); final_cost_seconds = cost_normal; final_directions = directions_normal
-                    else: raise ValueError("Calculation failed for preferred and alternative.")
-                else: # User prefers Normal
-                    if normal_ok: log.info("Selecting Normal start (User Pref)."); final_cost_seconds = cost_normal; final_directions = directions_normal
-                    elif recip_ok: log.warning("User pref Normal failed. Falling back to Reciprocal."); final_cost_seconds = cost_recip; final_directions = directions_recip
-                    else: raise ValueError("Calculation failed for preferred and alternative.")
-
-                best_final_sequence_info = { 'seq': final_sequence, 'cost': final_cost_seconds, 'state': {'line_directions': final_directions} }
-                log.info(f"True Racetrack Algorithm complete ({time.time() - start_sim_time:.2f}s).")
-
-            else: raise ValueError(f"Unknown Acquisition Mode: {selected_mode}")
-            # ================================================
-            # --- END OF MODE-SPECIFIC BRANCH ---
-            # ================================================
-
-            # --- Post-Simulation Processing ---
+            # Step 5: Post-Simulation Processing
             if best_final_sequence_info:
                 log.info("--- Starting Post-Simulation Processing ---")
-                self.last_simulation_result = best_final_sequence_info # Store result for editing
+                self.last_simulation_result = best_final_sequence_info  # Store result for editing
+
                 final_sequence = best_final_sequence_info.get('seq', [])
                 final_cost_seconds = best_final_sequence_info.get('cost')
                 final_state = best_final_sequence_info.get('state', {})
                 final_directions = final_state.get('line_directions', {})
 
-                if not final_sequence: raise ValueError("Final sequence missing from result.")
-                if final_cost_seconds is None: raise ValueError("Final cost missing from result.")
-                if not final_directions: raise ValueError("Final directions map missing from result.")
+                # Validate result components
+                if not final_sequence:
+                    raise ValueError("Final sequence missing from result.")
+                if final_cost_seconds is None:
+                    raise ValueError("Final cost missing from result.")
+                if not final_directions:
+                    raise ValueError("Final directions map missing from result.")
 
                 final_cost_hours = final_cost_seconds / 3600.0
 
+                # Visualize results
                 log.info("Visualizing final result...")
                 start_datetime = sim_params.get('start_datetime', datetime.now())
+
+                # Get source CRS with fallback
                 source_crs = required_layers.get('lines', QgsProject.instance()).crs()
                 if not source_crs or not source_crs.isValid():
                     log.warning("Source/Project CRS invalid, using fallback WGS84 for visualization.")
                     source_crs = QgsCoordinateReferenceSystem("EPSG:4326")
 
-                log.debug("Calling _reconstruct_path...")
-                # Pass the line_data state
+                # Reconstruct path
+                log.debug("Reconstructing path...")
                 path_segments_reconstructed = self._reconstruct_path(
                     best_final_sequence_info, line_data, required_layers,
                     sim_params, self.last_turn_cache
                 )
-                log.debug(f"_reconstruct_path returned {len(path_segments_reconstructed) if path_segments_reconstructed is not None else 'None'} segments.")
+                log.debug(f"Path reconstruction returned {len(path_segments_reconstructed) if path_segments_reconstructed is not None else 'None'} segments.")
 
+                # Visualize path if reconstruction succeeded
                 if not path_segments_reconstructed:
                     log.error("Path reconstruction failed. Cannot visualize.")
-                    QMessageBox.warning(self, "Visualization Skipped", "Path reconstruction failed, skipping visualization.")
+                    QMessageBox.warning(self, "Visualization Skipped", 
+                                       "Path reconstruction failed, skipping visualization.")
                 else:
-                    log.debug("Calling _visualize_optimized_path...")
-                    # Pass line_data for the flags
+                    log.debug("Visualizing optimized path...")
                     self._visualize_optimized_path(
-                        final_sequence, path_segments_reconstructed, start_datetime, source_crs, line_data
+                        final_sequence, path_segments_reconstructed, 
+                        start_datetime, source_crs, line_data
                     )
                     log.info("Final visualization complete.")
 
+                # Enable edit/finalize button if available
                 if hasattr(self, 'editFinalizeButton'):
                     log.debug("Enabling Edit/Finalize button.")
                     self.editFinalizeButton.setEnabled(True)
-                else: log.warning("Edit/Finalize button not found, cannot enable.")
+                else:
+                    log.warning("Edit/Finalize button not found, cannot enable.")
 
+                # Log results
                 log.info(f"Algorithm {selected_mode} finished.")
                 log.info(f"Final Sequence: {final_sequence}")
                 log.info(f"Estimated Cost: {final_cost_hours:.2f} hours ({final_cost_seconds:.0f} seconds)")
 
-            else: # Simulation algorithm itself failed to produce a result
-                log.error(f"{selected_mode} simulation failed to produce a valid result (best_final_sequence_info is None).")
-                QMessageBox.critical(self, "Simulation Failed", f"{selected_mode} simulation did not complete successfully. Check logs.")
+            else:  # Simulation algorithm failed to produce a result
+                log.error(f"{selected_mode} simulation failed to produce a valid result.")
+                QMessageBox.critical(self, "Simulation Failed", 
+                                    f"{selected_mode} simulation did not complete successfully. Check logs.")
 
         except Exception as e:
-            log.exception("Error during Run Simulation process (in main try block).")
-            QMessageBox.critical(self, "Simulation Error", f"An unexpected error occurred:\n{e}\n\nTraceback:\n{traceback.format_exc()}")
+            log.exception("Error during Run Simulation process.")
+            QMessageBox.critical(self, "Simulation Error", 
+                                f"An unexpected error occurred:\n{e}\n\nTraceback:\n{traceback.format_exc()}")
         finally:
+            # Clean up resources
             if 'progress' in locals() and progress and isinstance(progress, QProgressDialog):
-                if not progress.wasCanceled(): progress.setValue(progress.maximum())
+                if not progress.wasCanceled():
+                    progress.setValue(progress.maximum())
                 progress.deleteLater()
             QApplication.restoreOverrideCursor()
             log.info("--- handle_run_simulation finished ---")
+
 
     def _run_teardrop_algorithm(self, first_line_num, active_line_nums, all_remaining_lines, 
                                line_data, required_layers, sim_params, turn_cache):
@@ -4162,6 +3296,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Clean up progress dialog
             if progress:
                 progress.deleteLater()
+
 
     def _run_racetrack_algorithm(self, first_line_num, active_line_nums, line_data, 
                                 required_layers, sim_params, turn_cache):
@@ -4422,8 +3557,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error calculating sequence time: {e}")
             return None, None
 
-    # --- 8. Sequence Editing & Finalization ---
 
+    # --- 8. Sequence Editing & Finalization ---
     def show_edit_sequence_dialog(self):
         """
         Shows the sequence editor dialog, passing context including deviated line data.
@@ -4669,7 +3804,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             return None
 
     # --- 9. Lookahead Generation ---
-
     def _generate_lookahead_table(self, final_sequence_info):
         """
         Generates lookahead table data from final simulation results.
@@ -5776,6 +4910,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # If no clear common difference, return the average difference
         return int(sum(diffs) / len(diffs)) if diffs else 0
 
+
     def _find_closest_line_index(self, sorted_lines, target_line, current_idx, ideal_jump):
         """
         Finds the index of the closest line to the target line number.
@@ -5805,6 +4940,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 closest_idx = idx
 
         return closest_idx
+
 
     def _determine_next_line(self, current_line_num, remaining_lines, line_data):
         """
@@ -5844,7 +4980,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         return closest_line
 
     # --- 11. Visualization ---
-
     def _reconstruct_path(self, sequence_info, line_data, required_layers, sim_params, turn_cache):
         """
         Reconstructs a complete path with all segments and turns for visualization.
@@ -6796,156 +5931,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             except Exception:
                 pass
 
-    def _visualize_peaks_and_tangents(self):
-        """
-        Creates a debug visualization of the NoGo zones and potential deviation paths.
-        This helps with troubleshooting the deviation calculation algorithm.
-        """
-        try:
-            # Get current parameters
-            nogo_layer = self.nogo_zone_combo.currentLayer()
-            clearance_m = self.deviationClearanceDoubleSpinBox.value()
-            turn_radius_m = self.turnRadiusDoubleSpinBox.value()
-            
-            if not nogo_layer or not nogo_layer.isValid():
-                QMessageBox.warning(self, "Input Error", "Select a valid No-Go Zone layer.")
-                return
-                
-            # Prepare buffered obstacle geometries
-            avoidance_geom = self._prepare_avoidance_geometry(nogo_layer, clearance_m)
-            if not avoidance_geom:
-                QMessageBox.warning(self, "Visualization Error", "Failed to prepare NoGo geometries for visualization.")
-                return
-                
-            # Create a temporary layer to visualize the buffered NoGo zones
-            buffered_layer = QgsVectorLayer("Polygon?crs=EPSG:31984", "Buffered_NoGo_Zones", "memory")
-            buffered_provider = buffered_layer.dataProvider()
-            
-            # Add the buffered geometry as a feature
-            buff_feat = QgsFeature()
-            buff_feat.setGeometry(avoidance_geom)
-            buffered_provider.addFeature(buff_feat)
-            
-            # Style the buffered layer
-            symbol = QgsFillSymbol.createSimple({
-                'color': '#FF000055',  # Semi-transparent red
-                'outline_color': '#FF0000',
-                'outline_width': '0.5',
-                'outline_style': 'solid',
-                'style': 'solid'
-            })
-            buffered_layer.renderer().setSymbol(symbol)
-            
-            # Add to project
-            QgsProject.instance().addMapLayer(buffered_layer)
-            
-            # Separate the geometry into distinct obstacles
-            obstacle_geometries = self._separate_avoidance_geometry(avoidance_geom)
-            
-            # Create another layer to highlight the individual obstacle clusters
-            clusters_layer = QgsVectorLayer("Polygon?crs=EPSG:31984", "NoGo_Clusters", "memory")
-            clusters_provider = clusters_layer.dataProvider()
-            
-            # Add each cluster with a different attribute value
-            clusters_provider.addAttributes([QgsField("Cluster_ID", QVariant.Int)])
-            clusters_layer.updateFields()
-            
-            for i, obs_geom in enumerate(obstacle_geometries):
-                feat = QgsFeature()
-                feat.setGeometry(obs_geom)
-                feat.setAttributes([i + 1])
-                clusters_provider.addFeature(feat)
-                
-            # Style the clusters layer with random colors by category
-            categories = []
-            for i in range(len(obstacle_geometries)):
-                symbol = QgsFillSymbol.createSimple({
-                    'color': f'#{hash(str(i)) % 0xFFFFFF:06x}77',  # Semi-transparent random color
-                    'outline_color': '#000000',
-                    'outline_width': '0.7',
-                    'outline_style': 'solid',
-                    'style': 'solid'
-                })
-                category = QgsRendererCategory(i + 1, symbol, f"Cluster {i + 1}")
-                categories.append(category)
-                
-            renderer = QgsCategorizedSymbolRenderer("Cluster_ID", categories)
-            clusters_layer.setRenderer(renderer)
-            
-            # Add to project
-            QgsProject.instance().addMapLayer(clusters_layer)
-            
-            QMessageBox.information(
-                self, 
-                "Debug Visualization Created", 
-                f"Created visualization layers:\n" +
-                f"1. Buffered_NoGo_Zones: Combined NoGo zones with {clearance_m}m buffer\n" +
-                f"2. NoGo_Clusters: {len(obstacle_geometries)} distinct obstacle groups\n\n" +
-                "These layers are for visualization only and can be removed when no longer needed."
-            )
-            
-        except Exception as e:
-            log.exception(f"Error creating debug visualization: {e}")
-            QMessageBox.critical(self, "Visualization Error", f"Failed to create debug visualization:\n{str(e)}")
- 
-    def _create_temporary_polygon_layer(self, geometries, layer_name, color="#FF0000", opacity=0.5, parent_group=None):
-        """Create a temporary polygon layer for visualization.
 
-        Args:
-            geometries (list): List of QgsGeometry objects representing polygons
-            layer_name (str): Name for the layer
-            color (str): Hex color code (default: red)
-            opacity (float): Opacity of the fill (0.0-1.0, default: 0.5)
-            parent_group (QgsLayerTreeGroup, optional): Parent group to add layer to
-
-        Returns:
-            QgsVectorLayer: The created vector layer
-        """
-        try:
-            # Create a temporary polygon layer
-            layer = QgsVectorLayer("Polygon?crs=epsg:31984", layer_name, "memory")
-            dp = layer.dataProvider()
-            
-            # Add features
-            features = []
-            for geometry in geometries:
-                if geometry and not geometry.isEmpty():
-                    feat = QgsFeature()
-                    feat.setGeometry(geometry)
-                    features.append(feat)
-            
-            if features:
-                dp.addFeatures(features)
-                layer.updateExtents()
-                
-                # Set up polygon symbol with transparency
-                symbol = QgsFillSymbol.createSimple({
-                    'color': color,
-                    'outline_color': color,
-                    'outline_width': '0.5',
-                    'outline_style': 'solid',
-                    'style': 'solid'
-                })
-                symbol.setOpacity(opacity)
-                layer.renderer().setSymbol(symbol)
-                
-                # Add layer to map
-                QgsProject.instance().addMapLayer(layer, False)
-                if parent_group:
-                    parent_group.addLayer(layer)
-                else:
-                    QgsProject.instance().layerTreeRoot().addLayer(layer)
-                
-                log.debug(f"Created temporary polygon layer: {layer_name}")
-                return layer
-            else:
-                log.warning(f"No features to add to the polygon layer: {layer_name}")
-                return None
-                
-        except Exception as e:
-            log.exception(f"Error creating polygon layer: {e}")
-            return None
-        
     def _visualize_path(self, geometry, layer_name, color=None):
         """
         Debug visualizer that creates or updates a memory layer to display a geometry.
@@ -7010,7 +5996,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except Exception as e:
             log.exception(f"Error visualizing geometry for '{layer_name}': {e}")
             return False
-    
 
     # --- 12. Plugin Lifecycle ---
 
