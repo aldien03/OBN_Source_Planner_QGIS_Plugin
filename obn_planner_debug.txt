@@ -1,789 +1,507 @@
-2025-04-12 19:56:11 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1948 - Starting deviation calculation with clearance=100.0m, turn_radius=900.0m
-2025-04-12 19:56:12 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1965 - Performing debug visualization before calculation...
-2025-04-12 19:56:12 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3018 - Preparing NoGo geometry with clearance 100.0m
-2025-04-12 19:56:12 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:124 - Fallback check for is_surface_type
-2025-04-12 19:56:12 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3094 - Combining 1 buffered geometries...
-2025-04-12 19:56:12 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3114 - Successfully prepared combined avoidance geometry from 1 features.
-2025-04-12 19:56:12 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3169 - Separating avoidance geometry of type 6 into distinct obstacles
-2025-04-12 19:56:12 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3189 - Extracted 33 individual polygons from input geometry
-2025-04-12 19:56:13 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3223 - Spatial clustering identified 32 distinct obstacle groups
-2025-04-12 19:56:13 - obn_planner.obn_planner_dockwidget - INFO - _add_debug_layers:6361 - Creating debug visualization layers...
-2025-04-12 19:56:13 - obn_planner.obn_planner_dockwidget - INFO - _add_debug_layers:6459 - Created debug visualization with 32 obstacles
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1992 - Calculating intermediate components only...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2074 - Calculating intermediate components for deviation...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _add_deviation_fields:3470 - Adding deviation tracking fields to layer 'Generated_Survey_Lines'
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _add_deviation_fields:3522 - Added 3 deviation tracking fields to layer.
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2089 - Preparing avoidance geometry with clearance 100.0m...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3018 - Preparing NoGo geometry with clearance 100.0m
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:124 - Fallback check for is_surface_type
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3094 - Combining 1 buffered geometries...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3114 - Successfully prepared combined avoidance geometry from 1 features.
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2097 - Separating avoidance geometry into distinct obstacles...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3169 - Separating avoidance geometry of type 6 into distinct obstacles
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3189 - Extracted 33 individual polygons from input geometry
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3223 - Spatial clustering identified 32 distinct obstacle groups
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2105 - Identifying conflicted lines...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2140 - Found 10 conflicted lines.
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2150 - Processing 32 distinct obstacles - grouping lines by obstacle
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 1972 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 1978 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 1984 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 1990 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 1996 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 2002 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 2008 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 2014 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 2020 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2163 - Line 2026 intersects obstacles: [25]
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2176 - Identifying middle reference lines for each obstacle...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2201 - Obstacle 25: Middle reference line identified: 2002
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2208 - Processing 1 obstacles with separate reference lines
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2230 - Obstacle 25: Using middle line 2002 as reference
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2245 - Using obstacle center at (401429.0, 7519916.0) for perpendicular rays
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2257 - Successfully extracted boundary for obstacle 25
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2344 - Obstacle 25: Peak A: 401126.1,7519444.1, Peak B: 401731.9,7520387.9
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2403 - Successfully calculated intermediate components for deviation!
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:2001 - Intermediate components calculated successfully.
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _visualize_deviation_steps:6134 - Creating visualization layers for deviation calculation steps...
-2025-04-12 19:56:16 - obn_planner.obn_planner_dockwidget - INFO - _visualize_deviation_steps:6341 - Created 2 peak points, 1 center points, 2 entry/exit points, 1 deviation polygons
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _add_deviation_fields:3470 - Adding deviation tracking fields to layer 'Generated_Survey_Lines'
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _add_deviation_fields:3525 - All required deviation fields already exist.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3563 - Started editing layer: Generated_Survey_Lines
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3570 - Available fields in layer: LineNum, Status, Length_m, Heading, LowestSP, LowestSP_x, LowestSP_y, HighestSP, HighestSP_x, HighestSP_y, is_conflicted, is_deviation_created, is_line_merged
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3572 - Initializing deviation fields...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3580 - Field indices: is_conflicted=10, is_deviation_created=11, is_line_merged=12, Length_m=2
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3594 - Resetting deviation fields to initial values...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3617 - Deviation fields initialized.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3620 - Preparing avoidance geometry with clearance 100.0m...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3018 - Preparing NoGo geometry with clearance 100.0m
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:124 - Fallback check for is_surface_type
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3094 - Combining 1 buffered geometries...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3114 - Successfully prepared combined avoidance geometry from 1 features.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3628 - Avoidance geometry type: 2, Geometry is valid: True, Is multipart: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3633 - Separating avoidance geometry into distinct obstacles...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3169 - Separating avoidance geometry of type 6 into distinct obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3189 - Extracted 33 individual polygons from input geometry
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3223 - Spatial clustering identified 32 distinct obstacle groups
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3641 - Identified 32 distinct obstacle geometries
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 0: Valid: True, Type: 2, Area: 286560.49
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 1: Valid: True, Type: 2, Area: 411444.49
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 2: Valid: True, Type: 2, Area: 286726.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 3: Valid: True, Type: 2, Area: 412094.42
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 4: Valid: True, Type: 2, Area: 272459.26
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 5: Valid: True, Type: 2, Area: 263110.13
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 6: Valid: True, Type: 2, Area: 263109.62
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 7: Valid: True, Type: 2, Area: 263109.60
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 8: Valid: True, Type: 2, Area: 268981.73
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 9: Valid: True, Type: 2, Area: 263101.79
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 10: Valid: True, Type: 2, Area: 1021679.84
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 11: Valid: True, Type: 2, Area: 279296.68
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 12: Valid: True, Type: 2, Area: 607898.53
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 13: Valid: True, Type: 2, Area: 1329515.01
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 14: Valid: True, Type: 2, Area: 213155.39
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 15: Valid: True, Type: 2, Area: 213159.52
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 16: Valid: True, Type: 2, Area: 286865.53
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 17: Valid: True, Type: 2, Area: 287563.01
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 18: Valid: True, Type: 2, Area: 1021747.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 19: Valid: True, Type: 2, Area: 312813.23
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 20: Valid: True, Type: 2, Area: 395686.23
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 21: Valid: True, Type: 2, Area: 1021569.37
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 22: Valid: True, Type: 2, Area: 398718.66
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 23: Valid: True, Type: 2, Area: 1021570.54
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 24: Valid: True, Type: 2, Area: 292028.41
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 25: Valid: True, Type: 2, Area: 970218.01
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 26: Valid: True, Type: 2, Area: 398640.88
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 27: Valid: True, Type: 2, Area: 288226.06
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 28: Valid: True, Type: 2, Area: 276466.94
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 29: Valid: True, Type: 2, Area: 257424.19
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 30: Valid: True, Type: 2, Area: 1021570.21
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3643 - Obstacle 31: Valid: True, Type: 2, Area: 298654.34
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3647 - Identifying conflicted lines...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3653 - Building spatial index for conflict detection...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3661 - Creating spatial index from line features...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3669 - Using spatial index to find potential conflicts...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3671 - Found 39 potential candidates using spatial index
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3702 - Found 10 conflicted lines.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3706 - Marking conflicted lines in attribute table...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3714 - Grouping conflicted lines by obstacle...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3722 - Processing 32 distinct obstacles - grouping lines by obstacle
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 1972 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 1978 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 1984 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 1990 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 1996 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 2002 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 2008 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 2014 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 2020 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3736 - Line 2026 intersects obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3751 - Identifying middle reference lines for each obstacle...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3776 - Obstacle 25: Middle reference line identified: 2002 at index 5
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3784 - Processing 1 obstacles with separate reference lines
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3807 - Obstacle 25: Using middle line 2002 as reference
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3817 - Calculating midpoint distances to centroid for conflicted lines:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 1972: Midpoint (407689.9, 7516503.9), DistSq = 748006405.95
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 1978: Midpoint (407629.1, 7516408.9), DistSq = 746102676.37
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 1984: Midpoint (407549.9, 7516326.0), DistSq = 743087161.34
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 1990: Midpoint (407483.0, 7516235.0), DistSq = 740858126.07
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 1996: Midpoint (407409.8, 7516148.1), DistSq = 738268822.14
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 2002: Midpoint (407337.3, 7516061.9), DistSq = 735726776.97
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 2008: Midpoint (407264.3, 7515974.9), DistSq = 733197732.26
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 2014: Midpoint (407203.1, 7515880.1), DistSq = 731425483.79
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 2020: Midpoint (407130.4, 7515793.0), DistSq = 728962372.28
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3823 -   Line 2026: Midpoint (407057.5, 7515706.0), DistSq = 726515684.05
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3837 - Using obstacle center at (401429.0, 7519916.0) for perpendicular rays
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3883 - Successfully extracted boundary for obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3976 - Obstacle 25: Peak A: 401126.1,7519444.1, Peak B: 401731.9,7520387.9
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4010 - Starting deviation path creation...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4042 - Found 10 conflicted lines from attribute table for processing
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5115 - Starting direct processing of conflicted lines...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5141 - [DIRECT-DEBUG] Querying with filter: "is_conflicted" = 'true'
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5145 - [DIRECT-DEBUG] No conflicted lines found by the query
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5178 - [DIRECT-DEBUG-COUNT] Query yielded 10 features.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5181 - [DIRECT-DEBUG] Found 10 conflicted lines from attribute table
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5193 - Found 10 conflicted lines from attribute table
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 1972 (FID=15)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 1972 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 1972 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 1972 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 1972 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 1972 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 1978 (FID=16)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 1978 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 1978 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 1978 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 1978 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 1978 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 1984 (FID=17)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 1984 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 1984 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 1984 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 1984 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 1984 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 1990 (FID=18)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 1990 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 1990 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 1990 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 1990 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 1990 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 1996 (FID=19)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 1996 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 1996 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 1996 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 1996 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 1996 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 2002 (FID=20)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 2002 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 2002 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 2002 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 2002 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 2002 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 2008 (FID=21)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 2008 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 2008 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 2008 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 2008 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 2008 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 2014 (FID=22)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 2014 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 2014 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 2014 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 2014 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 2014 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 2020 (FID=23)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 2020 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 2020 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 2020 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 2020 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 2020 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5202 - Processing line 2026 (FID=24)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5228 - Line 2026 intersects with obstacle 25 buffer
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5233 - [DIRECT-DEBUG] Line 2026 has 1 relevant obstacles: [25]
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5241 - Line 2026 has 1 relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5249 - Processing line 2026 against obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - ERROR - _process_conflicted_lines:5481 - Error processing line 2026 against obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5503 - Processed 10 conflicted lines
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5504 - Recorded path options for 0 lines
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5505 - Created 0 line segments
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - WARNING - _process_conflicted_lines:5508 - Encountered 10 errors during processing
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5511 - [DIRECT] Path options recorded: []
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5525 - [DIRECT-ASSIGN] Directly assigned self.path_options within _process_conflicted_lines. Keys: []
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5530 - [RETURN-CHECK] Returning dict. Path options keys: []
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:5534 - [DIRECT-DEBUG] Processed 320 lines, 10 had relevant obstacles
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4131 - [RESULTS-RECEIVED] Full results dict received: {'path_options': {}, 'chosen_paths': {}, 'segments_to_add': [], 'segments_to_delete': [15, 16, 17, 18, 19, 20, 21, 22, 23, 24], 'process_stats': {'lines_processed': 10, 'obstacles_processed': 10, 'paths_recorded': 0, 'segments_created': 0, 'lines_with_options': set(), 'errors': ['Line 1972, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 1978, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 1984, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 1990, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 1996, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 2002, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 2008, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 2014, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 2020, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.', 'Line 2026, Obstacle 25: MultiPoint geometry cannot be converted to a point. Only Point types are permitted.']}}
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4147 - [VERIFY-ASSIGN] After function return, self.path_options has keys: []
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4160 - Direct processing recorded path options for 0 lines
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4164 - Processing deviation for obstacle 25...
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4183 - Calculating entry/exit points for obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4200 - Creating deviation polygon for obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4203 - Entry point: (402565.04, 7519186.67)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4204 - Peak A: (401126.07, 7519444.13)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4205 - Exit point: (400292.96, 7520645.32)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4206 - Peak B: (401731.93, 7520387.87)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Deviation Polygon Created] TYPE: Polygon (1 rings, 5 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Deviation Boundary Created] TYPE: Line (5 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4240 - Splitting conflicted lines for obstacle 25
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 1972 (FID=15)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 1972 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1972 intersection result] TYPE: Line (18 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 1972 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1972 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 1972 (FID=15) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (396205.00, 7523882.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419174.40, 7509125.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1892 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27308.95
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 18 vertices, length 228.65
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 1972: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (401609.51, 7520409.78)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (401609.56, 7520409.75)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (401802.11, 7520286.67)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (401802.15, 7520286.64)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 1972 (FID=15) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (396205.00, 7523882.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419174.40, 7509125.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1892 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27308.95
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 18 vertices, length 228.65
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 1972:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (401609.51, 7520409.78) at distance 6425.58
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (401609.56, 7520409.75) at distance 6425.64
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (401802.11, 7520286.67) at distance 6654.23
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (401802.15, 7520286.64) at distance 6654.29
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (401609.51, 7520409.78)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (401802.15, 7520286.64)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 1972, length: 6448.66
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 1972, length: 20655.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 1972 (FID=15) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 1978 (FID=16)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 1978 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1978 intersection result] TYPE: Line (55 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 1978 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1978 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 1978 (FID=16) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (396132.00, 7523795.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419125.70, 7509022.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1895 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27338.04
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 55 vertices, length 770.51
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 1978: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (401321.54, 7520461.30)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (401321.58, 7520461.27)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (401969.69, 7520045.05)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (401969.73, 7520045.03)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 1978 (FID=16) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (396132.00, 7523795.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419125.70, 7509022.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1895 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27338.04
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 55 vertices, length 770.51
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 1978:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (401321.54, 7520461.30) at distance 6169.81
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (401321.58, 7520461.27) at distance 6169.86
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (401969.73, 7520045.03) at distance 6930.49
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (401969.69, 7520045.05) at distance 6930.54
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (401321.54, 7520461.30)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (401969.69, 7520045.05)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 1978, length: 6185.50
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 1978, length: 20397.71
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 1978 (FID=16) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 1984 (FID=17)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 1984 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1984 intersection result] TYPE: Line (93 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 1984 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1984 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 1984 (FID=17) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (396034.80, 7523724.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419064.90, 7508928.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1898 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27381.16
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 93 vertices, length 1312.07
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 1984: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (401033.35, 7520512.86)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (401033.41, 7520512.83)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (402136.96, 7519803.87)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (402137.00, 7519803.84)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 1984 (FID=17) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (396034.80, 7523724.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419064.90, 7508928.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1898 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27381.16
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 93 vertices, length 1312.07
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 1984:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (401033.41, 7520512.83) at distance 5936.16
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (401033.35, 7520512.86) at distance 5936.22
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (402137.00, 7519803.84) at distance 7250.72
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (402136.96, 7519803.87) at distance 7250.78
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (401033.41, 7520512.83)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (402136.96, 7519803.87)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 1984, length: 5950.23
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 1984, length: 20126.28
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 1984 (FID=17) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 1990 (FID=18)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 1990 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1990 intersection result] TYPE: Line (131 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 1990 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1990 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 1990 (FID=18) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395949.70, 7523645.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419016.20, 7508825.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1901 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27424.70
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 131 vertices, length 1854.72
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 1990: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (400744.20, 7520564.60)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (400744.24, 7520564.57)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (402304.34, 7519562.54)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (402304.39, 7519562.51)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 1990 (FID=18) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395949.70, 7523645.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (419016.20, 7508825.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1901 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27424.70
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 131 vertices, length 1854.72
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 1990:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (400744.24, 7520564.57) at distance 5687.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (400744.20, 7520564.60) at distance 5688.04
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (402304.34, 7519562.54) at distance 7555.10
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (402304.39, 7519562.51) at distance 7555.16
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (400744.24, 7520564.57)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (402304.39, 7519562.51)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 1990, length: 5702.50
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 1990, length: 19869.55
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 1990 (FID=18) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 1996 (FID=19)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 1996 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1996 intersection result] TYPE: Line (168 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 1996 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 1996 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 1996 (FID=19) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395852.50, 7523574.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418967.60, 7508723.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1905 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27482.38
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 168 vertices, length 2396.05
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 1996: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (400456.56, 7520616.06)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (400456.60, 7520616.03)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (402471.79, 7519321.11)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (402471.83, 7519321.08)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 1996 (FID=19) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395852.50, 7523574.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418967.60, 7508723.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1905 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27482.38
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 168 vertices, length 2396.05
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 1996:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (400456.56, 7520616.06) at distance 5473.89
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (400456.60, 7520616.03) at distance 5473.95
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (402471.79, 7519321.11) at distance 7869.95
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (402471.83, 7519321.08) at distance 7870.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (400456.56, 7520616.06)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (402471.83, 7519321.08)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 1996, length: 5496.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 1996, length: 19612.38
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 1996 (FID=19) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 2002 (FID=20)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 2002 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2002 intersection result] TYPE: Line (173 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 2002 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2002 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 2002 (FID=20) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395755.30, 7523503.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418918.90, 7508620.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1908 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27540.56
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 173 vertices, length 2463.81
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 2002: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (400365.47, 7520540.75)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (400365.51, 7520540.73)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (402437.76, 7519209.45)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (402437.81, 7519209.43)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 2002 (FID=20) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395755.30, 7523503.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418918.90, 7508620.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1908 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27540.56
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 173 vertices, length 2463.81
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 2002:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (400365.51, 7520540.73) at distance 5474.33
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (400365.47, 7520540.75) at distance 5474.38
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (402437.76, 7519209.45) at distance 7945.17
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (402437.81, 7519209.43) at distance 7945.22
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (400365.51, 7520540.73)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (402437.81, 7519209.43)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 2002, length: 5488.31
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 2002, length: 19595.33
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 2002 (FID=20) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 2008 (FID=21)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 2008 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2008 intersection result] TYPE: Line (135 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 2008 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2008 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 2008 (FID=21) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395658.00, 7523431.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418870.20, 7508518.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1912 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27597.61
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 135 vertices, length 1921.15
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 2008: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (400532.54, 7520299.88)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (400532.58, 7520299.85)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (402148.10, 7519261.28)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (402148.14, 7519261.25)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 2008 (FID=21) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395658.00, 7523431.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418870.20, 7508518.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1912 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27597.61
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 135 vertices, length 1921.15
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 2008:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (400532.58, 7520299.85) at distance 5794.66
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (400532.54, 7520299.88) at distance 5794.72
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (402148.14, 7519261.25) at distance 7713.65
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (402148.10, 7519261.28) at distance 7713.70
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (400532.58, 7520299.85)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (402148.10, 7519261.28)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 2008, length: 5809.17
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 2008, length: 19881.29
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 2008 (FID=21) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 2014 (FID=22)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 2014 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2014 intersection result] TYPE: Line (97 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 2014 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2014 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 2014 (FID=22) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395585.10, 7523345.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418821.60, 7508416.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1915 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27626.78
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 97 vertices, length 1379.81
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 2014: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (400699.98, 7520058.46)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (400700.02, 7520058.43)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (401860.46, 7519312.74)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (401860.51, 7519312.72)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 2014 (FID=22) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395585.10, 7523345.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418821.60, 7508416.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1915 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27626.78
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 97 vertices, length 1379.81
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 2014:
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (400699.98, 7520058.46) at distance 6081.47
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (400700.02, 7520058.43) at distance 6081.52
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (401860.51, 7519312.72) at distance 7449.35
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (401860.46, 7519312.74) at distance 7449.41
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (400699.98, 7520058.46)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (401860.46, 7519312.74)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 2014, length: 6101.37
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 2014, length: 20165.50
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 2014 (FID=22) for deletion
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 2020 (FID=23)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 2020 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2020 intersection result] TYPE: Line (60 vertices), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 2020 intersects deviation boundary: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2020 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 2020 (FID=23) =====
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395487.80, 7523273.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418772.90, 7508313.00)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1919 vertices
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27684.42
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 60 vertices, length 838.52
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 2020: 4
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (400867.39, 7519817.08)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (400867.43, 7519817.05)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (401572.83, 7519364.21)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (401572.88, 7519364.18)
-2025-04-12 19:56:18 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 2020 (FID=23) =====
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395487.80, 7523273.00)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418772.90, 7508313.00)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1919 vertices
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27684.42
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 60 vertices, length 838.52
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 2020:
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (400867.39, 7519817.08) at distance 6395.83
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (400867.43, 7519817.05) at distance 6395.88
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (401572.83, 7519364.21) at distance 7234.35
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (401572.88, 7519364.18) at distance 7234.40
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (400867.39, 7519817.08)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (401572.88, 7519364.18)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 2020, length: 6421.51
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 2020, length: 20450.01
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 2020 (FID=23) for deletion
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4250 - Processing line 2026 (FID=24)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4272 - Line 2026 distance to obstacle: 0.00m (threshold: 150.00m)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2026 intersection result] TYPE: Line (23 vertices), VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4289 - Line 2026 intersects deviation boundary: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Line 2026 boundary intersection] TYPE: MultiPoint (2 points), VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: BEFORE SPLIT for Line 2026 (FID=24) =====
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395402.80, 7523194.00)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418712.10, 7508218.00)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1921 vertices
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27713.40
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 23 vertices, length 295.19
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _log_debug_geom:6049 - [Robust boundary] TYPE: Polygon (2 rings, 25 vertices in outer ring), VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _log_debug_geom:6051 - [Boundary intersection result] TYPE: MultiLine (2 segments), VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4323 - Boundary intersection returned line segments, using endpoints
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4399 - Final intersection points for Line 2026: 4
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 1: (401034.86, 7519575.62)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 2: (401034.90, 7519575.59)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 3: (401283.11, 7519416.05)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4401 -   Point 4: (401283.15, 7519416.02)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5570 - ===== DEBUG: AFTER FINDING POINTS for Line 2026 (FID=24) =====
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5588 -   LINE START: (395402.80, 7523194.00)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5589 -   LINE END: (418712.10, 7508218.00)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5591 -   LINE TYPE: Line with 1921 vertices
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5592 -   LINE LENGTH: 27713.40
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5593 -   LINE VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5601 -   POLYGON TYPE: Single part
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5602 -   POLYGON AREA: 1513989.99
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5603 -   POLYGON VALID: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5607 -   INTERSECTS: True
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5608 -   TOUCHES: False
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5609 -   WITHIN: False
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5610 -   DISTANCE: 0.00
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5632 -   INTERSECTION RESULT: Line with 23 vertices, length 295.19
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5648 -   DIFFERENCE RESULT: MultiLine with 2 parts
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _debug_line_splitting:5670 - ==================================================
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4455 - Sorted intersection points for Line 2026:
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 1: (401034.90, 7519575.59) at distance 6683.79
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 2: (401034.86, 7519575.62) at distance 6683.84
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 3: (401283.11, 7519416.05) at distance 6991.28
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4457 -   Sorted Point 4: (401283.15, 7519416.02) at distance 6991.33
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4464 - Using entry point: (401034.90, 7519575.59)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - Using exit point: (401283.15, 7519416.02)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4513 - Added start_to_entry segment for line 2026, length: 6698.29
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4541 - Added exit_to_end segment for line 2026, length: 20722.07
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4559 - Marked original line 2026 (FID=24) for deletion
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4889 - Connecting line segments for line 2026
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4906 - [INTEGRATE] After assigning path_options_from_direct, self.path_options contains: []
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4934 - Evaluating path options for line 2026
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4953 - Line 2026, Obstacle 25: Recording path options
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4954 -   Option A: Length=319.55m, Entry=(401034.9,7519575.6), Peak=(401126.1,7519444.1), Exit=(401283.1,7519416.0)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4955 -   Option B: Length=2140.81m, Entry=(401034.9,7519575.6), Peak=(401731.9,7520387.9), Exit=(401283.1,7519416.0)
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - ERROR - _complete_deviation_calculation:4983 - Error calculating path lengths for line 2026: name 'source' is not defined
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - WARNING - _complete_deviation_calculation:4987 - Defaulting to Peak A due to calculation error
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4991 - Creating connector path for line 2026
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:5047 - Processed 10 lines, created 0 visualization segments
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:5050 - [DISPLAY] About to display path options table with self.path_options: []
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:5061 - Deleting 30 original line segments that were replaced
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:5066 - Adding 20 new line segments outside obstacles
-2025-04-12 19:56:19 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:2036 - Deviation calculation completed successfully.
+2025-04-13 08:00:45 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1949 - Starting deviation calculation with clearance=100.0m, turn_radius=900.0m
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1966 - Performing debug visualization before calculation...
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3019 - Preparing NoGo geometry with clearance 100.0m
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:125 - Fallback check for is_surface_type
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3095 - Combining 1 buffered geometries...
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3115 - Successfully prepared combined avoidance geometry from 1 features.
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3170 - Separating avoidance geometry of type 6 into distinct obstacles
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3190 - Extracted 33 individual polygons from input geometry
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3224 - Spatial clustering identified 32 distinct obstacle groups
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - INFO - _add_debug_layers:5358 - Creating debug visualization layers...
+2025-04-13 08:00:47 - obn_planner.obn_planner_dockwidget - INFO - _add_debug_layers:5456 - Created debug visualization with 32 obstacles
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1993 - Calculating intermediate components only...
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2075 - Calculating intermediate components for deviation...
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - _add_deviation_fields:3471 - Adding deviation tracking fields to layer 'Generated_Survey_Lines'
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - INFO - _add_deviation_fields:3523 - Added 3 deviation tracking fields to layer.
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2090 - Preparing avoidance geometry with clearance 100.0m...
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3019 - Preparing NoGo geometry with clearance 100.0m
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:125 - Fallback check for is_surface_type
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3095 - Combining 1 buffered geometries...
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3115 - Successfully prepared combined avoidance geometry from 1 features.
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2098 - Separating avoidance geometry into distinct obstacles...
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3170 - Separating avoidance geometry of type 6 into distinct obstacles
+2025-04-13 08:00:49 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3190 - Extracted 33 individual polygons from input geometry
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3224 - Spatial clustering identified 32 distinct obstacle groups
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2106 - Identifying conflicted lines...
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2141 - Found 10 conflicted lines.
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2151 - Processing 32 distinct obstacles - grouping lines by obstacle
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1972 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1978 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1984 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1990 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1996 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2002 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2008 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2014 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2020 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2026 intersects obstacles: [25]
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2177 - Identifying middle reference lines for each obstacle...
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2202 - Obstacle 25: Middle reference line identified: 2002
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2209 - Processing 1 obstacles with separate reference lines
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2231 - Obstacle 25: Using middle line 2002 as reference
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2246 - Using obstacle center at (401429.0, 7519916.0) for perpendicular rays
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2258 - Successfully extracted boundary for obstacle 25
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2345 - Obstacle 25: Peak A: 401126.1,7519444.1, Peak B: 401731.9,7520387.9
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2404 - Successfully calculated intermediate components for deviation!
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:2002 - Intermediate components calculated successfully.
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _visualize_deviation_steps:5131 - Creating visualization layers for deviation calculation steps...
+2025-04-13 08:00:50 - obn_planner.obn_planner_dockwidget - INFO - _visualize_deviation_steps:5338 - Created 2 peak points, 1 center points, 2 entry/exit points, 1 deviation polygons
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _add_deviation_fields:3471 - Adding deviation tracking fields to layer 'Generated_Survey_Lines'
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _add_deviation_fields:3526 - All required deviation fields already exist.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3564 - Started editing layer: Generated_Survey_Lines
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3571 - Available fields in layer: LineNum, Status, Length_m, Heading, LowestSP, LowestSP_x, LowestSP_y, HighestSP, HighestSP_x, HighestSP_y, is_conflicted, is_deviation_created, is_line_merged
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3573 - Initializing deviation fields...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3581 - Field indices: is_conflicted=10, is_deviation_created=11, is_line_merged=12, Length_m=2
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3595 - Resetting deviation fields to initial values...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3618 - Deviation fields initialized.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3621 - Preparing avoidance geometry with clearance 100.0m...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3019 - Preparing NoGo geometry with clearance 100.0m
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:125 - Fallback check for is_surface_type
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3095 - Combining 1 buffered geometries...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3115 - Successfully prepared combined avoidance geometry from 1 features.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3629 - Avoidance geometry type: 2, Geometry is valid: True, Is multipart: True
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3634 - Separating avoidance geometry into distinct obstacles...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3170 - Separating avoidance geometry of type 6 into distinct obstacles
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3190 - Extracted 33 individual polygons from input geometry
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3224 - Spatial clustering identified 32 distinct obstacle groups
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3642 - Identified 32 distinct obstacle geometries
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 0: Valid: True, Type: 2, Area: 286560.49
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 1: Valid: True, Type: 2, Area: 411444.49
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 2: Valid: True, Type: 2, Area: 286726.00
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 3: Valid: True, Type: 2, Area: 412094.42
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 4: Valid: True, Type: 2, Area: 272459.26
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 5: Valid: True, Type: 2, Area: 263110.13
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 6: Valid: True, Type: 2, Area: 263109.62
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 7: Valid: True, Type: 2, Area: 263109.60
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 8: Valid: True, Type: 2, Area: 268981.73
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 9: Valid: True, Type: 2, Area: 263101.79
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 10: Valid: True, Type: 2, Area: 1021679.84
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 11: Valid: True, Type: 2, Area: 279296.68
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 12: Valid: True, Type: 2, Area: 607898.53
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 13: Valid: True, Type: 2, Area: 1329515.01
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 14: Valid: True, Type: 2, Area: 213155.39
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 15: Valid: True, Type: 2, Area: 213159.52
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 16: Valid: True, Type: 2, Area: 286865.53
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 17: Valid: True, Type: 2, Area: 287563.01
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 18: Valid: True, Type: 2, Area: 1021747.99
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 19: Valid: True, Type: 2, Area: 312813.23
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 20: Valid: True, Type: 2, Area: 395686.23
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 21: Valid: True, Type: 2, Area: 1021569.37
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 22: Valid: True, Type: 2, Area: 398718.66
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 23: Valid: True, Type: 2, Area: 1021570.54
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 24: Valid: True, Type: 2, Area: 292028.41
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 25: Valid: True, Type: 2, Area: 970218.01
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 26: Valid: True, Type: 2, Area: 398640.88
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 27: Valid: True, Type: 2, Area: 288226.06
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 28: Valid: True, Type: 2, Area: 276466.94
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 29: Valid: True, Type: 2, Area: 257424.19
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 30: Valid: True, Type: 2, Area: 1021570.21
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 31: Valid: True, Type: 2, Area: 298654.34
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3648 - Identifying conflicted lines...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3654 - Building spatial index for conflict detection...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3662 - Creating spatial index from line features...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3670 - Using spatial index to find potential conflicts...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3672 - Found 39 potential candidates using spatial index
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3703 - Found 10 conflicted lines.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3707 - Marking conflicted lines in attribute table...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3715 - Grouping conflicted lines by obstacle...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3723 - Processing 32 distinct obstacles - grouping lines by obstacle
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1972 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1978 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1984 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1990 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1996 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2002 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2008 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2014 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2020 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2026 intersects obstacles: [25]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3752 - Identifying middle reference lines for each obstacle...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3777 - Obstacle 25: Middle reference line identified: 2002 at index 5
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3785 - Processing 1 obstacles with separate reference lines
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3808 - Obstacle 25: Using middle line 2002 as reference
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3818 - Calculating midpoint distances to centroid for conflicted lines:
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1972: Midpoint (407689.9, 7516503.9), DistSq = 748006405.95
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1978: Midpoint (407629.1, 7516408.9), DistSq = 746102676.37
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1984: Midpoint (407549.9, 7516326.0), DistSq = 743087161.34
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1990: Midpoint (407483.0, 7516235.0), DistSq = 740858126.07
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1996: Midpoint (407409.8, 7516148.1), DistSq = 738268822.14
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2002: Midpoint (407337.3, 7516061.9), DistSq = 735726776.97
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2008: Midpoint (407264.3, 7515974.9), DistSq = 733197732.26
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2014: Midpoint (407203.1, 7515880.1), DistSq = 731425483.79
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2020: Midpoint (407130.4, 7515793.0), DistSq = 728962372.28
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2026: Midpoint (407057.5, 7515706.0), DistSq = 726515684.05
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3838 - Using obstacle center at (401429.0, 7519916.0) for perpendicular rays
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3884 - Successfully extracted boundary for obstacle 25
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3977 - Obstacle 25: Peak A: 401126.1,7519444.1, Peak B: 401731.9,7520387.9
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4001 - Completing deviation calculation and finalizing paths...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _remove_layer_by_name:284 - No layers named 'Deviation_Connectors_Debug' found to remove
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4020 - Processing pre-calculated conflicted lines and path options...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4229 - Starting direct processing of conflicted lines (Refined)...
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4245 - [DIRECT-DEBUG] Querying with filter: "is_conflicted" = 'true'
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4267 - [DIRECT-DEBUG-COUNT] Query yielded 10 features.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4268 - [DIRECT-DEBUG] Found 10 conflicted lines from attribute table
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4269 - [DIRECT-DEBUG] Line numbers: [1972, 1978, 1984, 1990, 1996, 2002, 2008, 2014, 2020, 2026]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4282 - Processing line 1972 (FID=15)
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4309 -   Processing Line 1972 against Obstacle 25
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4341 -   Using safety factor 1.5 for peak points
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4365 -   Splitting segment of Line 1972 against deviation poly Obs 25
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4376 -   Found 2 intersection points for segment.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4388 -   Actual Entry for segment: (400461.3, 7521147.9)
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4389 -   Actual Exit for segment: (402951.6, 7519547.9)
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4423 -   Created Outside segment 1 (Length: 5060.2)
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4440 -   Created Outside segment 2 (Length: 19287.9)
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4447 -   Actual Path Lengths: A=3557.5, B=4997.6
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4531 - [RECORD-Direct] Recording path option for Line 1972, Peak A, Obstacle 25
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4532 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4531 - [RECORD-Direct] Recording path option for Line 1972, Peak B, Obstacle 25
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4532 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972]
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4459 -   L1972, Obs25: Peak A path chosen.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4484 - Marking original line 1972 (FID=15) for deletion.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4490 - Processed 1 conflicted lines against 1 obstacles.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4491 - Recorded path options for 1 lines.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4492 - Created 2 final 'Outside' line features.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4493 - Marked 1 original lines for deletion.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - ERROR - _complete_deviation_calculation:4205 - Error during complete deviation calculation: name 'total_lines_processed' is not defined
+Traceback (most recent call last):
+  File "C:\Users/chnav/AppData/Roaming/QGIS/QGIS3\profiles\default/python/plugins\obn_planner\obn_planner_dockwidget.py", line 4021, in _complete_deviation_calculation
+    results = self._process_conflicted_lines(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users/chnav/AppData/Roaming/QGIS/QGIS3\profiles\default/python/plugins\obn_planner\obn_planner_dockwidget.py", line 4495, in _process_conflicted_lines
+    log.info(f"[DIRECT-DEBUG] Processed {total_lines_processed} lines, {lines_with_obstacles} had relevant obstacles")
+                                         ^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'total_lines_processed' is not defined
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4206 - Rolling back changes on lines layer due to error.
+2025-04-13 08:00:52 - obn_planner.obn_planner_dockwidget - ERROR - handle_calculate_deviations:2043 - Deviation calculation failed or was aborted.
+2025-04-13 08:04:54 - obn_planner.obn_planner_dockwidget - DEBUG - closeEvent:9631 - Dock widget close event.
+2025-04-13 08:04:54 - obn_planner.obn_planner_dockwidget - INFO - closeEvent:9649 - OBN Planner Dock Widget closed.
+2025-04-13 08:10:38 - obn_planner.obn_planner_dockwidget - DEBUG - <module>:59 - Logger already initialized.
+2025-04-13 08:10:38 - obn_planner.obn_planner_dockwidget - INFO - <module>:92 - Successfully imported dubins_calc module.
+2025-04-13 08:10:38 - obn_planner.obn_planner_dockwidget - INFO - <module>:102 - Successfully imported rrt_planner module.
+2025-04-13 08:10:40 - obn_planner.obn_planner_dockwidget - DEBUG - __init__:167 - Setting up UI components...
+2025-04-13 08:10:40 - obn_planner.obn_planner_dockwidget - DEBUG - _replace_combo_with_map_layer_combo:224 - Replaced spsLayerComboBox with QgsMapLayerComboBox.
+2025-04-13 08:10:40 - obn_planner.obn_planner_dockwidget - DEBUG - _replace_combo_with_map_layer_combo:224 - Replaced noGoZoneLayerComboBox with QgsMapLayerComboBox.
+2025-04-13 08:10:40 - obn_planner.obn_planner_dockwidget - DEBUG - __init__:180 - Populated Acquisition Mode ComboBox (Racetrack, Teardrop).
+2025-04-13 08:10:40 - obn_planner.obn_planner_dockwidget - DEBUG - __init__:206 - Set default deviation clearance to 100.0
+2025-04-13 08:10:40 - obn_planner.obn_planner_dockwidget - DEBUG - __init__:211 - Set Start DateTime to 2025-04-13 08:10:40.504813
+2025-04-13 08:10:40 - obn_planner.obn_planner_dockwidget - INFO - __init__:212 - OBNPlannerDockWidget initialized.
+2025-04-13 08:10:52 - obn_planner.obn_planner_dockwidget - DEBUG - handle_apply_filter:1015 - Handle Apply Filter button.
+2025-04-13 08:10:52 - obn_planner.obn_planner_dockwidget - INFO - handle_apply_filter:1041 - Filter: "LineNum">=1888 AND "LineNum"<=2116 AND "Status"='To Be Acquired'
+2025-04-13 08:10:53 - obn_planner.obn_planner_dockwidget - INFO - handle_apply_filter:1070 - Populated list with 39 lines.
+2025-04-13 08:10:53 - obn_planner.obn_planner_dockwidget - INFO - handle_generate_lines:1505 - Starting generation of survey lines and run-ins
+2025-04-13 08:10:53 - obn_planner.obn_planner_dockwidget - DEBUG - handle_generate_lines:1518 - Step 1: Validating inputs and parameters
+2025-04-13 08:10:53 - obn_planner.obn_planner_dockwidget - DEBUG - handle_generate_lines:1528 - Max Run-in Length: 750.0 meters
+2025-04-13 08:10:53 - obn_planner.obn_planner_dockwidget - DEBUG - handle_apply_filter:1015 - Handle Apply Filter button.
+2025-04-13 08:10:53 - obn_planner.obn_planner_dockwidget - INFO - handle_apply_filter:1041 - Filter: "LineNum">=1888 AND "LineNum"<=2116 AND "Status"='To Be Acquired'
+2025-04-13 08:10:54 - obn_planner.obn_planner_dockwidget - INFO - handle_apply_filter:1070 - Populated list with 39 lines.
+2025-04-13 08:10:54 - obn_planner.obn_planner_dockwidget - DEBUG - handle_generate_lines:1565 - Found 39 lines to process: [1888, 1894, 1900, 1906, 1912, 1918, 1924, 1930, 1936, 1942, 1948, 1954, 1960, 1966, 1972, 1978, 1984, 1990, 1996, 2002, 2008, 2014, 2020, 2026, 2032, 2038, 2044, 2050, 2056, 2062, 2068, 2074, 2080, 2086, 2092, 2098, 2104, 2110, 2116]
+2025-04-13 08:10:54 - obn_planner.obn_planner_dockwidget - DEBUG - handle_generate_lines:1568 - Step 2: Preparing output memory layers
+2025-04-13 08:10:54 - obn_planner.obn_planner_dockwidget - DEBUG - _remove_layer_by_name:284 - No layers named 'Generated_Survey_Lines' found to remove
+2025-04-13 08:10:54 - obn_planner.obn_planner_dockwidget - DEBUG - _remove_layer_by_name:284 - No layers named 'Generated_RunIns' found to remove
+2025-04-13 08:10:54 - obn_planner.obn_planner_dockwidget - DEBUG - handle_generate_lines:1623 - Step 3: Processing lines and generating features
+2025-04-13 08:11:32 - obn_planner.obn_planner_dockwidget - DEBUG - handle_generate_lines:1842 - Step 4: Committing changes and adding layers to project
+2025-04-13 08:11:32 - obn_planner.obn_planner_dockwidget - DEBUG - _apply_basic_style:259 - Applied basic style to 'Generated_Survey_Lines'
+2025-04-13 08:11:32 - obn_planner.obn_planner_dockwidget - DEBUG - _apply_basic_style:259 - Applied basic style to 'Generated_RunIns'
+2025-04-13 08:11:32 - obn_planner.obn_planner_dockwidget - INFO - handle_generate_lines:1879 - Successfully generated 39 lines and 78 run-ins in 39.1 seconds
+2025-04-13 08:17:17 - obn_planner.obn_planner_dockwidget - DEBUG - handle_generate_lines:1913 - Line generation process completed
+2025-04-13 08:17:19 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1922 - Starting deviation calculation...
+2025-04-13 08:17:19 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1949 - Starting deviation calculation with clearance=100.0m, turn_radius=900.0m
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1966 - Performing debug visualization before calculation...
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3019 - Preparing NoGo geometry with clearance 100.0m
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:125 - Fallback check for is_surface_type
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3095 - Combining 1 buffered geometries...
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3115 - Successfully prepared combined avoidance geometry from 1 features.
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3170 - Separating avoidance geometry of type 6 into distinct obstacles
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3190 - Extracted 33 individual polygons from input geometry
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3224 - Spatial clustering identified 32 distinct obstacle groups
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - INFO - _add_debug_layers:5328 - Creating debug visualization layers...
+2025-04-13 08:17:21 - obn_planner.obn_planner_dockwidget - INFO - _add_debug_layers:5426 - Created debug visualization with 32 obstacles
+2025-04-13 08:17:23 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:1993 - Calculating intermediate components only...
+2025-04-13 08:17:23 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2075 - Calculating intermediate components for deviation...
+2025-04-13 08:17:23 - obn_planner.obn_planner_dockwidget - DEBUG - _add_deviation_fields:3471 - Adding deviation tracking fields to layer 'Generated_Survey_Lines'
+2025-04-13 08:17:23 - obn_planner.obn_planner_dockwidget - INFO - _add_deviation_fields:3523 - Added 3 deviation tracking fields to layer.
+2025-04-13 08:17:23 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2090 - Preparing avoidance geometry with clearance 100.0m...
+2025-04-13 08:17:23 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3019 - Preparing NoGo geometry with clearance 100.0m
+2025-04-13 08:17:23 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:125 - Fallback check for is_surface_type
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3095 - Combining 1 buffered geometries...
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3115 - Successfully prepared combined avoidance geometry from 1 features.
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2098 - Separating avoidance geometry into distinct obstacles...
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3170 - Separating avoidance geometry of type 6 into distinct obstacles
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3190 - Extracted 33 individual polygons from input geometry
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3224 - Spatial clustering identified 32 distinct obstacle groups
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2106 - Identifying conflicted lines...
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2141 - Found 10 conflicted lines.
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2151 - Processing 32 distinct obstacles - grouping lines by obstacle
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1972 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1978 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1984 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1990 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 1996 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2002 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2008 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2014 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2020 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2164 - Line 2026 intersects obstacles: [25]
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2177 - Identifying middle reference lines for each obstacle...
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2202 - Obstacle 25: Middle reference line identified: 2002
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2209 - Processing 1 obstacles with separate reference lines
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2231 - Obstacle 25: Using middle line 2002 as reference
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2246 - Using obstacle center at (401429.0, 7519916.0) for perpendicular rays
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2258 - Successfully extracted boundary for obstacle 25
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_intermediate_components:2345 - Obstacle 25: Peak A: 401126.1,7519444.1, Peak B: 401731.9,7520387.9
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _calculate_intermediate_components:2404 - Successfully calculated intermediate components for deviation!
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:2002 - Intermediate components calculated successfully.
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _visualize_deviation_steps:5101 - Creating visualization layers for deviation calculation steps...
+2025-04-13 08:17:24 - obn_planner.obn_planner_dockwidget - INFO - _visualize_deviation_steps:5308 - Created 2 peak points, 1 center points, 2 entry/exit points, 1 deviation polygons
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _add_deviation_fields:3471 - Adding deviation tracking fields to layer 'Generated_Survey_Lines'
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - INFO - _add_deviation_fields:3526 - All required deviation fields already exist.
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3564 - Started editing layer: Generated_Survey_Lines
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3571 - Available fields in layer: LineNum, Status, Length_m, Heading, LowestSP, LowestSP_x, LowestSP_y, HighestSP, HighestSP_x, HighestSP_y, is_conflicted, is_deviation_created, is_line_merged
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3573 - Initializing deviation fields...
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3581 - Field indices: is_conflicted=10, is_deviation_created=11, is_line_merged=12, Length_m=2
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3595 - Resetting deviation fields to initial values...
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3618 - Deviation fields initialized.
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3621 - Preparing avoidance geometry with clearance 100.0m...
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3019 - Preparing NoGo geometry with clearance 100.0m
+2025-04-13 08:17:26 - obn_planner.obn_planner_dockwidget - DEBUG - is_surface_type:125 - Fallback check for is_surface_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _prepare_avoidance_geometry:3095 - Combining 1 buffered geometries...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _prepare_avoidance_geometry:3115 - Successfully prepared combined avoidance geometry from 1 features.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3629 - Avoidance geometry type: 2, Geometry is valid: True, Is multipart: True
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3634 - Separating avoidance geometry into distinct obstacles...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3170 - Separating avoidance geometry of type 6 into distinct obstacles
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _separate_avoidance_geometry:3190 - Extracted 33 individual polygons from input geometry
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _separate_avoidance_geometry:3224 - Spatial clustering identified 32 distinct obstacle groups
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3642 - Identified 32 distinct obstacle geometries
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 0: Valid: True, Type: 2, Area: 286560.49
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 1: Valid: True, Type: 2, Area: 411444.49
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 2: Valid: True, Type: 2, Area: 286726.00
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 3: Valid: True, Type: 2, Area: 412094.42
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 4: Valid: True, Type: 2, Area: 272459.26
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 5: Valid: True, Type: 2, Area: 263110.13
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 6: Valid: True, Type: 2, Area: 263109.62
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 7: Valid: True, Type: 2, Area: 263109.60
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 8: Valid: True, Type: 2, Area: 268981.73
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 9: Valid: True, Type: 2, Area: 263101.79
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 10: Valid: True, Type: 2, Area: 1021679.84
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 11: Valid: True, Type: 2, Area: 279296.68
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 12: Valid: True, Type: 2, Area: 607898.53
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 13: Valid: True, Type: 2, Area: 1329515.01
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 14: Valid: True, Type: 2, Area: 213155.39
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 15: Valid: True, Type: 2, Area: 213159.52
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 16: Valid: True, Type: 2, Area: 286865.53
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 17: Valid: True, Type: 2, Area: 287563.01
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 18: Valid: True, Type: 2, Area: 1021747.99
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 19: Valid: True, Type: 2, Area: 312813.23
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 20: Valid: True, Type: 2, Area: 395686.23
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 21: Valid: True, Type: 2, Area: 1021569.37
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 22: Valid: True, Type: 2, Area: 398718.66
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 23: Valid: True, Type: 2, Area: 1021570.54
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 24: Valid: True, Type: 2, Area: 292028.41
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 25: Valid: True, Type: 2, Area: 970218.01
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 26: Valid: True, Type: 2, Area: 398640.88
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 27: Valid: True, Type: 2, Area: 288226.06
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 28: Valid: True, Type: 2, Area: 276466.94
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 29: Valid: True, Type: 2, Area: 257424.19
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 30: Valid: True, Type: 2, Area: 1021570.21
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3644 - Obstacle 31: Valid: True, Type: 2, Area: 298654.34
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3648 - Identifying conflicted lines...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3654 - Building spatial index for conflict detection...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3662 - Creating spatial index from line features...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3670 - Using spatial index to find potential conflicts...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3672 - Found 39 potential candidates using spatial index
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3703 - Found 10 conflicted lines.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3707 - Marking conflicted lines in attribute table...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3715 - Grouping conflicted lines by obstacle...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3723 - Processing 32 distinct obstacles - grouping lines by obstacle
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1972 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1978 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1984 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1990 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 1996 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2002 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2008 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2014 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2020 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3737 - Line 2026 intersects obstacles: [25]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3752 - Identifying middle reference lines for each obstacle...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3777 - Obstacle 25: Middle reference line identified: 2002 at index 5
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3785 - Processing 1 obstacles with separate reference lines
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _calculate_and_apply_deviations_v2:3808 - Obstacle 25: Using middle line 2002 as reference
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3818 - Calculating midpoint distances to centroid for conflicted lines:
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1972: Midpoint (407689.9, 7516503.9), DistSq = 748006405.95
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1978: Midpoint (407629.1, 7516408.9), DistSq = 746102676.37
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1984: Midpoint (407549.9, 7516326.0), DistSq = 743087161.34
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1990: Midpoint (407483.0, 7516235.0), DistSq = 740858126.07
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 1996: Midpoint (407409.8, 7516148.1), DistSq = 738268822.14
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2002: Midpoint (407337.3, 7516061.9), DistSq = 735726776.97
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2008: Midpoint (407264.3, 7515974.9), DistSq = 733197732.26
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2014: Midpoint (407203.1, 7515880.1), DistSq = 731425483.79
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2020: Midpoint (407130.4, 7515793.0), DistSq = 728962372.28
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3824 -   Line 2026: Midpoint (407057.5, 7515706.0), DistSq = 726515684.05
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3838 - Using obstacle center at (401429.0, 7519916.0) for perpendicular rays
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3884 - Successfully extracted boundary for obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_and_apply_deviations_v2:3977 - Obstacle 25: Peak A: 401126.1,7519444.1, Peak B: 401731.9,7520387.9
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4276 - Completing deviation calculation and finalizing paths (Refined V2)...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _remove_layer_by_name:284 - No layers named 'Deviation_Connectors_Final' found to remove
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4315 - Processing pre-calculated conflicted lines and path options...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:3997 - Starting direct processing of conflicted lines (Refined V3)...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4013 - [DIRECT-DEBUG] Querying with filter: "is_conflicted" = 'true'
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4027 - [DIRECT-DEBUG-COUNT] Query yielded 10 features.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4028 - [DIRECT-DEBUG] Found 10 conflicted lines.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4029 - [DIRECT-DEBUG] Line numbers: [1972, 1978, 1984, 1990, 1996, 2002, 2008, 2014, 2020, 2026]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 1972 (FID=15)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 1972 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 2 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4144 -   Actual Entry for segment: (399838.0, 7521547.9)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4145 -   Actual Exit for segment: (403574.2, 7519147.9)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4165 -     Created Outside segment 1 (Length: 4319.4)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4173 -     Created Outside segment 2 (Length: 18547.7)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4179 -   Actual Path Lengths: A=4859.4, B=5994.2
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1972, Peak A, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1972, Peak B, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4191 -   L1972, Obs25: Peak A path chosen.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 2 final outside features for line 1972
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 1978 (FID=16)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 1978 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 2 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4144 -   Actual Entry for segment: (399564.5, 7521590.1)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4145 -   Actual Exit for segment: (403726.2, 7518916.7)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4165 -     Created Outside segment 1 (Length: 4080.8)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4173 -     Created Outside segment 2 (Length: 18309.5)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4179 -   Actual Path Lengths: A=5412.8, B=6238.5
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1978, Peak A, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1978, Peak B, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4191 -   L1978, Obs25: Peak A path chosen.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 2 final outside features for line 1978
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 1984 (FID=17)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 1984 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 2 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4144 -   Actual Entry for segment: (399291.1, 7521632.2)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4145 -   Actual Exit for segment: (403879.2, 7518684.0)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4165 -     Created Outside segment 1 (Length: 3871.4)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4173 -     Created Outside segment 2 (Length: 18054.6)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4179 -   Actual Path Lengths: A=5968.0, B=6521.6
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1984, Peak A, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978, 1984]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1984, Peak B, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978, 1984]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4191 -   L1984, Obs25: Peak A path chosen.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 2 final outside features for line 1984
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 1990 (FID=18)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 1990 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 2 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4144 -   Actual Entry for segment: (399017.6, 7521674.4)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4145 -   Actual Exit for segment: (404031.2, 7518452.5)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4165 -     Created Outside segment 1 (Length: 3647.3)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4173 -     Created Outside segment 2 (Length: 17816.2)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4179 -   Actual Path Lengths: A=6521.7, B=6837.2
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1990, Peak A, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978, 1984, 1990]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1990, Peak B, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978, 1984, 1990]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4191 -   L1990, Obs25: Peak A path chosen.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 2 final outside features for line 1990
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 1996 (FID=19)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 1996 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 2 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4144 -   Actual Entry for segment: (398744.2, 7521716.5)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4145 -   Actual Exit for segment: (404183.3, 7518221.3)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4165 -     Created Outside segment 1 (Length: 3437.9)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4173 -     Created Outside segment 2 (Length: 17577.5)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4179 -   Actual Path Lengths: A=7075.0, B=7181.5
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1996, Peak A, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978, 1984, 1990, 1996]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4501 - [RECORD-Direct] Recording path option for Line 1996, Peak B, Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _record_path_option:4502 - [RECORD-Direct] Type of path_options: <class 'dict'>, contains: [1972, 1978, 1984, 1990, 1996]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4191 -   L1996, Obs25: Peak A path chosen.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 2 final outside features for line 1996
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 2002 (FID=20)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 2002 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 1 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - WARNING - _process_conflicted_lines:4135 -   Not enough points (1) to split segment for L2002, Obs25. Keeping segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 1 final outside features for line 2002
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 2008 (FID=21)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 2008 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 1 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - WARNING - _process_conflicted_lines:4135 -   Not enough points (1) to split segment for L2008, Obs25. Keeping segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 1 final outside features for line 2008
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 2014 (FID=22)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 2014 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 1 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - WARNING - _process_conflicted_lines:4135 -   Not enough points (1) to split segment for L2014, Obs25. Keeping segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 1 final outside features for line 2014
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 2020 (FID=23)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 2020 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 1 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - WARNING - _process_conflicted_lines:4135 -   Not enough points (1) to split segment for L2020, Obs25. Keeping segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 1 final outside features for line 2020
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4048 - Processing line 2026 (FID=24)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4077 -   Processing Line 2026 against Obstacle 25
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4118 -   Using safety factor 1.5 for peak points
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - is_point_type:130 - Fallback check for is_point_type
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _process_conflicted_lines:4132 -   Found 1 intersection points for segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - WARNING - _process_conflicted_lines:4135 -   Not enough points (1) to split segment for L2026, Obs25. Keeping segment.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4226 - Creating 1 final outside features for line 2026
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4250 - Processed 10 conflicted lines against 10 obstacles.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4251 - Recorded path options for 5 lines.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4252 - Created 15 final 'Outside' line features.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4253 - Marked 10 original lines for deletion.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4255 - [DIRECT-DEBUG] Processed 10 lines, 0 interacted with obstacles.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4266 - [DIRECT-ASSIGN] Assigned self.path_options. Keys: [1972, 1978, 1984, 1990, 1996]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _process_conflicted_lines:4267 - [RETURN-CHECK] Returning dict. Path options keys: [1972, 1978, 1984, 1990, 1996]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4320 - [COMPLETE] Received results. Path options keys: [1972, 1978, 1984, 1990, 1996]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4331 - [COMPLETE] Assigned self.path_options (5 lines)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4332 - [COMPLETE] Assigned self.chosen_paths (5 lines)
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4335 - Generating connector paths for 5 lines...
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4408 - Generated 5 connector features to add to main layer.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4409 - Generated 5 connector features for debug layer.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4423 - Deleting 10 original lines from 'Generated_Survey_Lines'.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4425 - Success delete original features.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4429 - Adding 15 'Outside' segments to 'Generated_Survey_Lines'.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4432 - Success add 15 'Outside' segments.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4436 - Adding 5 'Connector' segments to 'Generated_Survey_Lines'.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _complete_deviation_calculation:4439 - Success add 5 'Connector' segments.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4447 - Successfully committed changes to lines layer.
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - DEBUG - _apply_basic_style:259 - Applied basic style to 'Deviation_Connectors_Final'
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _complete_deviation_calculation:4465 - [DISPLAY] Calling display table. self.path_options keys: [1972, 1978, 1984, 1990, 1996]
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4712 - ========== PATH OPTIONS SUMMARY ==========
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4713 - Line | Obstacle | Via Peak | Length (m) | Status
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4714 - ------|----------|----------|------------|--------
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 - 1972  |       25 | A        |    4859.45 | CHOSEN
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 -       |       25 | B        |    5994.24 | 
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 - 1978  |       25 | A        |    5412.84 | CHOSEN
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 -       |       25 | B        |    6238.47 | 
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 - 1984  |       25 | A        |    5968.01 | CHOSEN
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 -       |       25 | B        |    6521.59 | 
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 - 1990  |       25 | A        |    6521.68 | CHOSEN
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 -       |       25 | B        |    6837.24 | 
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 - 1996  |       25 | A        |    7075.01 | CHOSEN
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4766 -       |       25 | B        |    7181.54 | 
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4769 - ==========================================
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4770 - Total lines processed: 5
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4771 - Total path options: 10
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - _display_path_options_table:4772 - Total chosen paths: 5
+2025-04-13 08:17:27 - obn_planner.obn_planner_dockwidget - INFO - handle_calculate_deviations:2037 - Deviation calculation completed successfully.
