@@ -2276,7 +2276,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 intersection_B = ray_B.intersection(obstacle_boundary)
 
                 # Calculate peak positions
-                offset_dist = max(clearance_m * 1.5, 300.0)  # Fallback distance
+                offset_dist = max(clearance_m * 1.1, 300.0)  # Fallback distance
                 peak_a_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_A)
                 peak_a_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_A)
                 peak_b_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_B)
@@ -3902,7 +3902,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 intersection_B = ray_B.intersection(obstacle_boundary)
 
                 # Use fallback in case of no intersection
-                offset_dist = max(clearance_m * 1.5, 300.0)  # Reasonable fallback
+                offset_dist = max(clearance_m * 1.1, 300.0)  # Reasonable fallback
                 peak_a_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_A)
                 peak_a_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_A)
                 peak_b_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_B)
@@ -3987,15 +3987,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 log.info("Changes rolled back due to error")
             return False
 
-
-    # <<< Function Start: _process_conflicted_lines (PHASE 2 Connector Fix & Peak Recalc) >>>
+    # <<< Function Start: _process_conflicted_lines (ADDED Connector Debug Logging) >>>
     def _process_conflicted_lines(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
         """
-        Process conflicted lines: Correctly identify split points, calculate peaks relative
-        to the gap, create 'Outside' segments with updated coords, determine deletions.
-        (Refined V5 + PHASE 2 Connector Fix & Peak Recalc v1)
+        Process conflicted lines: find true split points, calculate path options,
+        create 'Outside' segments with attributes (COORDS FIXED), determine deletions.
+        (Refined V5 + PHASE 1 Connector Debug Logging)
         """
-        log.info("Starting direct processing of conflicted lines (Refined V5 + P2 Fixes)...")
+        log.info("Starting direct processing of conflicted lines (Refined V5 + P1 Connector Logging)...")
 
         # <<< Setup: Initialize result structures (Unchanged) >>>
         path_options = {}
@@ -4059,42 +4058,37 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             process_stats['lines_processed'] += 1
             original_line_processed_for_obstacle = False
 
-            # --- Line Setup ---
+            # --- Line Setup (Unchanged) ---
             line_pts_xy = [QgsPointXY(pt) for pt in line_geom.asPolyline()]
             if len(line_pts_xy) < 2: log.warning(f"L{line_num}: Insufficient points."); process_stats['errors'].append(f"L{line_num}: Insufficient points"); continue
             line_start = line_pts_xy[0]; line_end = line_pts_xy[-1]
-            dx_orig = line_end.x() - line_start.x(); dy_orig = line_end.y() - line_start.y()
-            # Calculate heading based on original line direction (useful fallback)
-            heading_orig = (math.degrees(math.atan2(dy_orig, dx_orig)) + 360) % 360
-            qgis_heading_orig = (90.0 - heading_orig + 360.0) % 360.0
+            dx = line_end.x() - line_start.x(); dy = line_end.y() - line_start.y()
+            heading = (math.degrees(math.atan2(dy, dx)) + 360) % 360
+            qgis_heading = (90.0 - heading + 360.0) % 360.0
 
-            current_outside_segments = [QgsGeometry(line_geom)] # Start with the original full geom
+            current_outside_segments = [QgsGeometry(line_geom)]
             line_was_split = False
 
             # <<< Obstacle Loop >>>
             obstacle_interacted_with_line = False
             for obs_idx, obstacle_geom in enumerate(obstacle_geometries):
-                # Create buffer ONCE per obstacle
                 obstacle_buffer = obstacle_geom.buffer(clearance_m, 5)
                 if not obstacle_buffer or obstacle_buffer.isEmpty() or not obstacle_buffer.isGeosValid():
                     log.warning(f"Invalid obstacle buffer for Obs {obs_idx}. Skipping this obstacle for L{line_num}.")
                     process_stats['errors'].append(f"L{line_num}: Invalid buffer Obs{obs_idx}")
                     continue
 
-                next_iteration_segments = [] # Segments to carry over to the next obstacle check
-                processed_segment_in_obstacle = False # Flag if any segment interacts with THIS obstacle
+                next_iteration_segments = []
+                processed_segment_in_obstacle = False
 
-                # Check current segments against THIS obstacle buffer
                 segments_intersecting_this_obstacle = []
                 segments_not_intersecting = []
                 for segment in current_outside_segments:
                      if segment and not segment.isEmpty() and segment.intersects(obstacle_buffer):
                           segments_intersecting_this_obstacle.append(segment)
-                     elif segment and not segment.isEmpty(): # Keep valid, non-intersecting ones
+                     elif segment and not segment.isEmpty():
                           segments_not_intersecting.append(segment)
 
-                # If no segments intersect this specific obstacle, add the non-intersecting ones
-                # to the list for the next iteration and skip to the next obstacle.
                 if not segments_intersecting_this_obstacle:
                      next_iteration_segments.extend(segments_not_intersecting)
                      continue
@@ -4103,28 +4097,62 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 obstacle_interacted_with_line = True
                 process_stats['obstacles_processed'] += 1
 
-                # Parts created by splitting against THIS obstacle
                 new_outside_parts_for_this_obstacle = []
 
-                # Process each segment that *does* intersect THIS obstacle
                 for segment_geom in segments_intersecting_this_obstacle:
                     actual_entry_point = None
                     actual_exit_point = None
                     segment_was_split_this_time = False
 
                     try:
+                        # --- Calculate Helper points, Peaks, Deviation Polygon ---
+                        # NOTE: This peak calculation is potentially flawed relative to the gap
+                        # but we log its inputs/outputs for analysis in Phase 1
+                        obstacle_center_geom = obstacle_geom.centroid(); obstacle_center_xy = QgsPointXY(obstacle_center_geom.asPoint())
+                        entry_exit_distance = max(1000.0, turn_radius_m * 1.1); qgis_angle_rad = math.radians(qgis_heading)
+                        helper_entry = QgsPointXY(obstacle_center_xy.x()-entry_exit_distance*1.2*math.sin(qgis_angle_rad), obstacle_center_xy.y()-entry_exit_distance*1.2*math.cos(qgis_angle_rad))
+                        helper_exit = QgsPointXY(obstacle_center_xy.x()+entry_exit_distance*1.2*math.sin(qgis_angle_rad), obstacle_center_xy.y()+entry_exit_distance*1.2*math.cos(qgis_angle_rad))
+                        mid_x_helper = (helper_entry.x() + helper_exit.x()) / 2; mid_y_helper = (helper_entry.y() + helper_exit.y()) / 2
+                        dx_math_helper = helper_exit.x() - helper_entry.x(); dy_math_helper = helper_exit.y() - helper_entry.y()
+                        length_helper = math.sqrt(dx_math_helper**2 + dy_math_helper**2)
+                        if length_helper > 1e-8: dx_norm_h, dy_norm_h = dx_math_helper/length_helper, dy_math_helper/length_helper
+                        else: heading_rad_math = math.radians(heading); dx_norm_h, dy_norm_h = math.cos(heading_rad_math), math.sin(heading_rad_math)
+                        perp_dx1, perp_dy1 = -dy_norm_h, dx_norm_h; perp_dx2, perp_dy2 = dy_norm_h, -dx_norm_h
+                        initial_peak_dist = (clearance_m + turn_radius_m) * 1.0# Store initial distance
+                        # initial_peak_dist = (clearance_m ) * 1.0# Store initial distance
+                        peak_dist = initial_peak_dist
+
+                        # <<< ADDED PHASE 1 LOGGING (Peak Calculation) >>>
+                        log.debug(f"  [P1-Peak] L{line_num} Obstacle {obs_idx}: Peak calc: HelperMid({mid_x_helper:.1f},{mid_y_helper:.1f}), InitialPeakDist={initial_peak_dist:.1f}")
+                        # <<< END PHASE 1 LOGGING >>>
+
+                        peak_a_point = QgsPointXY(mid_x_helper + perp_dx1 * peak_dist, mid_y_helper + perp_dy1 * peak_dist)
+                        peak_b_point = QgsPointXY(mid_x_helper + perp_dx2 * peak_dist, mid_y_helper + perp_dy2 * peak_dist)
+                        peak_a_geom = QgsGeometry.fromPointXY(peak_a_point); peak_b_geom = QgsGeometry.fromPointXY(peak_b_point)
+                        safety_factor = 0.5; max_safety_factor = 1.2
+                        while (obstacle_buffer.contains(peak_a_geom) or obstacle_buffer.contains(peak_b_geom)) and safety_factor <= max_safety_factor:
+                             safety_factor += 0.25; peak_dist = (clearance_m + turn_radius_m) * safety_factor
+                             peak_a_point = QgsPointXY(mid_x_helper + perp_dx1 * peak_dist, mid_y_helper + perp_dy1 * peak_dist)
+                             peak_b_point = QgsPointXY(mid_x_helper + perp_dx2 * peak_dist, mid_y_helper + perp_dy2 * peak_dist)
+                             peak_a_geom = QgsGeometry.fromPointXY(peak_a_point); peak_b_geom = QgsGeometry.fromPointXY(peak_b_point)
+                        if safety_factor > max_safety_factor: log.warning(f"Could not push peaks outside buffer {obs_idx}.")
+
+                        # <<< ADDED PHASE 1 LOGGING (Peak Calculation Final) >>>
+                        log.debug(f"  [P1-Peak] L{line_num} Obstacle {obs_idx}: Peak calc final: SafetyFactor={safety_factor:.1f}, PeakDist={peak_dist:.1f}, PeakA({peak_a_point.x():.1f},{peak_a_point.y():.1f}), PeakB({peak_b_point.x():.1f},{peak_b_point.y():.1f})")
+                        # <<< END PHASE 1 LOGGING >>>
+
+                        log.debug(f"  Using safety factor {safety_factor} for peak points")
+                        deviation_poly_points = [helper_entry, peak_a_point, helper_exit, peak_b_point, helper_entry]
+                        deviation_poly = QgsGeometry.fromPolygonXY([deviation_poly_points])
+                        if not deviation_poly.isGeosValid(): deviation_poly = deviation_poly.makeValid()
+                        if not deviation_poly.isGeosValid(): log.error(f"Repair failed dev poly Obs {obs_idx}."); new_outside_parts_for_this_obstacle.append(segment_geom); continue
+
                         # --- STEP 7 (Splitting THIS segment using difference) ---
-                        # Use a temporary deviation polygon just for splitting this segment
-                        # (This is less efficient but isolates the splitting logic error source)
-                        temp_deviation_poly = self._create_temp_deviation_polygon(segment_geom, obstacle_buffer, clearance_m, turn_radius_m, qgis_heading_orig)
-                        if not temp_deviation_poly:
-                             log.warning(f"Could not create temp dev poly for L{line_num}, Obs{obs_idx}, Segment. Keeping original segment.")
-                             new_outside_parts_for_this_obstacle.append(segment_geom); continue
+                        # ... (splitting logic - now includes actual_entry/exit point fix) ...
+                        log.debug(f"  Splitting segment of L{line_num} using difference with deviation poly Obs {obs_idx}")
+                        outside_geom = segment_geom.difference(deviation_poly)
 
-                        log.debug(f"  Splitting segment of L{line_num} using difference with temp dev poly Obs {obs_idx}")
-                        outside_geom = segment_geom.difference(temp_deviation_poly)
-
-                        if outside_geom.isEmpty(): log.warning(f"  Segment L{line_num} is entirely inside temp deviation polygon {obs_idx}. Discarding.")
+                        if outside_geom.isEmpty(): log.warning(f"  Segment L{line_num} is entirely inside deviation polygon {obs_idx}. Discarding.")
                         elif outside_geom.wkbType() == QgsWkbTypes.LineString: log.warning(f"  Segment difference resulted in single line for L{line_num}, Obs{obs_idx}. Keeping."); new_outside_parts_for_this_obstacle.append(outside_geom)
                         elif outside_geom.wkbType() == QgsWkbTypes.MultiLineString:
                             parts = outside_geom.asMultiPolyline()
@@ -4132,132 +4160,65 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             valid_parts_geoms = [QgsGeometry.fromPolylineXY(p) for p in parts if len(p) >= 2]
                             if len(valid_parts_geoms) >= 2:
                                 segment_was_split_this_time = True
-                                # Sort parts based on proximity to original segment start/end
                                 segment_start_pt = QgsPointXY(segment_geom.vertexAt(0))
                                 valid_parts_geoms.sort(key=lambda g: g.distance(QgsGeometry.fromPointXY(segment_start_pt)))
                                 geom_part1 = valid_parts_geoms[0]
-                                geom_part2 = valid_parts_geoms[-1] # Assume the last one is furthest from start
+                                geom_part2 = valid_parts_geoms[-1]
                                 new_outside_parts_for_this_obstacle.append(geom_part1)
                                 new_outside_parts_for_this_obstacle.append(geom_part2)
                                 log.debug(f"    Added Outside segment 1 (Length: {geom_part1.length():.1f})")
                                 log.debug(f"    Added Outside segment 2 (Length: {geom_part2.length():.1f})")
 
-                                # <<< FIX: Determine actual entry/exit points >>>
                                 points1 = geom_part1.asPolyline()
                                 points2 = geom_part2.asPolyline()
-                                actual_entry_point = QgsPointXY(points1[-1]) # End of the first part is the entry to the gap
-                                actual_exit_point = QgsPointXY(points2[0])   # Start of the second part is the exit from the gap
+                                actual_entry_point = QgsPointXY(points1[-1])
+                                actual_exit_point = QgsPointXY(points2[0])
+                                # <<< ADDED PHASE 1 LOGGING (Split Points) >>>
                                 log.debug(f"  [P1-Split] L{line_num} Obstacle {obs_idx}: Split points identified: Entry({actual_entry_point.x():.1f},{actual_entry_point.y():.1f}), Exit({actual_exit_point.x():.1f},{actual_exit_point.y():.1f})")
-                                # <<< END FIX >>>
+                                # <<< END PHASE 1 LOGGING >>>
 
-                            else: # Handle cases where split results in fewer than 2 valid parts
+                            else:
                                  log.warning(f" Split resulted in < 2 valid parts L{line_num}, Obs{obs_idx}. Adding valid parts.")
                                  new_outside_parts_for_this_obstacle.extend(valid_parts_geoms)
-                        else: # Unexpected geometry type
+                        else:
                             log.warning(f" Unexpected geom type after difference L{line_num}, Obs{obs_idx}: {outside_geom.wkbType()}. Keeping.")
-                            new_outside_parts_for_this_obstacle.append(segment_geom) # Keep original segment geom
-                        # --- STEP 7 END ---
+                            new_outside_parts_for_this_obstacle.append(segment_geom)
 
-                        # --- Calculate Paths & Choose ONLY if split occurred ---
+                        # --- Calculate Paths & Choose ONLY if split occurred (Unchanged) ---
                         if actual_entry_point and actual_exit_point:
-                            line_was_split = True # Mark that the original line was affected
-
-                            # <<< REVISED PEAK CALCULATION >>>
-                            # 1. Calculate Midpoint of the Gap
-                            gap_mid_x = (actual_entry_point.x() + actual_exit_point.x()) / 2
-                            gap_mid_y = (actual_entry_point.y() + actual_exit_point.y()) / 2
-                            gap_mid_point_xy = QgsPointXY(gap_mid_x, gap_mid_y)
-                            log.debug(f"  [P2-Peak] Gap Midpoint: ({gap_mid_x:.1f}, {gap_mid_y:.1f})")
-
-                            # 2. Determine Perpendicular Direction (relative to gap)
-                            dx_gap = actual_exit_point.x() - actual_entry_point.x()
-                            dy_gap = actual_exit_point.y() - actual_entry_point.y()
-                            gap_len_sq = dx_gap**2 + dy_gap**2
-
-                            if gap_len_sq > 1e-8: # If gap is reasonably large
-                                gap_len = math.sqrt(gap_len_sq)
-                                dx_norm_gap = dx_gap / gap_len
-                                dy_norm_gap = dy_gap / gap_len
-                            else: # Gap is tiny or zero, use original line heading
-                                log.warning(f"  [P2-Peak] Gap distance near zero for L{line_num}, Obs{obs_idx}. Using original line heading for perpendicular.")
-                                heading_rad_math = math.radians(heading_orig) # Use original heading
-                                dx_norm_gap = math.cos(heading_rad_math)
-                                dy_norm_gap = math.sin(heading_rad_math)
-
-                            # Perpendicular vectors based on gap direction
-                            perp_dx1, perp_dy1 = -dy_norm_gap, dx_norm_gap # Perpendicular A direction
-                            perp_dx2, perp_dy2 = dy_norm_gap, -dx_norm_gap  # Perpendicular B direction
-
-                            # 3. Calculate Initial Peak Position (Project from GAP MIDPOINT)
-                            # Start with a base distance related to clearance. Tune if needed.
-                            initial_peak_dist = clearance_m * 1.5 # Base distance
-                            peak_dist = initial_peak_dist
-                            log.debug(f"  [P2-Peak] Initial Peak Distance (from gap mid): {peak_dist:.1f}m")
-
-                            peak_a_point = QgsPointXY(gap_mid_x + perp_dx1 * peak_dist, gap_mid_y + perp_dy1 * peak_dist)
-                            peak_b_point = QgsPointXY(gap_mid_x + perp_dx2 * peak_dist, gap_mid_y + perp_dy2 * peak_dist)
-
-                            # 4. Apply Safety Factor (Check against OBSTACLE BUFFER)
-                            safety_factor = 1.5 # Start factor at 1 (already includes 1.5*clearance)
-                            max_safety_factor = 5.0
-                            safety_increment = clearance_m * 0.5 # How much to push out each step
-
-                            while safety_factor <= max_safety_factor:
-                                peak_a_geom = QgsGeometry.fromPointXY(peak_a_point)
-                                peak_b_geom = QgsGeometry.fromPointXY(peak_b_point)
-                                peak_a_inside = obstacle_buffer.contains(peak_a_geom)
-                                peak_b_inside = obstacle_buffer.contains(peak_b_geom)
-
-                                if not peak_a_inside and not peak_b_inside:
-                                    break # Both peaks are outside the obstacle buffer
-
-                                # If one is inside, push it further out
-                                if peak_a_inside:
-                                    peak_dist_a = gap_mid_point_xy.distance(peak_a_point) + safety_increment
-                                    peak_a_point = QgsPointXY(gap_mid_x + perp_dx1 * peak_dist_a, gap_mid_y + perp_dy1 * peak_dist_a)
-                                    log.debug(f"  [P2-Peak] Pushing Peak A (Factor {safety_factor:.1f}), New Dist: {peak_dist_a:.1f}")
-                                if peak_b_inside:
-                                    peak_dist_b = gap_mid_point_xy.distance(peak_b_point) + safety_increment
-                                    peak_b_point = QgsPointXY(gap_mid_x + perp_dx2 * peak_dist_b, gap_mid_y + perp_dy2 * peak_dist_b)
-                                    log.debug(f"  [P2-Peak] Pushing Peak B (Factor {safety_factor:.1f}), New Dist: {peak_dist_b:.1f}")
-
-                                safety_factor += 0.5 # Use factor mainly for loop limit
-
-                            if safety_factor > max_safety_factor:
-                                log.warning(f"  [P2-Peak] Could not push peaks fully outside obstacle buffer {obs_idx} after {max_safety_factor:.1f} factor.")
-
-                            log.debug(f"  [P2-Peak] Final Peaks: PeakA({peak_a_point.x():.1f},{peak_a_point.y():.1f}), PeakB({peak_b_point.x():.1f},{peak_b_point.y():.1f})")
-                            # <<< END REVISED PEAK CALCULATION >>>
-
-                            # --- Path evaluation and choice (uses the revised peaks) ---
+                            line_was_split = True
                             path_a_length = self._calculate_path_length(actual_entry_point, peak_a_point, actual_exit_point)
                             path_b_length = self._calculate_path_length(actual_entry_point, peak_b_point, actual_exit_point)
-                            log.debug(f"  Actual Path Lengths (Revised Peaks): A={path_a_length:.1f}, B={path_b_length:.1f}")
+                            log.debug(f"  Actual Path Lengths (Original Peaks): A={path_a_length:.1f}, B={path_b_length:.1f}") # Note: using original peaks here
 
                             if line_num not in path_options: path_options[line_num] = []
                             self._record_path_option(path_options, line_num, "A", path_a_length, actual_entry_point, peak_a_point, actual_exit_point, obs_idx)
                             self._record_path_option(path_options, line_num, "B", path_b_length, actual_entry_point, peak_b_point, actual_exit_point, obs_idx)
                             process_stats['paths_recorded'] += 2; process_stats['lines_with_options'].add(line_num)
 
-                            if path_a_length <= path_b_length: chosen_peak = peak_a_point; peak_label = "A"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak A chosen (Revised).")
-                            else: chosen_peak = peak_b_point; peak_label = "B"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak B chosen (Revised).")
+                            if path_a_length <= path_b_length: chosen_peak = peak_a_point; peak_label = "A"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak A chosen (Original).")
+                            else: chosen_peak = peak_b_point; peak_label = "B"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak B chosen (Original).")
 
                             if line_num not in chosen_paths: chosen_paths[line_num] = []
                             if not any(c['obstacle_id'] == obs_idx for c in chosen_paths[line_num]):
-                                chosen_paths[line_num].append({'obstacle_id': obs_idx, 'peak': peak_label, 'entry_point': actual_entry_point, 'peak_point': chosen_peak, 'exit_point': actual_exit_point, 'original_fid': fid})
+                                # Store the split points and the CHOSEN peak based on ORIGINAL calculation
+                                chosen_paths[line_num].append({'obstacle_id': obs_idx, 'peak': peak_label,
+                                                             'entry_point': actual_entry_point, # The actual split point
+                                                             'peak_point': chosen_peak,         # The chosen peak (original calc)
+                                                             'exit_point': actual_exit_point,  # The actual split point
+                                                             'original_fid': fid})
                             else:
                                 log.debug(f"  Choice for L{line_num}, Obs{obs_idx} already recorded, skipping duplicate storage.")
 
                     except Exception as e:
-                        log.exception(f"Error processing segment for L{line_num}, Obs{obs_idx}: {e}") # Use exception log
+                        log.exception(f"Error processing segment for L{line_num}, Obs{obs_idx}: {e}")
                         process_stats['errors'].append(f"L{line_num}, Obs{obs_idx}, Segment: {str(e)}")
-                        new_outside_parts_for_this_obstacle.append(segment_geom) # Keep original segment on error
+                        new_outside_parts_for_this_obstacle.append(segment_geom)
 
-                # Add non-intersecting segments and newly created outside parts to list for next iteration
                 current_outside_segments = segments_not_intersecting + new_outside_parts_for_this_obstacle
             # <<< End Obstacle Loop >>>
 
-            # --- Final Feature Creation & Deletion Marking (Coordinate Update Unchanged from previous fix) ---
+            # --- Final Feature Creation & Deletion Marking (Coordinate Update Unchanged) ---
             if line_was_split:
                 processed_line_fids.add(fid)
                 if fid not in segments_to_delete:
@@ -4284,11 +4245,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                           feat_final_outside.setAttribute(fld_lsy, start_v_xy.y())
                                           feat_final_outside.setAttribute(fld_hsx, end_v_xy.x())
                                           feat_final_outside.setAttribute(fld_hsy, end_v_xy.y())
-                                          # log.debug(f"  Updated Coords for Outside L{line_num}: Start({start_v_xy.x():.1f},{start_v_xy.y():.1f}), End({end_v_xy.x():.1f},{end_v_xy.y():.1f})") # Keep if needed
                                       else: log.warning(f"  Cannot update coords for Outside L{line_num}: Geometry has < 2 points.")
-                                  else: log.warning(f"  Cannot update coords for Outside L{line_num}: Geometry is not a simple LineString (Type: {final_segment_geom.wkbType()}).")
+                                  else: log.warning(f"  Cannot update coords for Outside L{line_num}: Geometry is not a simple LineString.")
                               except Exception as update_ex: log.warning(f"  Error updating coordinates for Outside L{line_num}: {update_ex}")
-                          # else: log.debug("  Skipping coordinate update for Outside segment: Fields not found.") # Redundant if logged once
 
                           segments_to_add_outside.append(feat_final_outside)
                           process_stats['segments_created'] += 1
@@ -4315,16 +4274,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     # <<< Function End: _process_conflicted_lines >>>
 
 
-    # <<< Function Start: _complete_deviation_calculation (No changes needed here for peak recalc) >>>
+    # <<< Function Start: _complete_deviation_calculation (ADDED PHASE 1 Connector Debug Logging) >>>
     def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
         """
         Completes deviation: creates connectors (COORDS FIXED, ATTRS FIXED), finalizes layer updates.
-        (Refined V4 + PHASE 2 FIX v2 - No changes needed here for peak recalc)
+        (Refined V4 + PHASE 1 Connector Debug Logging)
         """
-        log.info("Completing deviation calculation and finalizing paths (Refined V4 + Coord Fix v2)...")
+        log.info("Completing deviation calculation and finalizing paths (Refined V4 + P1 Connector Logging)...")
         project = QgsProject.instance()
 
-        # --- Layers Setup ---
+        # --- Layers Setup (Unchanged) ---
         deviation_connectors_layer_name = "Deviation_Connectors_Final"
         self._remove_layer_by_name(deviation_connectors_layer_name)
         deviation_connectors_layer = QgsVectorLayer(f"LineString?crs={lines_layer.crs().authid()}",
@@ -4337,13 +4296,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         unified_split_layer = None
         if debug_mode:
-             # ... (debug layer setup unchanged) ...
-             pass
+             pass # Debug layer setup unchanged
 
         # --- Process Pre-calculated Results ---
         try:
             log.info("Processing pre-calculated conflicted lines and path options...")
-            results = self._process_conflicted_lines(lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode) # Calls the newly modified version
+            results = self._process_conflicted_lines(lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode) # Calls the logging version
             log.info(f"[COMPLETE] Received results. Path options keys: {list(results.get('path_options', {}).keys())}")
 
             path_options = results['path_options']; chosen_paths = results['chosen_paths']
@@ -4353,7 +4311,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             self.path_options = path_options; self.chosen_paths = chosen_paths
             log.info(f"[COMPLETE] Assigned self.path_options ({len(self.path_options)} lines), self.chosen_paths ({len(self.chosen_paths)} lines)")
 
-            # --- Cache original attributes BEFORE deleting ---
+            # --- Cache original attributes BEFORE deleting (Unchanged) ---
             log.debug("Caching attributes of original lines before deletion...")
             original_feature_attributes = {}
             if segments_to_delete_fids:
@@ -4384,7 +4342,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     original_fid = choice.get('original_fid')
                     original_attributes = original_feature_attributes.get(original_fid)
                     if original_attributes is None:
-                        log.warning(f"No cached attributes found for original FID {original_fid} (L{line_num}), connectors might lack attributes or fail.")
+                        log.warning(f"No cached attributes found for original FID {original_fid} (L{line_num}). Connector attributes might be incomplete.")
                         original_attributes = [NULL] * len(target_fields)
 
                     try:
@@ -4392,8 +4350,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         entry_point = choice['entry_point']; peak_point = choice['peak_point']; exit_point = choice['exit_point']
                         if not all(isinstance(p, QgsPointXY) for p in [entry_point, peak_point, exit_point]): log.warning(f"Skip connector (Invalid Points) L{line_num}, Obs{obs_idx}."); continue
 
-                        # Log points used for connector geometry
+                        # <<< ADDED PHASE 1 LOGGING (Connector Points) >>>
                         log.debug(f"  [P1-ConnectorPreGeom] L{line_num} Obstacle {obs_idx}: Creating connector geom with Points: Entry({entry_point.x():.1f},{entry_point.y():.1f}), Peak({peak_point.x():.1f},{peak_point.y():.1f}), Exit({exit_point.x():.1f},{exit_point.y():.1f})")
+                        # <<< END PHASE 1 LOGGING >>>
 
                         connector_geom = QgsGeometry.fromPolylineXY([entry_point, peak_point, exit_point])
                         if connector_geom.isEmpty() or not connector_geom.isGeosValid(): log.warning(f"Skip connector (Invalid Geom) L{line_num}, Obs{obs_idx}."); continue
@@ -4411,7 +4370,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         fld_linenum_idx = target_fields.lookupField("LineNum")
                         if fld_linenum_idx != -1: connector_feat_main[fld_linenum_idx] = line_num
 
-                        # COORDINATE UPDATE FIX for Connector Segments
+                        # COORDINATE UPDATE FIX for Connector Segments (Unchanged from previous fix)
                         if coord_indices_valid:
                             try:
                                 if connector_geom.wkbType() == QgsWkbTypes.LineString:
@@ -4425,9 +4384,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                         connector_feat_main.setAttribute(fld_hsy, end_v_xy.y())
                                         log.debug(f"  Updated Coords for Connector L{line_num}: Start({start_v_xy.x():.1f},{start_v_xy.y():.1f}), End({end_v_xy.x():.1f},{end_v_xy.y():.1f})")
                                     else: log.warning(f"  Cannot update coords for Connector L{line_num}: Geometry has < 2 points.")
-                                else: log.warning(f"  Cannot update coords for Connector L{line_num}: Geometry is not a simple LineString (Type: {connector_geom.wkbType()}).")
+                                else: log.warning(f"  Cannot update coords for Connector L{line_num}: Geometry is not a simple LineString.")
                             except Exception as update_ex: log.warning(f"  Error updating coordinates for Connector L{line_num}: {update_ex}")
-                        # else: log.debug("  Skipping coordinate update for Connector segment: Fields not found.")
 
                         segments_to_add_connectors.append(connector_feat_main)
 
@@ -4490,7 +4448,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
              return False
     # <<< Function End: _complete_deviation_calculation >>>
 
-
+    # Add the helper function if it's not already present or reliable
     def _create_temp_deviation_polygon(self, segment_geom, obstacle_buffer, clearance, turn_radius, fallback_heading):
         """Helper to create a temporary deviation polygon for splitting a specific segment."""
         try:
@@ -4519,7 +4477,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
             perp_dx1, perp_dy1 = -dy_norm, dx_norm
             perp_dx2, perp_dy2 = dy_norm, -dx_norm
-            peak_dist = (clearance + turn_radius) * 1.1 # Slightly smaller factor for temp polygon
+            peak_dist = (clearance + turn_radius) * 1.0 # Slightly smaller factor for temp polygon
 
             peak_a_point = QgsPointXY(mid_x + perp_dx1 * peak_dist, mid_y + perp_dy1 * peak_dist)
             peak_b_point = QgsPointXY(mid_x + perp_dx2 * peak_dist, mid_y + perp_dy2 * peak_dist)
@@ -4532,7 +4490,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except Exception as e:
             log.warning(f"Failed to create temp deviation polygon: {e}")
             return None
-
 
     def _record_path_option(self, path_options, line_num, peak_label, path_length, entry_point, peak_point, exit_point, obstacle_id):
         """
