@@ -3985,67 +3985,138 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 log.info("Changes rolled back due to error")
             return False
 
-    # <<< Helper Function Start: _extract_line_segment (FIXED AttributeError) >>>
+
+    # <<< Helper Function Start: _extract_line_segment (Attempting Explicit LineString access) >>>
     def _extract_line_segment(self, line_geom, start_dist, end_dist):
-        """Extracts segment using interpolation and vertex iteration. (Fixed sqrDist Error)"""
-        # Use global helper function is_line_type
-        if not line_geom or not line_geom.isGeosValid() or not is_line_type(line_geom.wkbType()):
-            log.warning(f"_extract_line_segment: Invalid input geometry (Type: {line_geom.wkbType() if line_geom else 'None'})")
+        """
+        Extracts a segment of a line geometry between two distances along the line.
+        Attempts to use native curveSubstring via explicit LineString access.
+        Falls back to manual iteration if needed.
+
+        Args:
+            line_geom (QgsGeometry): The input line geometry
+            start_dist (float): Start distance along the line
+            end_dist (float): End distance along the line
+
+        Returns:
+            QgsGeometry: The extracted line segment, or None on error or if segment is invalid.
+        """
+        if not line_geom or not line_geom.isGeosValid():
+            log.warning(f"_extract_line_segment: Invalid input geometry")
             return None
+
+        # Check if it's a line type BEFORE trying to access specific methods
+        if not is_line_type(line_geom.wkbType()):
+             log.warning(f"_extract_line_segment: Input geometry is not a line type (Type: {line_geom.wkbType()})")
+             return None
 
         line_length = line_geom.length()
         start_dist = max(0.0, min(start_dist, line_length))
         end_dist = max(0.0, min(end_dist, line_length))
 
-        if abs(start_dist - end_dist) < 1e-6:
-            log.debug(f"_extract_line_segment: Zero or negative length requested ({start_dist:.2f} -> {end_dist:.2f}).")
+        if abs(start_dist - end_dist) < 1e-9:
+            log.debug(f"_extract_line_segment: Zero or negative length requested.")
             return None
+
+        try:
+            # --- Attempt 1: Native curveSubstring ---
+            # Check if the method exists directly (might work in some contexts/future versions)
+            if hasattr(line_geom, 'curveSubstring'):
+                segment_geom = line_geom.curveSubstring(start_dist, end_dist)
+                if segment_geom and not segment_geom.isEmpty() and is_line_type(segment_geom.wkbType()):
+                    # log.debug("Used direct line_geom.curveSubstring")
+                    return segment_geom
+                else:
+                    log.warning("Direct line_geom.curveSubstring failed or returned invalid geometry.")
+            else:
+                 log.debug("line_geom object does not directly have curveSubstring method.")
+
+            # --- Attempt 2: Access as LineString ---
+            # If it's specifically a LineString, try accessing it directly
+            if line_geom.wkbType() == QgsWkbTypes.LineString:
+                 line_string_part = line_geom.constGet() # Get pointer to implementation
+                 if hasattr(line_string_part, 'curveSubstring'):
+                     # QgsLineString::curveSubstring returns a new QgsLineString pointer,
+                     # we need to wrap it back into a QgsGeometry
+                     new_line_part = line_string_part.curveSubstring(start_dist, end_dist)
+                     if new_line_part:
+                         segment_geom = QgsGeometry(new_line_part) # Wrap in QgsGeometry
+                         if segment_geom and not segment_geom.isEmpty() and is_line_type(segment_geom.wkbType()):
+                              # log.debug("Used line_string_part.curveSubstring")
+                              return segment_geom
+                         else:
+                              log.warning("line_string_part.curveSubstring failed or returned invalid geometry.")
+                     else:
+                          log.warning("line_string_part.curveSubstring returned None")
+                 else:
+                      log.debug("line_string_part does not have curveSubstring method (unexpected for LineString).")
+
+
+            # --- Fallback: Manual Extraction (If curveSubstring failed) ---
+            log.warning("curveSubstring approaches failed. Falling back to manual extraction.")
+            return self._extract_line_segment_manual(line_geom, start_dist, end_dist)
+
+
+        except Exception as e:
+             log.exception(f"Error in _extract_line_segment (native/explicit attempts): {e}")
+             log.warning("Error during native extraction, falling back to manual.")
+             # Fallback to manual extraction on any error during native attempt
+             return self._extract_line_segment_manual(line_geom, start_dist, end_dist)
+    # <<< Helper Function End: _extract_line_segment >>>
+
+
+    # <<< Helper Function Start: _extract_line_segment_manual (FIXED AttributeError) >>>
+    def _extract_line_segment_manual(self, line_geom, start_dist, end_dist):
+        """Extracts segment using interpolation and vertex iteration. (Fixed sqrDist Error)"""
+        log.debug(f"Executing manual segment extraction for {start_dist:.2f}-{end_dist:.2f}")
+        # Re-check basic validity
+        if not line_geom or not line_geom.isGeosValid() or not is_line_type(line_geom.wkbType()):
+            log.warning(f"_extract_line_segment_manual: Invalid input geometry")
+            return None
+        line_length = line_geom.length()
+        start_dist = max(0.0, min(start_dist, line_length))
+        end_dist = max(0.0, min(end_dist, line_length))
+        if abs(start_dist - end_dist) < 1e-6: return None
 
         try:
             points_xy = []
             # Add start point
             start_geom_interpolated = line_geom.interpolate(start_dist)
             if not start_geom_interpolated or start_geom_interpolated.isEmpty():
-                log.warning(f"_extract_line_segment: Failed to interpolate start point at {start_dist:.2f}")
+                log.warning(f"_extract_line_segment_manual: Failed to interpolate start point at {start_dist:.2f}")
                 return None
             points_xy.append(QgsPointXY(start_geom_interpolated.asPoint()))
 
             # Add intermediate vertices
             vertices_iter = line_geom.vertices()
             current_dist = 0.0
-            # Get the first vertex as QgsPoint for distance calculation start
             first_vertex = line_geom.vertexAt(0)
-            if first_vertex is None:
-                 log.error("_extract_line_segment: Cannot get first vertex.")
-                 return None
+            if first_vertex is None: log.error("_extract_line_segment_manual: Cannot get first vertex."); return None
             last_point = first_vertex # QgsPoint
 
             vertex_index = 0
             while vertices_iter.hasNext():
                  current_point = vertices_iter.next() # QgsPoint
-                 # --- FIX: Use distance() method which exists for QgsPoint ---
-                 segment_len = last_point.distance(current_point)
-                 # --- END FIX ---
+                 segment_len = last_point.distance(current_point) # Uses QgsPoint.distance()
 
                  segment_start_dist = current_dist
                  segment_end_dist = current_dist + segment_len
 
-                 # Check if this vertex falls strictly between start and end distances
+                 # Add vertex if it falls strictly between start and end distances
                  if segment_end_dist > start_dist + 1e-6 and segment_end_dist < end_dist - 1e-6:
-                      points_xy.append(QgsPointXY(current_point)) # Add as QgsPointXY
+                      points_xy.append(QgsPointXY(current_point))
 
                  current_dist = segment_end_dist
-                 last_point = current_point # Update last_point for next iteration
+                 last_point = current_point
                  vertex_index += 1
-
                  if current_dist > end_dist + 1e-6: break
 
             # Add end point
             end_geom_interpolated = line_geom.interpolate(end_dist)
             if not end_geom_interpolated or end_geom_interpolated.isEmpty():
-                log.warning(f"_extract_line_segment: Failed to interpolate end point at {end_dist:.2f}")
+                log.warning(f"_extract_line_segment_manual: Failed to interpolate end point at {end_dist:.2f}")
                 last_v = line_geom.vertexAt(-1)
-                if last_v: points_xy.append(QgsPointXY(last_v)); log.debug("_extract_line_segment: Used last vertex as fallback.")
+                if last_v: points_xy.append(QgsPointXY(last_v)); log.debug("_extract_line_segment_manual: Used last vertex as fallback.")
                 else: return None
             else:
                  points_xy.append(QgsPointXY(end_geom_interpolated.asPoint()))
@@ -4058,14 +4129,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     if points_xy[i].compare(final_points[-1], 0.001) != 0: final_points.append(points_xy[i])
 
             if len(final_points) >= 2:
+                log.debug(f"_extract_line_segment_manual: Extracted segment with {len(final_points)} points.")
                 return QgsGeometry.fromPolylineXY(final_points)
             else:
-                log.warning(f"_extract_line_segment: Failed, only {len(final_points)} unique points found.")
+                log.warning(f"_extract_line_segment_manual: Failed, only {len(final_points)} unique points found.")
                 return None
         except Exception as e:
-             log.exception(f"Error in _extract_line_segment: {e}")
+             log.exception(f"Error in _extract_line_segment_manual: {e}")
              return None
-    # <<< Helper Function End: _extract_line_segment >>>
+    # <<< Helper Function End: _extract_line_segment_manual >>>
+
 
     # <<< Helper Function Start: _calculate_segment_heading (FIXED _is_line_type call) >>>
     def _calculate_segment_heading(self, segment_geom, start=True):
@@ -4106,9 +4179,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         path_options = {}; chosen_paths = {}; segments_to_add_outside = []; segments_to_delete = []
         process_stats = {'lines_processed': 0, 'obstacles_processed': 0, 'paths_recorded': 0, 'segments_created': 0, 'lines_with_options': set(), 'errors': []}
         conflicted_lines = []; fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
-        log.info(f"[DIRECT-DEBUG] Querying with filter: \"is_conflicted\" = 'true'")
+        log.info(f"[DIRECT-DEBUG] Querying with filter: \"is_conflicted\" = true")
         if fld_conflicted_idx >= 0:
-            conflicted_request = QgsFeatureRequest().setFilterExpression("\"is_conflicted\" = 'true'")
+            conflicted_request = QgsFeatureRequest().setFilterExpression("\"is_conflicted\" = true")
             conflicted_request.setFlags(QgsFeatureRequest.NoFlags)
             for feature in lines_layer.getFeatures(conflicted_request):
                 fid = feature.id(); line_geom = feature.geometry(); line_num_attr = feature.attribute("LineNum")
