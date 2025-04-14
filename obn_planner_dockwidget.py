@@ -69,7 +69,7 @@ from qgis.core import (QgsProject, QgsVectorLayer, QgsField, QgsFeature, QgsGeom
                    QgsPoint, QgsSpatialIndex, QgsDistanceArea, QgsUnitTypes, QgsRendererCategory, QgsCategorizedSymbolRenderer,
                    QgsPointLocator, QgsFeatureSink, QgsPalLayerSettings, QgsTextFormat, QgsProperty,
                    QgsRuleBasedLabeling, QgsRuleBasedRenderer, QgsVectorLayerSimpleLabeling, QgsMarkerLineSymbolLayer,
-                   QgsGeometryUtils, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression, QgsArrowSymbolLayer, QgsSingleSymbolRenderer )
+                   QgsGeometryUtils, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression, QgsArrowSymbolLayer, QgsSingleSymbolRenderer,QgsRendererCategory, QgsVectorLayerSimpleLabeling)
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt import QtWidgets, uic, QtCore
 from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt, QDateTime
@@ -117,8 +117,7 @@ KNOTS_TO_MPS = 0.514444
 MAX_FLOAT = sys.float_info.max
 GEOMETRY_PRECISION = 1e-6 # Tolerance for geometry comparisons/checks
 
-# --- Geometry Helper Functions ---
-
+# --- Global Geometry Helper Functions ---
 def is_surface_type(wkb_type):
     """Check if a WKB type is a surface type (Polygon, MultiPolygon, etc.)."""
     try: return QgsWkbTypes.isSurface(wkb_type)
@@ -133,8 +132,7 @@ def is_line_type(wkb_type):
     """Check if a WKB type is a line type (LineString, MultiLineString, etc.)."""
     try: return QgsWkbTypes.isCurve(wkb_type) # isCurve covers LineString, CompoundCurve etc.
     except AttributeError: log.debug("Fallback check for is_line_type"); return wkb_type in [ QgsWkbTypes.LineString, QgsWkbTypes.LineStringZ, QgsWkbTypes.LineStringM, QgsWkbTypes.LineStringZM, QgsWkbTypes.MultiLineString, QgsWkbTypes.MultiLineStringZ, QgsWkbTypes.MultiLineStringM, QgsWkbTypes.MultiLineStringZM, QgsWkbTypes.LineString25D, QgsWkbTypes.MultiLineString25D, QgsWkbTypes.CompoundCurve, QgsWkbTypes.CircularString ]
-
-# --- Main Dock Widget Class ---
+# --- End Global Helpers ---
 
 class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     """
@@ -2667,89 +2665,89 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.error(f"Error calc heading at dist {distance:.2f}: {e}")
             return None
             
-    def _extract_line_segment(self, line_geom, start_dist, end_dist):
-        """
-        Custom method to extract a segment of a line geometry between two distances along the line.
-        Works across different QGIS versions by manually calculating the segment.
+    # def _extract_line_segment(self, line_geom, start_dist, end_dist):
+    #     """
+    #     Custom method to extract a segment of a line geometry between two distances along the line.
+    #     Works across different QGIS versions by manually calculating the segment.
         
-        Args:
-            line_geom (QgsGeometry): The input line geometry
-            start_dist (float): Start distance along the line
-            end_dist (float): End distance along the line
+    #     Args:
+    #         line_geom (QgsGeometry): The input line geometry
+    #         start_dist (float): Start distance along the line
+    #         end_dist (float): End distance along the line
             
-        Returns:
-            QgsGeometry: The extracted line segment, or None on error
-        """
-        if not line_geom or line_geom.isEmpty() or not self._is_line_type(line_geom):
-            log.warning("Cannot extract segment from empty or non-line geometry")
-            return None
+    #     Returns:
+    #         QgsGeometry: The extracted line segment, or None on error
+    #     """
+    #     if not line_geom or line_geom.isEmpty() or not self._is_line_type(line_geom):
+    #         log.warning("Cannot extract segment from empty or non-line geometry")
+    #         return None
             
-        # Ensure valid start/end distances
-        line_length = line_geom.length()
-        if start_dist < 0: start_dist = 0
-        if end_dist > line_length: end_dist = line_length
-        if start_dist >= end_dist: return None  # Empty segment
+    #     # Ensure valid start/end distances
+    #     line_length = line_geom.length()
+    #     if start_dist < 0: start_dist = 0
+    #     if end_dist > line_length: end_dist = line_length
+    #     if start_dist >= end_dist: return None  # Empty segment
         
-        try:
-            # Extract all vertices from the line
-            vertices = list(line_geom.vertices())
-            if len(vertices) < 2:
-                log.warning("Line has fewer than 2 vertices")
-                return None
+    #     try:
+    #         # Extract all vertices from the line
+    #         vertices = list(line_geom.vertices())
+    #         if len(vertices) < 2:
+    #             log.warning("Line has fewer than 2 vertices")
+    #             return None
                 
-            # Initialize variables to track our progress
-            current_dist = 0.0
-            segment_points = []
-            point_added = False
+    #         # Initialize variables to track our progress
+    #         current_dist = 0.0
+    #         segment_points = []
+    #         point_added = False
             
-            # Process each segment of the line
-            for i in range(len(vertices) - 1):
-                p1 = vertices[i]
-                p2 = vertices[i + 1]
+    #         # Process each segment of the line
+    #         for i in range(len(vertices) - 1):
+    #             p1 = vertices[i]
+    #             p2 = vertices[i + 1]
                 
-                # Convert to QgsPointXY for distance calculation
-                pt1 = QgsPointXY(p1.x(), p1.y())
-                pt2 = QgsPointXY(p2.x(), p2.y())
+    #             # Convert to QgsPointXY for distance calculation
+    #             pt1 = QgsPointXY(p1.x(), p1.y())
+    #             pt2 = QgsPointXY(p2.x(), p2.y())
                 
-                # Calculate segment length
-                segment_length = math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
-                next_dist = current_dist + segment_length
+    #             # Calculate segment length
+    #             segment_length = math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
+    #             next_dist = current_dist + segment_length
                 
-                # Check if this segment contains our start point
-                if current_dist <= start_dist < next_dist and not point_added:
-                    # Interpolate position along segment
-                    fraction = (start_dist - current_dist) / segment_length
-                    x = p1.x() + fraction * (p2.x() - p1.x())
-                    y = p1.y() + fraction * (p2.y() - p1.y())
-                    segment_points.append(QgsPointXY(x, y))
-                    point_added = True
+    #             # Check if this segment contains our start point
+    #             if current_dist <= start_dist < next_dist and not point_added:
+    #                 # Interpolate position along segment
+    #                 fraction = (start_dist - current_dist) / segment_length
+    #                 x = p1.x() + fraction * (p2.x() - p1.x())
+    #                 y = p1.y() + fraction * (p2.y() - p1.y())
+    #                 segment_points.append(QgsPointXY(x, y))
+    #                 point_added = True
                 
-                # Add any vertices that fall within our range
-                if start_dist <= next_dist and current_dist < end_dist:
-                    if next_dist <= end_dist:
-                        # The whole segment is within range, add end point
-                        if len(segment_points) == 0 or segment_points[-1] != pt2:
-                            segment_points.append(pt2)
-                    else:
-                        # This segment contains our end point
-                        fraction = (end_dist - current_dist) / segment_length
-                        x = p1.x() + fraction * (p2.x() - p1.x())
-                        y = p1.y() + fraction * (p2.y() - p1.y())
-                        segment_points.append(QgsPointXY(x, y))
-                        break  # We're done after adding the end point
+    #             # Add any vertices that fall within our range
+    #             if start_dist <= next_dist and current_dist < end_dist:
+    #                 if next_dist <= end_dist:
+    #                     # The whole segment is within range, add end point
+    #                     if len(segment_points) == 0 or segment_points[-1] != pt2:
+    #                         segment_points.append(pt2)
+    #                 else:
+    #                     # This segment contains our end point
+    #                     fraction = (end_dist - current_dist) / segment_length
+    #                     x = p1.x() + fraction * (p2.x() - p1.x())
+    #                     y = p1.y() + fraction * (p2.y() - p1.y())
+    #                     segment_points.append(QgsPointXY(x, y))
+    #                     break  # We're done after adding the end point
                 
-                current_dist = next_dist
+    #             current_dist = next_dist
             
-            # Create a geometry from the collected points
-            if len(segment_points) >= 2:
-                return QgsGeometry.fromPolylineXY(segment_points)
-            else:
-                log.warning(f"Could not extract line segment ({start_dist}-{end_dist}) - insufficient points")
-                return None
+    #         # Create a geometry from the collected points
+    #         if len(segment_points) >= 2:
+    #             return QgsGeometry.fromPolylineXY(segment_points)
+    #         else:
+    #             log.warning(f"Could not extract line segment ({start_dist}-{end_dist}) - insufficient points")
+    #             return None
                 
-        except Exception as e:
-            log.exception(f"Error extracting line segment: {e}")
-            return None
+    #     except Exception as e:
+    #         log.exception(f"Error extracting line segment: {e}")
+    #         return None
 
     def _calculate_and_apply_deviations(self, line_data, nogo_layer, clearance_m, turn_radius_m, vessel_turn_rate_dpm=180.0):
         """
@@ -3987,286 +3985,343 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 log.info("Changes rolled back due to error")
             return False
 
-    # <<< Function Start: _process_conflicted_lines (ADDED Connector Debug Logging) >>>
+    # <<< Helper Function Start: _extract_line_segment (FIXED AttributeError) >>>
+    def _extract_line_segment(self, line_geom, start_dist, end_dist):
+        """Extracts segment using interpolation and vertex iteration. (Fixed sqrDist Error)"""
+        # Use global helper function is_line_type
+        if not line_geom or not line_geom.isGeosValid() or not is_line_type(line_geom.wkbType()):
+            log.warning(f"_extract_line_segment: Invalid input geometry (Type: {line_geom.wkbType() if line_geom else 'None'})")
+            return None
+
+        line_length = line_geom.length()
+        start_dist = max(0.0, min(start_dist, line_length))
+        end_dist = max(0.0, min(end_dist, line_length))
+
+        if abs(start_dist - end_dist) < 1e-6:
+            log.debug(f"_extract_line_segment: Zero or negative length requested ({start_dist:.2f} -> {end_dist:.2f}).")
+            return None
+
+        try:
+            points_xy = []
+            # Add start point
+            start_geom_interpolated = line_geom.interpolate(start_dist)
+            if not start_geom_interpolated or start_geom_interpolated.isEmpty():
+                log.warning(f"_extract_line_segment: Failed to interpolate start point at {start_dist:.2f}")
+                return None
+            points_xy.append(QgsPointXY(start_geom_interpolated.asPoint()))
+
+            # Add intermediate vertices
+            vertices_iter = line_geom.vertices()
+            current_dist = 0.0
+            # Get the first vertex as QgsPoint for distance calculation start
+            first_vertex = line_geom.vertexAt(0)
+            if first_vertex is None:
+                 log.error("_extract_line_segment: Cannot get first vertex.")
+                 return None
+            last_point = first_vertex # QgsPoint
+
+            vertex_index = 0
+            while vertices_iter.hasNext():
+                 current_point = vertices_iter.next() # QgsPoint
+                 # --- FIX: Use distance() method which exists for QgsPoint ---
+                 segment_len = last_point.distance(current_point)
+                 # --- END FIX ---
+
+                 segment_start_dist = current_dist
+                 segment_end_dist = current_dist + segment_len
+
+                 # Check if this vertex falls strictly between start and end distances
+                 if segment_end_dist > start_dist + 1e-6 and segment_end_dist < end_dist - 1e-6:
+                      points_xy.append(QgsPointXY(current_point)) # Add as QgsPointXY
+
+                 current_dist = segment_end_dist
+                 last_point = current_point # Update last_point for next iteration
+                 vertex_index += 1
+
+                 if current_dist > end_dist + 1e-6: break
+
+            # Add end point
+            end_geom_interpolated = line_geom.interpolate(end_dist)
+            if not end_geom_interpolated or end_geom_interpolated.isEmpty():
+                log.warning(f"_extract_line_segment: Failed to interpolate end point at {end_dist:.2f}")
+                last_v = line_geom.vertexAt(-1)
+                if last_v: points_xy.append(QgsPointXY(last_v)); log.debug("_extract_line_segment: Used last vertex as fallback.")
+                else: return None
+            else:
+                 points_xy.append(QgsPointXY(end_geom_interpolated.asPoint()))
+
+            # Remove duplicates
+            final_points = []
+            if points_xy:
+                final_points.append(points_xy[0])
+                for i in range(1, len(points_xy)):
+                    if points_xy[i].compare(final_points[-1], 0.001) != 0: final_points.append(points_xy[i])
+
+            if len(final_points) >= 2:
+                return QgsGeometry.fromPolylineXY(final_points)
+            else:
+                log.warning(f"_extract_line_segment: Failed, only {len(final_points)} unique points found.")
+                return None
+        except Exception as e:
+             log.exception(f"Error in _extract_line_segment: {e}")
+             return None
+    # <<< Helper Function End: _extract_line_segment >>>
+
+    # <<< Helper Function Start: _calculate_segment_heading (FIXED _is_line_type call) >>>
+    def _calculate_segment_heading(self, segment_geom, start=True):
+        """Calculate heading (0-360 CW from N) for a line segment. (Fixed _is_line_type call)"""
+        # --- FIX: Call global function ---
+        if not segment_geom or segment_geom.isEmpty() or not is_line_type(segment_geom.wkbType()):
+            log.warning("_calculate_segment_heading: Invalid geometry")
+            return None
+        # --- END FIX ---
+        try:
+            points = segment_geom.asPolyline()
+            if len(points) < 2: log.warning("_calculate_segment_heading: Not enough points"); return None
+            if start: p1 = points[0]; p2 = points[1]
+            else: p1 = points[-2]; p2 = points[-1]
+            dx = p2.x() - p1.x(); dy = p2.y() - p1.y()
+            if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+                 log.warning("_calculate_segment_heading: Start/End points coincident.")
+                 if start and len(points) > 2: p2 = points[2]; dx = p2.x() - p1.x(); dy = p2.y() - p1.y()
+                 elif not start and len(points) > 2: p1 = points[-3]; dx = p2.x() - p1.x(); dy = p2.y() - p1.y()
+                 else: return None
+            if abs(dx) < 1e-9 and abs(dy) < 1e-9: return None
+            angle_rad = math.atan2(dx, dy); heading_deg = math.degrees(angle_rad)
+            qgis_heading = (90.0 - heading_deg + 360.0) % 360.0
+            return qgis_heading
+        except Exception as e: log.exception(f"Error in _calculate_segment_heading: {e}"); return None
+    # <<< Helper Function End: _calculate_segment_heading >>>
+
+    # <<< Function Start: _process_conflicted_lines (FINAL FIXES for AttributeError and KeyError) >>>
     def _process_conflicted_lines(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
         """
-        Process conflicted lines: find true split points, calculate path options,
-        create 'Outside' segments with attributes (COORDS FIXED), determine deletions.
-        (Refined V5 + PHASE 1 Connector Debug Logging)
+        Process conflicted lines: Correctly identify split points, calculate peaks relative
+        to the gap, create TRUNCATED 'Outside' segments, store data for Dubins turn.
+        (Refined V5 + FINAL FIXES v2)
         """
-        log.info("Starting direct processing of conflicted lines (Refined V5 + P1 Connector Logging)...")
+        log.info("Starting direct processing of conflicted lines (Refined V5 + Final Fixes v2)...")
 
-        # <<< Setup: Initialize result structures (Unchanged) >>>
-        path_options = {}
-        chosen_paths = {}
-        segments_to_add_outside = []
-        segments_to_delete = []
-        process_stats = {
-            'lines_processed': 0, 'obstacles_processed': 0, 'paths_recorded': 0,
-            'segments_created': 0, 'lines_with_options': set(), 'errors': []
-        }
-        # <<< End Setup >>>
-
-        # <<< Setup: Identify conflicted lines (Unchanged) >>>
-        conflicted_lines = []
-        fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
+        # Setup (Unchanged)
+        path_options = {}; chosen_paths = {}; segments_to_add_outside = []; segments_to_delete = []
+        process_stats = {'lines_processed': 0, 'obstacles_processed': 0, 'paths_recorded': 0, 'segments_created': 0, 'lines_with_options': set(), 'errors': []}
+        conflicted_lines = []; fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
         log.info(f"[DIRECT-DEBUG] Querying with filter: \"is_conflicted\" = 'true'")
         if fld_conflicted_idx >= 0:
             conflicted_request = QgsFeatureRequest().setFilterExpression("\"is_conflicted\" = 'true'")
             conflicted_request.setFlags(QgsFeatureRequest.NoFlags)
-            features_found_count = 0
             for feature in lines_layer.getFeatures(conflicted_request):
-                features_found_count += 1
-                fid = feature.id()
-                line_geom = feature.geometry()
-                line_num_attr = feature.attribute("LineNum")
+                fid = feature.id(); line_geom = feature.geometry(); line_num_attr = feature.attribute("LineNum")
                 line_num = int(line_num_attr) if line_num_attr is not None and line_num_attr != NULL else fid
-                if line_geom.isEmpty() or not line_geom.isGeosValid():
-                    log.warning(f"L{line_num}(FID={fid}) invalid geom"); process_stats['errors'].append(f"L{line_num}: Invalid geom"); continue
+                if line_geom.isEmpty() or not line_geom.isGeosValid(): log.warning(f"L{line_num}(FID={fid}) invalid geom"); continue
                 conflicted_lines.append((fid, line_num, line_geom, feature))
-            log.info(f"[DIRECT-DEBUG-COUNT] Query yielded {features_found_count} features.")
             log.info(f"[DIRECT-DEBUG] Found {len(conflicted_lines)} conflicted lines.")
-            if conflicted_lines: log.info(f"[DIRECT-DEBUG] Line numbers: {[ln for _, ln, _, _ in conflicted_lines]}")
-        else:
-            log.error("Required field 'is_conflicted' not found."); process_stats['errors'].append("Missing field: is_conflicted")
-            return {'path_options': {}, 'chosen_paths': {}, 'segments_to_add': [], 'segments_to_delete': [], 'process_stats': process_stats}
-        # <<< End Setup >>>
+        else: log.error("Required field 'is_conflicted' not found."); return {'path_options': {}, 'chosen_paths': {}, 'segments_to_add': [], 'segments_to_delete': [], 'process_stats': process_stats}
 
-        processed_line_fids = set()
-        final_outside_features_map = {}
-        total_lines_processed = 0
+        processed_line_fids = set(); total_lines_processed = 0
 
-        # <<< Get Field Indices for Coordinate Update (Once) >>>
+        # Get Field Indices (Unchanged)
         if conflicted_lines:
-             target_fields = conflicted_lines[0][3].fields()
-             fld_lsx = target_fields.lookupField("LowestSP_x")
-             fld_lsy = target_fields.lookupField("LowestSP_y")
-             fld_hsx = target_fields.lookupField("HighestSP_x")
-             fld_hsy = target_fields.lookupField("HighestSP_y")
+             target_fields = conflicted_lines[0][3].fields(); fld_lsx = target_fields.lookupField("LowestSP_x"); fld_lsy = target_fields.lookupField("LowestSP_y")
+             fld_hsx = target_fields.lookupField("HighestSP_x"); fld_hsy = target_fields.lookupField("HighestSP_y")
              coord_indices_valid = all(idx != -1 for idx in [fld_lsx, fld_lsy, fld_hsx, fld_hsy])
-             if not coord_indices_valid:
-                 log.error("One or more SP coordinate fields are missing. Cannot update coordinates.")
-        else:
-             coord_indices_valid = False
+             if not coord_indices_valid: log.error("SP coordinate fields missing. Cannot update coords.")
+        else: coord_indices_valid = False
 
-        # <<< Main Loop: Process each conflicted line >>>
+        # <<< Main Loop >>>
         for fid, line_num, line_geom, feature in conflicted_lines:
             if fid in processed_line_fids: continue
-
-            total_lines_processed += 1
-            log.info(f"Processing line {line_num} (FID={fid})")
+            total_lines_processed += 1; log.info(f"Processing line {line_num} (FID={fid})")
             process_stats['lines_processed'] += 1
-            original_line_processed_for_obstacle = False
 
-            # --- Line Setup (Unchanged) ---
-            line_pts_xy = [QgsPointXY(pt) for pt in line_geom.asPolyline()]
-            if len(line_pts_xy) < 2: log.warning(f"L{line_num}: Insufficient points."); process_stats['errors'].append(f"L{line_num}: Insufficient points"); continue
-            line_start = line_pts_xy[0]; line_end = line_pts_xy[-1]
-            dx = line_end.x() - line_start.x(); dy = line_end.y() - line_start.y()
-            heading = (math.degrees(math.atan2(dy, dx)) + 360) % 360
-            qgis_heading = (90.0 - heading + 360.0) % 360.0
+            # Line Setup (Unchanged)
+            line_pts_xy = [QgsPointXY(pt) for pt in line_geom.asPolyline()];
+            if len(line_pts_xy) < 2: log.warning(f"L{line_num}: Insufficient points."); continue
+            line_start = line_pts_xy[0]; line_end = line_pts_xy[-1]; dx_orig = line_end.x() - line_start.x(); dy_orig = line_end.y() - line_start.y()
+            heading_orig = (math.degrees(math.atan2(dy_orig, dx_orig)) + 360) % 360; qgis_heading_orig = (90.0 - heading_orig + 360.0) % 360.0
 
-            current_outside_segments = [QgsGeometry(line_geom)]
-            line_was_split = False
+            current_outside_segments = [QgsGeometry(line_geom)]; line_was_split = False
 
             # <<< Obstacle Loop >>>
             obstacle_interacted_with_line = False
             for obs_idx, obstacle_geom in enumerate(obstacle_geometries):
                 obstacle_buffer = obstacle_geom.buffer(clearance_m, 5)
-                if not obstacle_buffer or obstacle_buffer.isEmpty() or not obstacle_buffer.isGeosValid():
-                    log.warning(f"Invalid obstacle buffer for Obs {obs_idx}. Skipping this obstacle for L{line_num}.")
-                    process_stats['errors'].append(f"L{line_num}: Invalid buffer Obs{obs_idx}")
-                    continue
+                if not obstacle_buffer or obstacle_buffer.isEmpty() or not obstacle_buffer.isGeosValid(): log.warning(f"Invalid buffer Obs{obs_idx}"); continue
 
-                next_iteration_segments = []
-                processed_segment_in_obstacle = False
-
-                segments_intersecting_this_obstacle = []
-                segments_not_intersecting = []
+                next_iteration_segments = []; processed_segment_in_obstacle = False
+                segments_intersecting_this_obstacle = []; segments_not_intersecting = []
                 for segment in current_outside_segments:
-                     if segment and not segment.isEmpty() and segment.intersects(obstacle_buffer):
-                          segments_intersecting_this_obstacle.append(segment)
-                     elif segment and not segment.isEmpty():
-                          segments_not_intersecting.append(segment)
+                     if segment and not segment.isEmpty() and segment.intersects(obstacle_buffer): segments_intersecting_this_obstacle.append(segment)
+                     elif segment and not segment.isEmpty(): segments_not_intersecting.append(segment)
 
-                if not segments_intersecting_this_obstacle:
-                     next_iteration_segments.extend(segments_not_intersecting)
-                     continue
+                if not segments_intersecting_this_obstacle: next_iteration_segments.extend(segments_not_intersecting); continue
 
-                log.info(f"  Processing Line {line_num}, Interacting Segment(s) vs Obstacle {obs_idx}")
-                obstacle_interacted_with_line = True
-                process_stats['obstacles_processed'] += 1
-
+                log.info(f"  Processing Line {line_num}, Interacting Segment(s) vs Obstacle {obs_idx}"); obstacle_interacted_with_line = True; process_stats['obstacles_processed'] += 1
                 new_outside_parts_for_this_obstacle = []
 
                 for segment_geom in segments_intersecting_this_obstacle:
-                    actual_entry_point = None
-                    actual_exit_point = None
+                    actual_entry_point = None; actual_exit_point = None
                     segment_was_split_this_time = False
+                    geom_part1_original = None; geom_part2_original = None # Store original split parts
 
                     try:
-                        # --- Calculate Helper points, Peaks, Deviation Polygon ---
-                        # NOTE: This peak calculation is potentially flawed relative to the gap
-                        # but we log its inputs/outputs for analysis in Phase 1
-                        obstacle_center_geom = obstacle_geom.centroid(); obstacle_center_xy = QgsPointXY(obstacle_center_geom.asPoint())
-                        entry_exit_distance = max(1000.0, turn_radius_m * 1.1); qgis_angle_rad = math.radians(qgis_heading)
-                        helper_entry = QgsPointXY(obstacle_center_xy.x()-entry_exit_distance*1.2*math.sin(qgis_angle_rad), obstacle_center_xy.y()-entry_exit_distance*1.2*math.cos(qgis_angle_rad))
-                        helper_exit = QgsPointXY(obstacle_center_xy.x()+entry_exit_distance*1.2*math.sin(qgis_angle_rad), obstacle_center_xy.y()+entry_exit_distance*1.2*math.cos(qgis_angle_rad))
-                        mid_x_helper = (helper_entry.x() + helper_exit.x()) / 2; mid_y_helper = (helper_entry.y() + helper_exit.y()) / 2
-                        dx_math_helper = helper_exit.x() - helper_entry.x(); dy_math_helper = helper_exit.y() - helper_entry.y()
-                        length_helper = math.sqrt(dx_math_helper**2 + dy_math_helper**2)
-                        if length_helper > 1e-8: dx_norm_h, dy_norm_h = dx_math_helper/length_helper, dy_math_helper/length_helper
-                        else: heading_rad_math = math.radians(heading); dx_norm_h, dy_norm_h = math.cos(heading_rad_math), math.sin(heading_rad_math)
-                        perp_dx1, perp_dy1 = -dy_norm_h, dx_norm_h; perp_dx2, perp_dy2 = dy_norm_h, -dx_norm_h
-                        initial_peak_dist = (clearance_m + turn_radius_m) * 1.0# Store initial distance
-                        # initial_peak_dist = (clearance_m ) * 1.0# Store initial distance
-                        peak_dist = initial_peak_dist
+                        # --- STEP 7 (Splitting) ---
+                        temp_deviation_poly = self._create_temp_deviation_polygon(segment_geom, obstacle_buffer, clearance_m, turn_radius_m, qgis_heading_orig)
+                        if not temp_deviation_poly: log.warning(f"Temp dev poly failed L{line_num}, Obs{obs_idx}."); new_outside_parts_for_this_obstacle.append(segment_geom); continue
+                        outside_geom = segment_geom.difference(temp_deviation_poly)
 
-                        # <<< ADDED PHASE 1 LOGGING (Peak Calculation) >>>
-                        log.debug(f"  [P1-Peak] L{line_num} Obstacle {obs_idx}: Peak calc: HelperMid({mid_x_helper:.1f},{mid_y_helper:.1f}), InitialPeakDist={initial_peak_dist:.1f}")
-                        # <<< END PHASE 1 LOGGING >>>
-
-                        peak_a_point = QgsPointXY(mid_x_helper + perp_dx1 * peak_dist, mid_y_helper + perp_dy1 * peak_dist)
-                        peak_b_point = QgsPointXY(mid_x_helper + perp_dx2 * peak_dist, mid_y_helper + perp_dy2 * peak_dist)
-                        peak_a_geom = QgsGeometry.fromPointXY(peak_a_point); peak_b_geom = QgsGeometry.fromPointXY(peak_b_point)
-                        safety_factor = 0.5; max_safety_factor = 1.2
-                        while (obstacle_buffer.contains(peak_a_geom) or obstacle_buffer.contains(peak_b_geom)) and safety_factor <= max_safety_factor:
-                             safety_factor += 0.25; peak_dist = (clearance_m + turn_radius_m) * safety_factor
-                             peak_a_point = QgsPointXY(mid_x_helper + perp_dx1 * peak_dist, mid_y_helper + perp_dy1 * peak_dist)
-                             peak_b_point = QgsPointXY(mid_x_helper + perp_dx2 * peak_dist, mid_y_helper + perp_dy2 * peak_dist)
-                             peak_a_geom = QgsGeometry.fromPointXY(peak_a_point); peak_b_geom = QgsGeometry.fromPointXY(peak_b_point)
-                        if safety_factor > max_safety_factor: log.warning(f"Could not push peaks outside buffer {obs_idx}.")
-
-                        # <<< ADDED PHASE 1 LOGGING (Peak Calculation Final) >>>
-                        log.debug(f"  [P1-Peak] L{line_num} Obstacle {obs_idx}: Peak calc final: SafetyFactor={safety_factor:.1f}, PeakDist={peak_dist:.1f}, PeakA({peak_a_point.x():.1f},{peak_a_point.y():.1f}), PeakB({peak_b_point.x():.1f},{peak_b_point.y():.1f})")
-                        # <<< END PHASE 1 LOGGING >>>
-
-                        log.debug(f"  Using safety factor {safety_factor} for peak points")
-                        deviation_poly_points = [helper_entry, peak_a_point, helper_exit, peak_b_point, helper_entry]
-                        deviation_poly = QgsGeometry.fromPolygonXY([deviation_poly_points])
-                        if not deviation_poly.isGeosValid(): deviation_poly = deviation_poly.makeValid()
-                        if not deviation_poly.isGeosValid(): log.error(f"Repair failed dev poly Obs {obs_idx}."); new_outside_parts_for_this_obstacle.append(segment_geom); continue
-
-                        # --- STEP 7 (Splitting THIS segment using difference) ---
-                        # ... (splitting logic - now includes actual_entry/exit point fix) ...
-                        log.debug(f"  Splitting segment of L{line_num} using difference with deviation poly Obs {obs_idx}")
-                        outside_geom = segment_geom.difference(deviation_poly)
-
-                        if outside_geom.isEmpty(): log.warning(f"  Segment L{line_num} is entirely inside deviation polygon {obs_idx}. Discarding.")
-                        elif outside_geom.wkbType() == QgsWkbTypes.LineString: log.warning(f"  Segment difference resulted in single line for L{line_num}, Obs{obs_idx}. Keeping."); new_outside_parts_for_this_obstacle.append(outside_geom)
+                        # Process split results (Includes fix for identifying entry/exit)
+                        if outside_geom.isEmpty(): log.warning(f"Segment L{line_num} inside temp dev poly {obs_idx}.")
+                        elif outside_geom.wkbType() == QgsWkbTypes.LineString: log.warning(f"Segment diff single line L{line_num}, Obs{obs_idx}."); new_outside_parts_for_this_obstacle.append(outside_geom)
                         elif outside_geom.wkbType() == QgsWkbTypes.MultiLineString:
-                            parts = outside_geom.asMultiPolyline()
-                            log.debug(f"  Split into {len(parts)} outside parts.")
+                            parts = outside_geom.asMultiPolyline(); log.debug(f"  Split into {len(parts)} parts.")
                             valid_parts_geoms = [QgsGeometry.fromPolylineXY(p) for p in parts if len(p) >= 2]
                             if len(valid_parts_geoms) >= 2:
                                 segment_was_split_this_time = True
                                 segment_start_pt = QgsPointXY(segment_geom.vertexAt(0))
                                 valid_parts_geoms.sort(key=lambda g: g.distance(QgsGeometry.fromPointXY(segment_start_pt)))
-                                geom_part1 = valid_parts_geoms[0]
-                                geom_part2 = valid_parts_geoms[-1]
-                                new_outside_parts_for_this_obstacle.append(geom_part1)
-                                new_outside_parts_for_this_obstacle.append(geom_part2)
-                                log.debug(f"    Added Outside segment 1 (Length: {geom_part1.length():.1f})")
-                                log.debug(f"    Added Outside segment 2 (Length: {geom_part2.length():.1f})")
+                                geom_part1_original = valid_parts_geoms[0]; geom_part2_original = valid_parts_geoms[-1]
+                                points1 = geom_part1_original.asPolyline(); points2 = geom_part2_original.asPolyline()
+                                actual_entry_point = QgsPointXY(points1[-1]); actual_exit_point = QgsPointXY(points2[0])
+                                log.debug(f"  [P1-Split] L{line_num} Obs{obs_idx}: Split points: Entry({actual_entry_point.x():.1f},{actual_entry_point.y():.1f}), Exit({actual_exit_point.x():.1f},{actual_exit_point.y():.1f})")
+                                # Add original parts here, might be replaced by truncated later
+                                new_outside_parts_for_this_obstacle.append(geom_part1_original)
+                                new_outside_parts_for_this_obstacle.append(geom_part2_original)
+                            else: log.warning(f" Split resulted < 2 valid parts L{line_num}, Obs{obs_idx}."); new_outside_parts_for_this_obstacle.extend(valid_parts_geoms)
+                        else: log.warning(f" Unexpected geom type after difference L{line_num}, Obs{obs_idx}."); new_outside_parts_for_this_obstacle.append(segment_geom)
+                        # --- STEP 7 END ---
 
-                                points1 = geom_part1.asPolyline()
-                                points2 = geom_part2.asPolyline()
-                                actual_entry_point = QgsPointXY(points1[-1])
-                                actual_exit_point = QgsPointXY(points2[0])
-                                # <<< ADDED PHASE 1 LOGGING (Split Points) >>>
-                                log.debug(f"  [P1-Split] L{line_num} Obstacle {obs_idx}: Split points identified: Entry({actual_entry_point.x():.1f},{actual_entry_point.y():.1f}), Exit({actual_exit_point.x():.1f},{actual_exit_point.y():.1f})")
-                                # <<< END PHASE 1 LOGGING >>>
-
-                            else:
-                                 log.warning(f" Split resulted in < 2 valid parts L{line_num}, Obs{obs_idx}. Adding valid parts.")
-                                 new_outside_parts_for_this_obstacle.extend(valid_parts_geoms)
-                        else:
-                            log.warning(f" Unexpected geom type after difference L{line_num}, Obs{obs_idx}: {outside_geom.wkbType()}. Keeping.")
-                            new_outside_parts_for_this_obstacle.append(segment_geom)
-
-                        # --- Calculate Paths & Choose ONLY if split occurred (Unchanged) ---
-                        if actual_entry_point and actual_exit_point:
+                        if segment_was_split_this_time:
                             line_was_split = True
-                            path_a_length = self._calculate_path_length(actual_entry_point, peak_a_point, actual_exit_point)
-                            path_b_length = self._calculate_path_length(actual_entry_point, peak_b_point, actual_exit_point)
-                            log.debug(f"  Actual Path Lengths (Original Peaks): A={path_a_length:.1f}, B={path_b_length:.1f}") # Note: using original peaks here
+                            # --- REVISED PEAK CALCULATION (Unchanged) ---
+                            gap_mid_x = (actual_entry_point.x() + actual_exit_point.x()) / 2; gap_mid_y = (actual_entry_point.y() + actual_exit_point.y()) / 2; gap_mid_point_xy = QgsPointXY(gap_mid_x, gap_mid_y)
+                            dx_gap = actual_exit_point.x() - actual_entry_point.x(); dy_gap = actual_exit_point.y() - actual_entry_point.y(); gap_len_sq = dx_gap**2 + dy_gap**2
+                            if gap_len_sq > 1e-8: gap_len = math.sqrt(gap_len_sq); dx_norm_gap = dx_gap / gap_len; dy_norm_gap = dy_gap / gap_len
+                            else: log.warning(f"[P2-Peak] Gap zero L{line_num}, Obs{obs_idx}. Using original heading."); heading_rad_math = math.radians(heading_orig); dx_norm_gap = math.cos(heading_rad_math); dy_norm_gap = math.sin(heading_rad_math)
+                            perp_dx1, perp_dy1 = -dy_norm_gap, dx_norm_gap; perp_dx2, perp_dy2 = dy_norm_gap, -dx_norm_gap
+                            initial_peak_dist = clearance_m * 1.5; peak_dist = initial_peak_dist; log.debug(f"  [P2-Peak] Gap Mid: ({gap_mid_x:.1f},{gap_mid_y:.1f}), Init Peak Dist: {peak_dist:.1f}m")
+                            peak_a_point = QgsPointXY(gap_mid_x + perp_dx1 * peak_dist, gap_mid_y + perp_dy1 * peak_dist); peak_b_point = QgsPointXY(gap_mid_x + perp_dx2 * peak_dist, gap_mid_y + perp_dy2 * peak_dist)
+                            safety_factor = 1.0; max_safety_factor = 5.0; safety_increment = clearance_m * 0.5
+                            while safety_factor <= max_safety_factor:
+                                peak_a_geom = QgsGeometry.fromPointXY(peak_a_point); peak_b_geom = QgsGeometry.fromPointXY(peak_b_point)
+                                peak_a_inside = obstacle_buffer.contains(peak_a_geom); peak_b_inside = obstacle_buffer.contains(peak_b_geom)
+                                if not peak_a_inside and not peak_b_inside: break
+                                if peak_a_inside: peak_dist_a = gap_mid_point_xy.distance(peak_a_point) + safety_increment; peak_a_point = QgsPointXY(gap_mid_x + perp_dx1 * peak_dist_a, gap_mid_y + perp_dy1 * peak_dist_a)
+                                if peak_b_inside: peak_dist_b = gap_mid_point_xy.distance(peak_b_point) + safety_increment; peak_b_point = QgsPointXY(gap_mid_x + perp_dx2 * peak_dist_b, gap_mid_y + perp_dy2 * peak_dist_b)
+                                safety_factor += 0.5
+                            if safety_factor > max_safety_factor: log.warning(f"[P2-Peak] Could not push peaks outside buffer {obs_idx} factor {max_safety_factor:.1f}.")
+                            log.debug(f"  [P2-Peak] Final Peaks: PeakA({peak_a_point.x():.1f},{peak_a_point.y():.1f}), PeakB({peak_b_point.x():.1f},{peak_b_point.y():.1f})")
 
+                            # --- Path evaluation and choice ---
+                            path_a_length = self._calculate_path_length(actual_entry_point, peak_a_point, actual_exit_point); path_b_length = self._calculate_path_length(actual_entry_point, peak_b_point, actual_exit_point)
+                            log.debug(f"  Path Lengths (Revised Peaks): A={path_a_length:.1f}, B={path_b_length:.1f}")
                             if line_num not in path_options: path_options[line_num] = []
                             self._record_path_option(path_options, line_num, "A", path_a_length, actual_entry_point, peak_a_point, actual_exit_point, obs_idx)
                             self._record_path_option(path_options, line_num, "B", path_b_length, actual_entry_point, peak_b_point, actual_exit_point, obs_idx)
                             process_stats['paths_recorded'] += 2; process_stats['lines_with_options'].add(line_num)
+                            if path_a_length <= path_b_length: chosen_peak = peak_a_point; peak_label = "A"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak A chosen (Revised).")
+                            else: chosen_peak = peak_b_point; peak_label = "B"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak B chosen (Revised).")
 
-                            if path_a_length <= path_b_length: chosen_peak = peak_a_point; peak_label = "A"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak A chosen (Original).")
-                            else: chosen_peak = peak_b_point; peak_label = "B"; log.info(f"  L{line_num}, Obs{obs_idx}: Peak B chosen (Original).")
+                            # --- Calculate Far Points and Truncated Segments ---
+                            tangent_offset_dist = turn_radius_m * 0.5 ; log.debug(f"  [Dubins Prep] Tangent Offset Distance: {tangent_offset_dist:.1f}m")
+                            far_entry_point = None; far_exit_point = None; new_truncated_geom1 = None; new_truncated_geom2 = None
+                            truncation_failed = False
 
-                            if line_num not in chosen_paths: chosen_paths[line_num] = []
-                            if not any(c['obstacle_id'] == obs_idx for c in chosen_paths[line_num]):
-                                # Store the split points and the CHOSEN peak based on ORIGINAL calculation
-                                chosen_paths[line_num].append({'obstacle_id': obs_idx, 'peak': peak_label,
-                                                             'entry_point': actual_entry_point, # The actual split point
-                                                             'peak_point': chosen_peak,         # The chosen peak (original calc)
-                                                             'exit_point': actual_exit_point,  # The actual split point
-                                                             'original_fid': fid})
+                            if geom_part1_original:
+                                len1 = geom_part1_original.length(); target_dist1 = max(0.0, len1 - tangent_offset_dist)
+                                interp_geom1 = geom_part1_original.interpolate(target_dist1)
+                                if interp_geom1 and not interp_geom1.isEmpty():
+                                    far_entry_point = QgsPointXY(interp_geom1.asPoint())
+                                    new_truncated_geom1 = self._extract_line_segment(geom_part1_original, 0, target_dist1) # Use FIXED helper
+                                    if new_truncated_geom1: log.debug(f"  [Dubins Prep] Far Entry Point: ({far_entry_point.x():.1f},{far_entry_point.y():.1f}) on Seg1 (Len:{new_truncated_geom1.length():.1f})")
+                                    else: log.warning(f"  [Dubins Prep] Failed to truncate Seg1 L{line_num}."); truncation_failed = True
+                                else: log.warning(f"  [Dubins Prep] Failed interpolate Far Entry L{line_num}."); truncation_failed = True
+                            else: truncation_failed = True
+
+                            if geom_part2_original and not truncation_failed:
+                                len2 = geom_part2_original.length(); target_dist2 = min(len2, tangent_offset_dist)
+                                interp_geom2 = geom_part2_original.interpolate(target_dist2)
+                                if interp_geom2 and not interp_geom2.isEmpty():
+                                    far_exit_point = QgsPointXY(interp_geom2.asPoint())
+                                    new_truncated_geom2 = self._extract_line_segment(geom_part2_original, target_dist2, len2) # Use FIXED helper
+                                    if new_truncated_geom2: log.debug(f"  [Dubins Prep] Far Exit Point: ({far_exit_point.x():.1f},{far_exit_point.y():.1f}) on Seg2 (Len:{new_truncated_geom2.length():.1f})")
+                                    else: log.warning(f"  [Dubins Prep] Failed to truncate Seg2 L{line_num}."); truncation_failed = True
+                                else: log.warning(f"  [Dubins Prep] Failed interpolate Far Exit L{line_num}."); truncation_failed = True
+                            else: truncation_failed = True
+
+                            # --- Store Data for Connector ---
+                            if line_num not in chosen_paths: chosen_paths[line_num] = [] # Initialize if first interaction for this line
+                            # --- FIX: Key Error Fallback ---
+                            # Check if an entry for this specific obstacle interaction already exists
+                            # This prevents issues if truncation fails and we try to add the revert entry again
+                            choice_exists_for_obstacle = any(c.get('obstacle_id') == obs_idx for c in chosen_paths[line_num])
+
+                            if not choice_exists_for_obstacle:
+                                if not truncation_failed:
+                                    log.debug(f"  Storing choice with FAR points and TRUNCATED geoms L{line_num}, Obs{obs_idx}")
+                                    chosen_paths[line_num].append({'obstacle_id': obs_idx, 'peak': peak_label, 'entry_point': far_entry_point, 'peak_point': chosen_peak, 'exit_point': far_exit_point, 'original_fid': fid, 'geom_outside1': new_truncated_geom1, 'geom_outside2': new_truncated_geom2})
+                                    # Replace original split parts with truncated ones in the list for the NEXT obstacle
+                                    if geom_part1_original in new_outside_parts_for_this_obstacle: new_outside_parts_for_this_obstacle.remove(geom_part1_original)
+                                    if geom_part2_original in new_outside_parts_for_this_obstacle: new_outside_parts_for_this_obstacle.remove(geom_part2_original)
+                                    new_outside_parts_for_this_obstacle.append(new_truncated_geom1)
+                                    new_outside_parts_for_this_obstacle.append(new_truncated_geom2)
+                                else:
+                                    log.warning(f"  Truncation failed L{line_num}, Obs{obs_idx}. Storing choice with ORIGINAL split points/geoms.")
+                                    chosen_paths[line_num].append({'obstacle_id': obs_idx, 'peak': peak_label, 'entry_point': actual_entry_point, 'peak_point': chosen_peak, 'exit_point': actual_exit_point, 'original_fid': fid, 'geom_outside1': geom_part1_original, 'geom_outside2': geom_part2_original})
+                                    # Keep original split parts (already added earlier)
                             else:
-                                log.debug(f"  Choice for L{line_num}, Obs{obs_idx} already recorded, skipping duplicate storage.")
+                                log.debug(f"  Choice for L{line_num}, Obs{obs_idx} already exists, skipping storage.")
+                            # --- END FIX ---
 
                     except Exception as e:
-                        log.exception(f"Error processing segment for L{line_num}, Obs{obs_idx}: {e}")
+                        log.exception(f"Error processing segment L{line_num}, Obs{obs_idx}: {e}")
                         process_stats['errors'].append(f"L{line_num}, Obs{obs_idx}, Segment: {str(e)}")
-                        new_outside_parts_for_this_obstacle.append(segment_geom)
+                        new_outside_parts_for_this_obstacle.append(segment_geom) # Keep original on error
 
+                # Update current_outside_segments for the next obstacle check
                 current_outside_segments = segments_not_intersecting + new_outside_parts_for_this_obstacle
             # <<< End Obstacle Loop >>>
 
-            # --- Final Feature Creation & Deletion Marking (Coordinate Update Unchanged) ---
+            # --- Final Feature Creation & Deletion Marking ---
             if line_was_split:
                 processed_line_fids.add(fid)
-                if fid not in segments_to_delete:
-                    segments_to_delete.append(fid)
+                if fid not in segments_to_delete: segments_to_delete.append(fid)
                 log.info(f"Creating {len(current_outside_segments)} final outside features for line {line_num}")
-
                 for final_segment_geom in current_outside_segments:
                      if final_segment_geom and not final_segment_geom.isEmpty() and final_segment_geom.isGeosValid():
                           feat_final_outside = QgsFeature(target_fields)
                           feat_final_outside.setGeometry(final_segment_geom)
                           feat_final_outside.setAttributes(feature.attributes())
                           feat_final_outside["Length_m"] = final_segment_geom.length()
-                          feat_final_outside["is_line_merged"] = True
-                          feat_final_outside["is_deviation_created"] = True
-
+                          feat_final_outside["is_line_merged"] = True; feat_final_outside["is_deviation_created"] = True
                           if coord_indices_valid:
                               try:
                                   if final_segment_geom.wkbType() == QgsWkbTypes.LineString:
                                       points = final_segment_geom.asPolyline()
-                                      if len(points) >= 2:
-                                          start_v_xy = points[0]
-                                          end_v_xy = points[-1]
-                                          feat_final_outside.setAttribute(fld_lsx, start_v_xy.x())
-                                          feat_final_outside.setAttribute(fld_lsy, start_v_xy.y())
-                                          feat_final_outside.setAttribute(fld_hsx, end_v_xy.x())
-                                          feat_final_outside.setAttribute(fld_hsy, end_v_xy.y())
-                                      else: log.warning(f"  Cannot update coords for Outside L{line_num}: Geometry has < 2 points.")
-                                  else: log.warning(f"  Cannot update coords for Outside L{line_num}: Geometry is not a simple LineString.")
-                              except Exception as update_ex: log.warning(f"  Error updating coordinates for Outside L{line_num}: {update_ex}")
-
+                                      if len(points) >= 2: start_v_xy = points[0]; end_v_xy = points[-1]; feat_final_outside.setAttribute(fld_lsx, start_v_xy.x()); feat_final_outside.setAttribute(fld_lsy, start_v_xy.y()); feat_final_outside.setAttribute(fld_hsx, end_v_xy.x()); feat_final_outside.setAttribute(fld_hsy, end_v_xy.y())
+                                      else: log.warning(f"Cannot update coords L{line_num}: < 2 points.")
+                                  else: log.warning(f"Cannot update coords L{line_num}: Not LineString.")
+                              except Exception as update_ex: log.warning(f"Error updating coords L{line_num}: {update_ex}")
                           segments_to_add_outside.append(feat_final_outside)
                           process_stats['segments_created'] += 1
-                     else: log.warning(f"Skipping invalid final outside segment for L{line_num}")
+                     else: log.warning(f"Skipping invalid final outside segment L{line_num}")
             else:
-                 log.info(f"Line {line_num} (FID={fid}) conflicted but required no splitting.")
+                 log.info(f"Line {line_num} conflicted but no splitting required.")
                  if fid in segments_to_delete: segments_to_delete.remove(fid)
 
         # <<< End Main Loop >>>
 
-        # Final log summary - unchanged
-        log.info(f"Processed {process_stats['lines_processed']} conflicted lines against {process_stats['obstacles_processed']} relevant obstacles.")
-        log.info(f"Recorded path options for {len(process_stats['lines_with_options'])} lines.")
-        log.info(f"Created {len(segments_to_add_outside)} final 'Outside' line features.")
+        # Final log summary & Return
+        log.info(f"Processed {process_stats['lines_processed']} lines vs {process_stats['obstacles_processed']} obstacles.")
+        log.info(f"Recorded options for {len(process_stats['lines_with_options'])} lines.")
+        log.info(f"Created {len(segments_to_add_outside)} 'Outside' features.")
         log.info(f"Marked {len(segments_to_delete)} original lines for deletion.")
         if process_stats['errors']: log.warning(f"Encountered {len(process_stats['errors'])} errors.")
         log.info(f"[DIRECT-DEBUG] Processed {total_lines_processed} lines total.")
 
+        # --- FIX: Use correct variable name in return ---
         return_dict = {'path_options': path_options, 'chosen_paths': chosen_paths, 'segments_to_add': segments_to_add_outside, 'segments_to_delete': segments_to_delete, 'process_stats': process_stats}
+        # --- END FIX ---
         self.path_options = path_options
         log.info(f"[DIRECT-ASSIGN] Assigned self.path_options. Keys: {list(self.path_options.keys())}")
         log.info(f"[RETURN-CHECK] Returning dict. Path options keys: {list(return_dict.get('path_options', {}).keys())}")
@@ -4274,118 +4329,115 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     # <<< Function End: _process_conflicted_lines >>>
 
 
-    # <<< Function Start: _complete_deviation_calculation (ADDED PHASE 1 Connector Debug Logging) >>>
+    # <<< Function Start: _complete_deviation_calculation (Phase 1 Dubins Heading Calc Logging v2) >>>
     def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
         """
-        Completes deviation: creates connectors (COORDS FIXED, ATTRS FIXED), finalizes layer updates.
-        (Refined V4 + PHASE 1 Connector Debug Logging)
+        Completes deviation: Calculates headings, creates connectors, finalizes layer updates.
+        (Refined V4 + PHASE 1 Dubins Heading Calc Logging v2)
         """
-        log.info("Completing deviation calculation and finalizing paths (Refined V4 + P1 Connector Logging)...")
+        log.info("Completing deviation calculation and finalizing paths (Refined V4 + P1 Dubins Heading Log v2)...")
         project = QgsProject.instance()
 
-        # --- Layers Setup (Unchanged) ---
+        # Layers Setup (Unchanged)
+        # ... (deviation_connectors_layer setup) ...
         deviation_connectors_layer_name = "Deviation_Connectors_Final"
         self._remove_layer_by_name(deviation_connectors_layer_name)
-        deviation_connectors_layer = QgsVectorLayer(f"LineString?crs={lines_layer.crs().authid()}",
-                                                   deviation_connectors_layer_name, "memory")
+        deviation_connectors_layer = QgsVectorLayer(f"LineString?crs={lines_layer.crs().authid()}", deviation_connectors_layer_name, "memory")
         deviation_provider = deviation_connectors_layer.dataProvider()
-        provider_fields = [ QgsField("LineNum", QVariant.Int), QgsField("OriginalFID", QVariant.Int),
-                            QgsField("ObstacleID", QVariant.Int), QgsField("ChosenPeak", QVariant.String) ]
+        provider_fields = [ QgsField("LineNum", QVariant.Int), QgsField("OriginalFID", QVariant.Int), QgsField("ObstacleID", QVariant.Int), QgsField("ChosenPeak", QVariant.String) ]
         deviation_provider.addAttributes(provider_fields)
         deviation_connectors_layer.updateFields(); deviation_connectors_layer.startEditing()
-
         unified_split_layer = None
-        if debug_mode:
-             pass # Debug layer setup unchanged
+        if debug_mode: pass # Debug layer setup unchanged
 
         # --- Process Pre-calculated Results ---
         try:
             log.info("Processing pre-calculated conflicted lines and path options...")
-            results = self._process_conflicted_lines(lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode) # Calls the logging version
+            results = self._process_conflicted_lines(lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode) # Calls the corrected version
             log.info(f"[COMPLETE] Received results. Path options keys: {list(results.get('path_options', {}).keys())}")
-
             path_options = results['path_options']; chosen_paths = results['chosen_paths']
-            segments_to_add_outside = results['segments_to_add']; segments_to_delete_fids = results['segments_to_delete']
+            segments_to_add_outside = results['segments_to_add']
+            # --- FIX: Use correct key from return dict ---
+            segments_to_delete_fids = results['segments_to_delete']
+            # --- END FIX ---
             process_stats = results['process_stats']
-
             self.path_options = path_options; self.chosen_paths = chosen_paths
             log.info(f"[COMPLETE] Assigned self.path_options ({len(self.path_options)} lines), self.chosen_paths ({len(self.chosen_paths)} lines)")
 
-            # --- Cache original attributes BEFORE deleting (Unchanged) ---
+            # Cache original attributes (Unchanged)
             log.debug("Caching attributes of original lines before deletion...")
             original_feature_attributes = {}
             if segments_to_delete_fids:
-                request = QgsFeatureRequest().setFilterFids(segments_to_delete_fids)
-                request.setFlags(QgsFeatureRequest.NoFlags)
-                for feat in lines_layer.getFeatures(request):
-                    original_feature_attributes[feat.id()] = feat.attributes()
+                request = QgsFeatureRequest().setFilterFids(segments_to_delete_fids); request.setFlags(QgsFeatureRequest.NoFlags)
+                for feat in lines_layer.getFeatures(request): original_feature_attributes[feat.id()] = feat.attributes()
                 log.debug(f"Cached attributes for {len(original_feature_attributes)} original features.")
-            else:
-                 log.debug("No original lines marked for deletion.")
+            else: log.debug("No original lines marked for deletion.")
 
-            # --- Generate Connector Segments AND Prepare for Adding to MAIN Layer ---
+            # Generate Connector Segments
             log.info(f"Generating connector paths for {len(chosen_paths)} lines...")
             segments_to_add_connectors = []; connectors_added_debug = 0
             target_fields = lines_layer.fields(); lines_layer_provider = lines_layer.dataProvider()
-
-            # Get Field Indices for Coordinate Update (Once)
-            fld_lsx = target_fields.lookupField("LowestSP_x")
-            fld_lsy = target_fields.lookupField("LowestSP_y")
-            fld_hsx = target_fields.lookupField("HighestSP_x")
-            fld_hsy = target_fields.lookupField("HighestSP_y")
+            fld_lsx = target_fields.lookupField("LowestSP_x"); fld_lsy = target_fields.lookupField("LowestSP_y")
+            fld_hsx = target_fields.lookupField("HighestSP_x"); fld_hsy = target_fields.lookupField("HighestSP_y")
             coord_indices_valid = all(idx != -1 for idx in [fld_lsx, fld_lsy, fld_hsx, fld_hsy])
-            if not coord_indices_valid:
-                log.error("One or more SP coordinate fields missing. Cannot update connector coordinates.")
+            if not coord_indices_valid: log.error("SP coordinate fields missing. Cannot update connector coords.")
 
             for line_num, choices in chosen_paths.items():
                 for choice in choices:
                     original_fid = choice.get('original_fid')
                     original_attributes = original_feature_attributes.get(original_fid)
-                    if original_attributes is None:
-                        log.warning(f"No cached attributes found for original FID {original_fid} (L{line_num}). Connector attributes might be incomplete.")
-                        original_attributes = [NULL] * len(target_fields)
+                    if original_attributes is None: log.warning(f"No cached attributes for FID {original_fid} (L{line_num})."); original_attributes = [NULL] * len(target_fields)
 
                     try:
                         obs_idx = choice['obstacle_id']; peak_label = choice['peak']
                         entry_point = choice['entry_point']; peak_point = choice['peak_point']; exit_point = choice['exit_point']
-                        if not all(isinstance(p, QgsPointXY) for p in [entry_point, peak_point, exit_point]): log.warning(f"Skip connector (Invalid Points) L{line_num}, Obs{obs_idx}."); continue
+                        geom_outside1 = choice.get('geom_outside1'); geom_outside2 = choice.get('geom_outside2')
 
-                        # <<< ADDED PHASE 1 LOGGING (Connector Points) >>>
-                        log.debug(f"  [P1-ConnectorPreGeom] L{line_num} Obstacle {obs_idx}: Creating connector geom with Points: Entry({entry_point.x():.1f},{entry_point.y():.1f}), Peak({peak_point.x():.1f},{peak_point.y():.1f}), Exit({exit_point.x():.1f},{exit_point.y():.1f})")
-                        # <<< END PHASE 1 LOGGING >>>
+                        if not all([entry_point, peak_point, exit_point, geom_outside1, geom_outside2]):
+                            log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Missing point/geom data.")
+                            continue
+                        if not all(isinstance(p, QgsPointXY) for p in [entry_point, peak_point, exit_point]):
+                             log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Invalid point types."); continue
 
+                        # <<< PHASE 1: Calculate Headings >>>
+                        entry_heading_qgis = self._calculate_segment_heading(geom_outside1, start=False) # Heading at END of first outside segment
+                        exit_heading_qgis = self._calculate_segment_heading(geom_outside2, start=True)   # Heading at START of second outside segment
+
+                        log.debug(f"  [Dubins Prep] L{line_num} Obs{obs_idx}: Calculated Headings: Entry={entry_heading_qgis}, Exit={exit_heading_qgis}")
+
+                        if entry_heading_qgis is None or exit_heading_qgis is None:
+                             log.warning(f"  [Dubins Prep] Failed to calculate headings L{line_num}, Obs{obs_idx}. Skipping connector.")
+                             continue
+                        # <<< END PHASE 1 >>>
+
+                        log.debug(f"  [P1-ConnectorPreGeom] L{line_num} Obstacle {obs_idx}: Using points: Entry({entry_point.x():.1f},{entry_point.y():.1f}), Peak({peak_point.x():.1f},{peak_point.y():.1f}), Exit({exit_point.x():.1f},{exit_point.y():.1f})")
+
+                        # --- Create Connector Geometry (Still straight line for Phase 1) ---
                         connector_geom = QgsGeometry.fromPolylineXY([entry_point, peak_point, exit_point])
-                        if connector_geom.isEmpty() or not connector_geom.isGeosValid(): log.warning(f"Skip connector (Invalid Geom) L{line_num}, Obs{obs_idx}."); continue
+                        if connector_geom.isEmpty() or not connector_geom.isGeosValid(): log.warning(f"Skip connector (Invalid Straight Geom) L{line_num}, Obs{obs_idx}."); continue
 
                         # Feature for MAIN layer
                         connector_feat_main = QgsFeature(target_fields)
                         connector_feat_main.setGeometry(connector_geom)
                         connector_feat_main.setAttributes(original_attributes)
                         connector_feat_main["Length_m"] = connector_geom.length()
-                        connector_feat_main["is_line_merged"] = True
-                        connector_feat_main["is_deviation_created"] = True
-                        connector_feat_main["Heading"] = NULL
-                        fld_seg_type_idx = target_fields.lookupField("SegmentType")
+                        connector_feat_main["is_line_merged"] = True; connector_feat_main["is_deviation_created"] = True; connector_feat_main["Heading"] = NULL
+                        fld_seg_type_idx = target_fields.lookupField("SegmentType"); fld_linenum_idx = target_fields.lookupField("LineNum")
                         if fld_seg_type_idx != -1: connector_feat_main[fld_seg_type_idx] = "Connector"
-                        fld_linenum_idx = target_fields.lookupField("LineNum")
                         if fld_linenum_idx != -1: connector_feat_main[fld_linenum_idx] = line_num
 
-                        # COORDINATE UPDATE FIX for Connector Segments (Unchanged from previous fix)
+                        # Coordinate Update (Unchanged)
                         if coord_indices_valid:
                             try:
                                 if connector_geom.wkbType() == QgsWkbTypes.LineString:
                                     points = connector_geom.asPolyline()
                                     if len(points) >= 2:
-                                        start_v_xy = points[0]
-                                        end_v_xy = points[-1]
-                                        connector_feat_main.setAttribute(fld_lsx, start_v_xy.x())
-                                        connector_feat_main.setAttribute(fld_lsy, start_v_xy.y())
-                                        connector_feat_main.setAttribute(fld_hsx, end_v_xy.x())
-                                        connector_feat_main.setAttribute(fld_hsy, end_v_xy.y())
-                                        log.debug(f"  Updated Coords for Connector L{line_num}: Start({start_v_xy.x():.1f},{start_v_xy.y():.1f}), End({end_v_xy.x():.1f},{end_v_xy.y():.1f})")
-                                    else: log.warning(f"  Cannot update coords for Connector L{line_num}: Geometry has < 2 points.")
-                                else: log.warning(f"  Cannot update coords for Connector L{line_num}: Geometry is not a simple LineString.")
-                            except Exception as update_ex: log.warning(f"  Error updating coordinates for Connector L{line_num}: {update_ex}")
+                                        start_v_xy = points[0]; end_v_xy = points[-1]
+                                        connector_feat_main.setAttribute(fld_lsx, start_v_xy.x()); connector_feat_main.setAttribute(fld_lsy, start_v_xy.y())
+                                        connector_feat_main.setAttribute(fld_hsx, end_v_xy.x()); connector_feat_main.setAttribute(fld_hsy, end_v_xy.y())
+                                    else: log.warning(f"Cannot update coords Connector L{line_num}: < 2 points.")
+                                else: log.warning(f"Cannot update coords Connector L{line_num}: Not LineString.")
+                            except Exception as update_ex: log.warning(f"Error updating coords Connector L{line_num}: {update_ex}")
 
                         segments_to_add_connectors.append(connector_feat_main)
 
@@ -4401,35 +4453,34 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.info(f"Generated {connectors_added_debug} connector features for debug layer.")
 
             # --- Finalize Layer Updates (Unchanged) ---
+            # ... (Commit/Add logic unchanged) ...
             if not deviation_connectors_layer.commitChanges(): log.error(f"Failed commit debug connectors")
             if not lines_layer.isEditable():
                 if not lines_layer.startEditing(): raise RuntimeError("Editing failed.")
             if segments_to_delete_fids:
                 unique_fids_to_delete = list(set(segments_to_delete_fids))
                 log.info(f"Deleting {len(unique_fids_to_delete)} original lines from '{lines_layer.name()}'.")
-                if not lines_layer_provider.deleteFeatures(unique_fids_to_delete): log.error(f"Failed delete original features: {lines_layer_provider.lastError()}")
+                if not lines_layer_provider.deleteFeatures(unique_fids_to_delete): log.error(f"Failed delete original: {lines_layer_provider.lastError()}")
                 else: log.debug("Success delete original features.")
             if segments_to_add_outside:
                 log.info(f"Adding {len(segments_to_add_outside)} 'Outside' segments to '{lines_layer.name()}'.")
                 success, added_outside = lines_layer_provider.addFeatures(segments_to_add_outside, QgsFeatureSink.FastInsert)
-                if not success: log.error(f"Failed add 'Outside' segments: {lines_layer_provider.lastError()}")
+                if not success: log.error(f"Failed add 'Outside': {lines_layer_provider.lastError()}")
                 else: log.debug(f"Success add {len(added_outside)} 'Outside' segments.")
             if segments_to_add_connectors:
                 log.info(f"Adding {len(segments_to_add_connectors)} 'Connector' segments to '{lines_layer.name()}'.")
                 success, added_connectors = lines_layer_provider.addFeatures(segments_to_add_connectors, QgsFeatureSink.FastInsert)
-                if not success: log.error(f"Failed add 'Connector' segments: {lines_layer_provider.lastError()}")
+                if not success: log.error(f"Failed add 'Connector': {lines_layer_provider.lastError()}")
                 else: log.debug(f"Success add {len(added_connectors)} 'Connector' segments.")
             if lines_layer.isEditable():
                  if not lines_layer.commitChanges():
-                      log.error(f"CRITICAL: Failed commit lines layer: {lines_layer.commitErrors()}")
-                      QMessageBox.critical(self, "Commit Error", "Failed save changes to survey lines layer.")
-                 else:
-                      log.info("Successfully committed changes to lines layer.")
+                      log.error(f"CRITICAL: Failed commit lines layer: {lines_layer.commitErrors()}"); QMessageBox.critical(self, "Commit Error", "Failed save lines layer.")
+                 else: log.info("Successfully committed changes to lines layer.")
             project = QgsProject.instance()
             if deviation_connectors_layer.featureCount() > 0:
                  project.addMapLayer(deviation_connectors_layer)
                  try: self._apply_basic_style(deviation_connectors_layer, '#FFA500', width=0.8, line_style='dash')
-                 except NameError: log.warning("QgsSingleSymbolRenderer not defined, cannot style debug connector layer.")
+                 except NameError: log.warning("Cannot style debug connector layer.")
                  except Exception as style_ex: log.warning(f"Could not style debug connector layer: {style_ex}")
             else: log.warning("No deviation connector paths generated for debug layer.")
             if hasattr(self, 'path_options') and self.path_options:
@@ -4447,6 +4498,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
              if debug_mode and unified_split_layer and unified_split_layer.isEditable(): unified_split_layer.rollBack()
              return False
     # <<< Function End: _complete_deviation_calculation >>>
+
 
     # Add the helper function if it's not already present or reliable
     def _create_temp_deviation_polygon(self, segment_geom, obstacle_buffer, clearance, turn_radius, fallback_heading):
@@ -5034,69 +5086,69 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         elif log_level == "error":
             log.error(log_msg)
 
-    def _calculate_segment_heading(self, segment_geom, from_point=None, start=True):
-        """
-        Calculate heading (in degrees) for a line segment.
+    # def _calculate_segment_heading(self, segment_geom, from_point=None, start=True):
+    #     """
+    #     Calculate heading (in degrees) for a line segment.
 
-        Args:
-            segment_geom (QgsGeometry): Line segment geometry
-            from_point (QgsPointXY, optional): Specific point to calculate heading from
-            start (bool): Whether to calculate from start (True) or end (False) of segment
-                         Only used if from_point is None
+    #     Args:
+    #         segment_geom (QgsGeometry): Line segment geometry
+    #         from_point (QgsPointXY, optional): Specific point to calculate heading from
+    #         start (bool): Whether to calculate from start (True) or end (False) of segment
+    #                      Only used if from_point is None
 
-        Returns:
-            float: Heading in degrees (0-360)
-        """
-        if segment_geom.isEmpty() or segment_geom.type() != QgsWkbTypes.LineGeometry:
-            return 0
+    #     Returns:
+    #         float: Heading in degrees (0-360)
+    #     """
+    #     if segment_geom.isEmpty() or segment_geom.type() != QgsWkbTypes.LineGeometry:
+    #         return 0
 
-        segment_points = segment_geom.asPolyline()
-        if len(segment_points) < 2:
-            return 0
+    #     segment_points = segment_geom.asPolyline()
+    #     if len(segment_points) < 2:
+    #         return 0
 
-        # If from_point specified, find closest point and calculate heading from there
-        if from_point is not None:
-            # Convert to QgsPointXY if needed
-            if not isinstance(from_point, QgsPointXY):
-                from_point = QgsPointXY(from_point)
+    #     # If from_point specified, find closest point and calculate heading from there
+    #     if from_point is not None:
+    #         # Convert to QgsPointXY if needed
+    #         if not isinstance(from_point, QgsPointXY):
+    #             from_point = QgsPointXY(from_point)
 
-            # Find closest segment
-            closest_info = self._find_closest_point_on_line(segment_points, from_point)
-            if not closest_info:
-                return 0
+    #         # Find closest segment
+    #         closest_info = self._find_closest_point_on_line(segment_points, from_point)
+    #         if not closest_info:
+    #             return 0
 
-            segment_idx, _, _ = closest_info
+    #         segment_idx, _, _ = closest_info
 
-            # Use this segment for heading calculation
-            if segment_idx < len(segment_points) - 1:
-                p1 = segment_points[segment_idx]
-                p2 = segment_points[segment_idx + 1]
-            else:
-                # Use previous segment if at end
-                p1 = segment_points[segment_idx - 1]
-                p2 = segment_points[segment_idx]
-        else:
-            # Otherwise use start or end of segment
-            if start:
-                p1 = segment_points[0]
-                p2 = segment_points[1]
-            else:
-                p1 = segment_points[-2]
-                p2 = segment_points[-1]
+    #         # Use this segment for heading calculation
+    #         if segment_idx < len(segment_points) - 1:
+    #             p1 = segment_points[segment_idx]
+    #             p2 = segment_points[segment_idx + 1]
+    #         else:
+    #             # Use previous segment if at end
+    #             p1 = segment_points[segment_idx - 1]
+    #             p2 = segment_points[segment_idx]
+    #     else:
+    #         # Otherwise use start or end of segment
+    #         if start:
+    #             p1 = segment_points[0]
+    #             p2 = segment_points[1]
+    #         else:
+    #             p1 = segment_points[-2]
+    #             p2 = segment_points[-1]
 
-        # Calculate heading (in degrees, clockwise from North)
-        dx = p2.x() - p1.x()
-        dy = p2.y() - p1.y()
+    #     # Calculate heading (in degrees, clockwise from North)
+    #     dx = p2.x() - p1.x()
+    #     dy = p2.y() - p1.y()
 
-        # Use atan2 to avoid division by zero
-        angle_rad = math.atan2(dx, dy)  # Note: x,y order for consistent bearing
+    #     # Use atan2 to avoid division by zero
+    #     angle_rad = math.atan2(dx, dy)  # Note: x,y order for consistent bearing
 
-        # Convert to degrees and normalize to 0-360
-        angle_deg = math.degrees(angle_rad)
-        if angle_deg < 0:
-            angle_deg += 360
+    #     # Convert to degrees and normalize to 0-360
+    #     angle_deg = math.degrees(angle_rad)
+    #     if angle_deg < 0:
+    #         angle_deg += 360
 
-        return angle_deg
+    #     return angle_deg
 
     def _visualize_deviation_steps(self):
         """
