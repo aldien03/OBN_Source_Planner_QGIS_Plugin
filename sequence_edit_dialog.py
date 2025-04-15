@@ -89,6 +89,14 @@ class SequenceEditDialog(QDialog):
         # Store initial data, context, and callback
         self.original_sequence_info = custom_deepcopy(initial_sequence_info)
         self.current_sequence_info = custom_deepcopy(initial_sequence_info)
+
+        # --- ADD DEBUG LOG ---
+        log.debug(f"[SequenceEditDialog.__init__] Received initial sequence info:")
+        log.debug(f"  Sequence: {self.current_sequence_info.get('seq')}")
+        log.debug(f"  State: {self.current_sequence_info.get('state')}")
+        log.debug(f"  Directions from state: {self.current_sequence_info.get('state', {}).get('line_directions')}")
+        # --- END DEBUG LOG ---
+        
         self.recalculation_context = recalculation_context # Dict with params, data, layers, cache, methods
         self.recalculation_callback = recalculation_callback # Callback to update main widget's cost/state
 
@@ -342,11 +350,15 @@ class SequenceEditDialog(QDialog):
         """ Fills the table including Sequence numbers, SPs and formatted duration. """
         sequence = self.current_sequence_info.get('seq', [])
         directions = self.current_sequence_info.get('state', {}).get('line_directions', {})
+        log.debug(f"[populate_table] Using directions map: {directions}") # DEBUG
         line_data_map = self.recalculation_context.get("line_data", {}) # Get line_data from context
 
         self.tableWidget.blockSignals(True)
         self.tableWidget.setRowCount(len(sequence))
         dt_format = "%Y-%m-%d %H:%M:%S" # Datetime format
+
+        # --- Store combos and their desired indices ---
+        combos_to_set = [] # List to hold dictionaries {'combo': QComboBox, 'index': int, 'row': int, 'line': int}
 
         for i, line_num in enumerate(sequence):
             line_specific_data = line_data_map.get(line_num, {}) # Get data for this line
@@ -367,6 +379,7 @@ class SequenceEditDialog(QDialog):
 
             # --- Get SP based on Direction (Requirement 1 - Ensure consistency) ---
             direction_str = directions.get(line_num, 'low_to_high') # Get stored direction
+            log.debug(f"  Row {i}, Line {line_num}: Fetched direction = '{direction_str}'") # DEBUG
             is_reciprocal = (direction_str == 'high_to_low')
             # Fetch SPs based on the *stored* direction
             start_sp_val = line_specific_data.get('highest_sp') if is_reciprocal else line_specific_data.get('lowest_sp')
@@ -407,24 +420,38 @@ class SequenceEditDialog(QDialog):
             else:
                 log.warning(f"No timing info found for line {line_num} during table population.")
 
-
             start_item = QTableWidgetItem(start_time_str); start_item.setFlags(start_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_START_TIME, start_item)
             end_item = QTableWidgetItem(end_time_str); end_item.setFlags(end_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_END_TIME, end_item)
             duration_item = QTableWidgetItem(duration_str_hhmm); duration_item.setFlags(duration_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_DURATION, duration_item)
             duration_item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter) # Center align duration
 
-            # Direction ComboBox (Set based on stored direction)
+            # --- Direction ComboBox (Create and store for deferred index setting) ---
             combo = QComboBox()
             combo.addItems(["Low to High", "High to Low"])
-            combo.setCurrentText(direction_str.replace("_", " ").title()) # Use stored direction
             combo.setProperty("row", i)
             combo.currentIndexChanged.connect(self.direction_changed)
             self.tableWidget.setCellWidget(i, COL_DIRECTION, combo)
+
+            # Determine the correct index and store it
+            direction_index = 1 if is_reciprocal else 0
+            combos_to_set.append({'combo': combo, 'index': direction_index, 'row': i, 'line': line_num})
+            # --- End Direction ComboBox creation ---
 
             # Actions Item
             actions_item = QTableWidgetItem("") # Placeholder
             actions_item.setFlags(actions_item.flags() & ~Qt.ItemIsEditable)
             self.tableWidget.setItem(i, COL_ACTIONS, actions_item)
+
+        # --- Set ComboBox Indices AFTER the loop ---
+        log.debug(f"Setting ComboBox indices for {len(combos_to_set)} rows after loop...")
+        for item_info in combos_to_set:
+            combo_widget = item_info['combo']
+            target_index = item_info['index']
+            log.debug(f"  Row {item_info['row']}, Line {item_info['line']}: Setting index to {target_index}")
+            combo_widget.setCurrentIndex(target_index)
+            # Optional: Check if it worked immediately (less critical now)
+            # log.debug(f"  Row {item_info['row']}, Line {item_info['line']}: Actual index after set: {combo_widget.currentIndex()}, Text: '{combo_widget.currentText()}'")
+        # --- End deferred setting ---
 
         self.tableWidget.blockSignals(False)
         self.tableWidget.resizeRowsToContents()

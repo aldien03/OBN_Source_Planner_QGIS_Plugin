@@ -178,7 +178,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.debug("Populated Acquisition Mode ComboBox (Racetrack, Teardrop).")
         else:
             log.warning("UI Warning: acquisitionModeComboBox not found.")
-        # Connect signals to slots (Connections remain the same)
+
+        # --- Set Default Value for Start Sequence Number ---
+        if hasattr(self, 'firstSeqComboBox'):
+            self.firstSeqComboBox.setValue(1000) # Set default start sequence to 1
+            self.firstSeqComboBox.setMinimum(1000) # Ensure minimum is 1 (overrides UI if necessary)
+            self.firstSeqComboBox.setMaximum(9999) # Increase max if needed
+            log.debug("Set default value for firstSeqComboBox (Start Sequence #) to 1000.")
+        else:
+            log.error("UI Error: firstSeqComboBox not found during __init__ setup!")
         self.importSpsButton.clicked.connect(self.handle_sps_import_button)
         if hasattr(self, 'calculateHeadingsButton'): self.calculateHeadingsButton.clicked.connect(self.handle_calculate_headings)
         else: log.warning("UI Warning: calculateHeadingsButton not found.")
@@ -6262,6 +6270,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # --- Sequence Parameters ---
             params['first_line_num'] = self.firstLineSpinBox.value()
             params['first_heading_option'] = self.firstHeadingComboBox.currentText()
+            params['start_sequence_number'] = self.firstSeqComboBox.value()
 
             # --- Vessel Speed Parameters ---
             # Try different UI elements for acquisition speed
@@ -6816,6 +6825,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     if 'progress' in locals() and progress: progress.setValue(len(all_remaining_lines))
                 else:
                     log.info("Only one line to process for Teardrop.")
+                # --- ADD DEBUG LOG ---
+                log.debug(f"[handle_run_simulation - Teardrop] Final directions selected: {current_state['line_directions']}")
+                # --- END DEBUG LOG ---
                 best_final_sequence_info = {'seq': current_seq, 'cost': current_cost, 'state': current_state}
                 log.info(f"Teardrop Simulation complete ({time.time() - start_sim_time:.2f}s).")
 
@@ -6856,7 +6868,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     if normal_ok: log.info("Selecting Normal start (User Pref)."); final_cost_seconds = cost_normal; final_directions = directions_normal
                     elif recip_ok: log.warning("User pref Normal failed. Falling back to Reciprocal."); final_cost_seconds = cost_recip; final_directions = directions_recip
                     else: raise ValueError("Calculation failed for preferred and alternative.")
-
+                # --- ADD DEBUG LOG ---
+                log.debug(f"[handle_run_simulation - Racetrack] Final directions selected: {final_directions}")
+                # --- END DEBUG LOG ---
                 best_final_sequence_info = { 'seq': final_sequence, 'cost': final_cost_seconds, 'state': {'line_directions': final_directions} }
                 log.info(f"True Racetrack Algorithm complete ({time.time() - start_sim_time:.2f}s).")
 
@@ -7371,6 +7385,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 }
 
             log.info(f"Sequence time calculation complete. Total time: {total_cost_seconds:.1f} seconds")
+            # --- ADD DEBUG LOG ---
+            log.debug(f"[_calculate_sequence_time] Returning directions: {line_directions}")
+            # --- END DEBUG LOG ---
             return total_cost_seconds, line_directions
 
         except Exception as e:
@@ -7431,6 +7448,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # Support for RRT-based deviation features (placeholder for future integration)
         if hasattr(self, 'rrt_manager') and self.rrt_manager:
             context["rrt_manager"] = self.rrt_manager
+
+        # --- ADD DEBUG LOG ---
+        sim_result_to_pass = self.last_simulation_result
+        log.debug(f"[show_edit_sequence_dialog] Passing simulation result to dialog:")
+        log.debug(f"  Sequence: {sim_result_to_pass.get('seq')}")
+        log.debug(f"  Cost: {sim_result_to_pass.get('cost')}")
+        log.debug(f"  State (raw): {sim_result_to_pass.get('state')}")
+        log.debug(f"  Directions from state: {sim_result_to_pass.get('state', {}).get('line_directions')}")
+        # --- END DEBUG LOG ---
 
         # Create and show dialog
         try:
