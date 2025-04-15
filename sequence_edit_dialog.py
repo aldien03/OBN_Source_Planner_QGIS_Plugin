@@ -184,7 +184,7 @@ class SequenceEditDialog(QDialog):
     def _calculate_segment_times(self, sequence, directions):
         """
         Internal helper to calculate detailed start/end/duration for each line segment.
-        Uses context passed during dialog initialization.
+        Uses context passed during dialog initialization. DOUBLES run-in time.
         Returns a dictionary: {line_num: {'start': dt, 'end': dt, 'turn': s, 'runin': s, 'line': s, 'total_segment': s}}
         Returns None on failure.
         """
@@ -192,7 +192,7 @@ class SequenceEditDialog(QDialog):
         if not sequence:
             return timings
 
-        # Retrieve context safely
+        # ... (Retrieve context safely - code remains the same) ...
         sim_params = self.recalculation_context.get("sim_params")
         line_data = self.recalculation_context.get("line_data")
         required_layers = self.recalculation_context.get("required_layers")
@@ -203,45 +203,52 @@ class SequenceEditDialog(QDialog):
         _get_next_exit_state = self.recalculation_context.get("_get_next_exit_state")
         _get_entry_details = self.recalculation_context.get("_get_entry_details")
 
-        # Check if all required context elements are present
         if not all([sim_params, line_data, required_layers, turn_cache is not None,
                     _get_cached_turn, _find_runin_geom, _calculate_runin_time,
                     _get_next_exit_state, _get_entry_details]):
             QMessageBox.critical(self, "Context Error", "Missing required context for timing calculation. Cannot proceed.")
-            log.error("Error: Missing context for segment time calculation.") # Log for debugging
-            return None # Indicate failure
+            log.error("Error: Missing context for segment time calculation.")
+            return None
 
         current_time = sim_params.get('start_datetime', datetime.now())
         current_state = {}
         total_cost_seconds = 0.0
 
         try:
-            log.debug("--- Calculating Segment Times ---") # Start Logging Block
+            log.debug("--- Calculating Segment Times (with DOUBLED Run-In) ---")
             # --- Process First Line ---
             line_num = sequence[0]
             is_reciprocal = (directions.get(line_num) == 'high_to_low')
-            line_info = line_data.get(line_num) # Use .get for safety
+            line_info = line_data.get(line_num)
             if not line_info: raise ValueError(f"Line data not found for line {line_num}")
 
-            line_time_s = line_info.get('length', 0) / sim_params.get('avg_shooting_speed_mps', 1.0) # Added defaults
-            runin_time_s = 0.0
+            line_time_s = line_info.get('length', 0) / sim_params.get('avg_shooting_speed_mps', 1.0)
+            runin_time_s_original = 0.0 # Store original calculation
             runin_geom = _find_runin_geom(required_layers['runins'], line_num, "End" if is_reciprocal else "Start")
-            if runin_geom: runin_time_s = _calculate_runin_time(runin_geom, sim_params)
+            if runin_geom:
+                runin_time_s_original = _calculate_runin_time(runin_geom, sim_params)
 
-            segment_start_time = current_time # First line starts immediately (no preceding turn)
-            segment_duration_s = runin_time_s + line_time_s
+            # --- MODIFICATION: Double the run-in time ---
+            runin_time_s = runin_time_s_original * 2.0
+            log.debug(f"  Line {line_num} (First): Original RunIn={runin_time_s_original:.1f}s, Using Doubled RunIn={runin_time_s:.1f}s")
+            # --- END MODIFICATION ---
+
+            segment_start_time = current_time
+            segment_duration_s = runin_time_s + line_time_s # Use doubled runin_time_s
             segment_end_time = segment_start_time + timedelta(seconds=segment_duration_s)
-            total_segment_time = runin_time_s + line_time_s # Turn time is 0 for first segment
+            total_segment_time = runin_time_s + line_time_s # Turn time is 0
 
-            log.debug(f"  Line {line_num} (First): Start={segment_start_time.strftime('%H:%M:%S')}, RunIn={runin_time_s:.1f}s, Line={line_time_s:.1f}s, End={segment_end_time.strftime('%H:%M:%S')}")
+            log.debug(f"  Line {line_num} (First): Start={segment_start_time.strftime('%H:%M:%S')}, DoubledRunIn={runin_time_s:.1f}s, Line={line_time_s:.1f}s, End={segment_end_time.strftime('%H:%M:%S')}")
 
             timings[line_num] = {
                 'start': segment_start_time, 'end': segment_end_time,
-                'turn': 0.0, 'runin': runin_time_s, 'line': line_time_s,
-                'total_segment': total_segment_time # Corrected: Use total_segment_time
+                'turn': 0.0,
+                'runin': runin_time_s, # Store the doubled value
+                'line': line_time_s,
+                'total_segment': total_segment_time
             }
             current_time = segment_end_time
-            total_cost_seconds += total_segment_time # Corrected: Use total_segment_time
+            total_cost_seconds += total_segment_time
 
             current_exit_pt, current_exit_hdg = _get_next_exit_state(line_num, is_reciprocal, line_data)
             if current_exit_pt is None or current_exit_hdg is None:
@@ -251,7 +258,7 @@ class SequenceEditDialog(QDialog):
             # --- Iterate Through Remaining Lines ---
             for i in range(len(sequence) - 1):
                 from_line = sequence[i]
-                line_num = sequence[i+1] # Current line being processed
+                line_num = sequence[i+1]
                 is_reciprocal = (directions.get(line_num) == 'high_to_low')
 
                 line_info = line_data.get(line_num)
@@ -264,52 +271,53 @@ class SequenceEditDialog(QDialog):
                 if not p_entry or h_entry is None or not exit_pt or exit_hdg is None:
                     raise ValueError(f"Missing turn data for {from_line}->{line_num}")
 
-                # --- Calculate Turn ---
                 turn_geom, turn_length, turn_time_s = _get_cached_turn(from_line, line_num, is_reciprocal, exit_pt, exit_hdg, p_entry, h_entry, sim_params, turn_cache)
                 if turn_geom is None or turn_time_s is None:
                     raise ValueError(f"Turn calculation failed for {from_line}->{line_num}")
 
-                # --- Calculate Run-in and Line Time ---
                 line_time_s = line_info.get('length', 0) / sim_params.get('avg_shooting_speed_mps', 1.0)
-                runin_time_s = 0.0
+                runin_time_s_original = 0.0 # Store original calculation
                 runin_geom = _find_runin_geom(required_layers['runins'], line_num, "End" if is_reciprocal else "Start")
-                if runin_geom: runin_time_s = _calculate_runin_time(runin_geom, sim_params)
+                if runin_geom:
+                     runin_time_s_original = _calculate_runin_time(runin_geom, sim_params)
 
-                # --- Calculate Segment Timings ---
-                # Start time is the end time of the previous segment PLUS the turn time
+                # --- MODIFICATION: Double the run-in time ---
+                runin_time_s = runin_time_s_original * 2.0
+                log.debug(f"  Line {line_num}: Original RunIn={runin_time_s_original:.1f}s, Using Doubled RunIn={runin_time_s:.1f}s")
+                # --- END MODIFICATION ---
+
                 segment_start_time = current_time + timedelta(seconds=turn_time_s)
-                # Duration only includes run-in and line shooting
-                segment_duration_s = runin_time_s + line_time_s
+                segment_duration_s = runin_time_s + line_time_s # Use doubled runin_time_s
                 segment_end_time = segment_start_time + timedelta(seconds=segment_duration_s)
-                # Total time added to cost includes turn + run-in + line
-                total_segment_time = turn_time_s + runin_time_s + line_time_s
+                total_segment_time = turn_time_s + runin_time_s + line_time_s # Use doubled runin_time_s
 
-                log.debug(f"  Line {line_num}: PrevEnd={current_time.strftime('%H:%M:%S')}, Turn={turn_time_s:.1f}s, Start={segment_start_time.strftime('%H:%M:%S')}, RunIn={runin_time_s:.1f}s, Line={line_time_s:.1f}s, End={segment_end_time.strftime('%H:%M:%S')}")
+                log.debug(f"  Line {line_num}: PrevEnd={current_time.strftime('%H:%M:%S')}, Turn={turn_time_s:.1f}s, Start={segment_start_time.strftime('%H:%M:%S')}, DoubledRunIn={runin_time_s:.1f}s, Line={line_time_s:.1f}s, End={segment_end_time.strftime('%H:%M:%S')}")
 
                 timings[line_num] = {
                     'start': segment_start_time, 'end': segment_end_time,
-                    'turn': turn_time_s, 'runin': runin_time_s, 'line': line_time_s,
+                    'turn': turn_time_s,
+                    'runin': runin_time_s, # Store doubled value
+                    'line': line_time_s,
                     'total_segment': total_segment_time
                 }
-                current_time = segment_end_time # Update current time to the end of this segment
-                total_cost_seconds += total_segment_time # Add the full time (turn+runin+line) to the total
+                current_time = segment_end_time
+                total_cost_seconds += total_segment_time
 
-                # --- Get Exit State for Next Iteration ---
                 current_exit_pt, current_exit_hdg = _get_next_exit_state(line_num, is_reciprocal, line_data)
                 if current_exit_pt is None or current_exit_hdg is None:
                      raise ValueError(f"Could not determine exit state after line {line_num}")
                 current_state = { 'exit_pt': current_exit_pt, 'exit_hdg': current_exit_hdg }
 
             # --- End Loop ---
-            log.debug(f"Total Calculated Cost: {total_cost_seconds:.1f} seconds")
-            self.current_sequence_info['cost'] = total_cost_seconds # Update cost in sequence info
-            log.debug("--- Finished Calculating Segment Times ---") # End Logging Block
+            log.debug(f"Total Calculated Cost (with doubled run-in): {total_cost_seconds:.1f} seconds")
+            self.current_sequence_info['cost'] = total_cost_seconds
+            log.debug("--- Finished Calculating Segment Times (with DOUBLED Run-In) ---")
             return timings
 
         except Exception as e:
-            log.exception(f"Error calculating segment times: {e}") # Log full traceback
+            log.exception(f"Error calculating segment times: {e}")
             QMessageBox.warning(self, "Timing Error", f"Could not calculate segment times:\n{e}")
-            return None # Indicate failure
+            return None
 
 
     def run_full_timing_calculation_and_update(self, show_message=True):
