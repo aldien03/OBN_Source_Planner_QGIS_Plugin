@@ -1,23 +1,30 @@
 # -*- coding: utf-8 -*-
 import copy
 from datetime import datetime, timedelta
+import logging # Added for logging
+import openpyxl # Added for XLSX export
+from openpyxl.utils import get_column_letter
 from qgis.core import QgsGeometry, QgsPointXY, QgsPoint
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 from qgis.PyQt.QtCore import Qt, QDateTime
 from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QTableWidget, QTableWidgetItem, QAbstractItemView,
                              QLabel, QHeaderView, QComboBox, QMessageBox,
-                             QSizePolicy, QApplication) # Added QApplication
+                             QSizePolicy, QApplication, QFileDialog) # Added QFileDialog
 
-# Define constants for column indices
-COL_LINE_NUM = 0
-COL_START_SP = 1 # New
-COL_END_SP = 2   # New
-COL_START_TIME = 3
-COL_END_TIME = 4
-COL_DURATION = 5
-COL_DIRECTION = 6
-COL_ACTIONS = 7 # Placeholder
+# --- Logger ---
+log = logging.getLogger("obn_planner") # Use the main plugin logger
+
+# --- Define constants for column indices ---
+COL_SEQ_NUM = 0 # New
+COL_LINE_NUM = 1
+COL_START_SP = 2
+COL_END_SP = 3
+COL_START_TIME = 4
+COL_END_TIME = 5
+COL_DURATION = 6
+COL_DIRECTION = 7
+COL_ACTIONS = 8 # Placeholder
 
 # --- ENHANCED custom_deepcopy (using copy constructor for QgsGeometry) ---
 def custom_deepcopy(obj, memo=None):
@@ -55,13 +62,17 @@ def custom_deepcopy(obj, memo=None):
     elif isinstance(obj, tuple):
          new_tuple_elements = [custom_deepcopy(item, memo) for item in obj]
          new_tuple = tuple(new_tuple_elements)
+         memo[obj_id] = new_tuple # Cache the tuple itself
          return new_tuple
     else:
+        # Use standard deepcopy for other types, but be careful
         try:
             new_obj = copy.deepcopy(obj, memo)
             memo[obj_id] = new_obj
             return new_obj
         except (TypeError, NotImplementedError):
+            # If deepcopy fails, return the object itself (shallow copy for this element)
+            # This might happen for complex QGIS objects or external library objects
             memo[obj_id] = obj
             return obj
 # --- END ENHANCED custom_deepcopy ---
@@ -73,13 +84,22 @@ class SequenceEditDialog(QDialog):
         """ Constructor for the Sequence Edit Dialog. """
         super().__init__(parent)
         self.setWindowTitle("Edit Survey Sequence")
-        self.setMinimumSize(800, 600) # Wider for more columns
+        self.setMinimumSize(950, 600) # Wider for Sequence column
 
         # Store initial data, context, and callback
         self.original_sequence_info = custom_deepcopy(initial_sequence_info)
         self.current_sequence_info = custom_deepcopy(initial_sequence_info)
         self.recalculation_context = recalculation_context # Dict with params, data, layers, cache, methods
         self.recalculation_callback = recalculation_callback # Callback to update main widget's cost/state
+
+        # --- Get Start Sequence Number (Requirement 3) ---
+        try:
+            self.start_seq_num = int(self.recalculation_context.get("sim_params", {}).get("start_sequence_number", 1))
+        except (ValueError, TypeError):
+            log.warning("Could not parse start_sequence_number from context, defaulting to 1.")
+            self.start_seq_num = 1
+        log.debug(f"SequenceEditDialog using start sequence number: {self.start_seq_num}")
+
 
         self.segment_timings = {} # Cache detailed timings: {line_num: {'start': dt, 'end': dt, 'turn': s, 'runin': s, 'line': s, 'total_segment': s}}
 
@@ -88,13 +108,14 @@ class SequenceEditDialog(QDialog):
 
         # Table Widget
         self.tableWidget = QTableWidget()
-        # --- MODIFIED: Column count and headers ---
-        self.tableWidget.setColumnCount(8)
+        # --- MODIFIED: Column count and headers (Requirement 3) ---
+        self.tableWidget.setColumnCount(9) # Increased count
         self.tableWidget.setHorizontalHeaderLabels([
-            "Line", "Start SP", "End SP", "Start Time", "End Time", "Duration", "Direction", "Actions"
+            "Seq", "Line", "Start SP", "End SP", "Start Time", "End Time", "Duration", "Direction", "Actions"
         ])
 
-        # Adjust column widths
+        # Adjust column widths (Updated indices - Requirement 3)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_SEQ_NUM, QHeaderView.ResizeToContents) # New
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_LINE_NUM, QHeaderView.ResizeToContents)
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_START_SP, QHeaderView.ResizeToContents)
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_END_SP, QHeaderView.ResizeToContents)
@@ -104,15 +125,52 @@ class SequenceEditDialog(QDialog):
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_DIRECTION, QHeaderView.ResizeToContents)
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_ACTIONS, QHeaderView.ResizeToContents)
 
-        self.tableWidget.setSelectionBehavior(QAbstractItemView.SelectRows); self.tableWidget.setSelectionMode(QAbstractItemView.SingleSelection); self.tableWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tableWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tableWidget.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tableWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.layout.addWidget(self.tableWidget)
-        self.moveButtonLayout = QHBoxLayout(); self.upButton = QPushButton("Move Up"); self.downButton = QPushButton("Move Down"); self.moveButtonLayout.addStretch(); self.moveButtonLayout.addWidget(self.upButton); self.moveButtonLayout.addWidget(self.downButton); self.moveButtonLayout.addStretch(); self.layout.addLayout(self.moveButtonLayout)
-        self.infoLayout = QHBoxLayout(); self.timeLabel = QLabel("Est. Total Time: --- hours"); self.timeLabel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred); self.infoLayout.addWidget(self.timeLabel); self.layout.addLayout(self.infoLayout)
-        self.buttonBox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel); self.buttonBox.accepted.connect(self.on_accept); self.buttonBox.rejected.connect(self.reject); self.layout.addWidget(self.buttonBox)
 
-        self.upButton.clicked.connect(self.move_up); self.downButton.clicked.connect(self.move_down); self.tableWidget.itemSelectionChanged.connect(self.update_button_states)
+        # Bottom Controls Layout
+        self.bottomControlLayout = QHBoxLayout()
 
-        self.run_full_timing_calculation_and_update(show_message=False); self.update_button_states()
+        # Move Buttons
+        self.moveButtonLayout = QHBoxLayout()
+        self.upButton = QPushButton("Move Up")
+        self.downButton = QPushButton("Move Down")
+        self.moveButtonLayout.addStretch()
+        self.moveButtonLayout.addWidget(self.upButton)
+        self.moveButtonLayout.addWidget(self.downButton)
+        self.moveButtonLayout.addStretch()
+        self.bottomControlLayout.addLayout(self.moveButtonLayout) # Add move buttons to bottom layout
+
+        # Export Button (Requirement 4)
+        self.exportButton = QPushButton("Export XLSX")
+        self.bottomControlLayout.addWidget(self.exportButton) # Add export button
+
+        self.layout.addLayout(self.bottomControlLayout) # Add the combined bottom layout
+
+        # Info Label (Total Time)
+        self.infoLayout = QHBoxLayout()
+        self.timeLabel = QLabel("Est. Total Time: --- hours")
+        self.timeLabel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.infoLayout.addWidget(self.timeLabel)
+        self.layout.addLayout(self.infoLayout)
+
+        # OK / Cancel Buttons
+        self.buttonBox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        self.buttonBox.accepted.connect(self.on_accept)
+        self.buttonBox.rejected.connect(self.reject)
+        self.layout.addWidget(self.buttonBox)
+
+        # --- Connect Signals ---
+        self.upButton.clicked.connect(self.move_up)
+        self.downButton.clicked.connect(self.move_down)
+        self.exportButton.clicked.connect(self.export_to_xlsx) # Connect export button
+        self.tableWidget.itemSelectionChanged.connect(self.update_button_states)
+
+        # --- Initial Population ---
+        self.run_full_timing_calculation_and_update(show_message=False)
+        self.update_button_states()
 
 
     def _calculate_segment_times(self, sequence, directions):
@@ -142,7 +200,7 @@ class SequenceEditDialog(QDialog):
                     _get_cached_turn, _find_runin_geom, _calculate_runin_time,
                     _get_next_exit_state, _get_entry_details]):
             QMessageBox.critical(self, "Context Error", "Missing required context for timing calculation. Cannot proceed.")
-            print("Error: Missing context for segment time calculation.") # Log for debugging
+            log.error("Error: Missing context for segment time calculation.") # Log for debugging
             return None # Indicate failure
 
         current_time = sim_params.get('start_datetime', datetime.now())
@@ -150,28 +208,32 @@ class SequenceEditDialog(QDialog):
         total_cost_seconds = 0.0
 
         try:
+            log.debug("--- Calculating Segment Times ---") # Start Logging Block
             # --- Process First Line ---
             line_num = sequence[0]
             is_reciprocal = (directions.get(line_num) == 'high_to_low')
             line_info = line_data.get(line_num) # Use .get for safety
             if not line_info: raise ValueError(f"Line data not found for line {line_num}")
 
-            line_time_s = line_info['length'] / sim_params['avg_shooting_speed_mps']
+            line_time_s = line_info.get('length', 0) / sim_params.get('avg_shooting_speed_mps', 1.0) # Added defaults
             runin_time_s = 0.0
             runin_geom = _find_runin_geom(required_layers['runins'], line_num, "End" if is_reciprocal else "Start")
             if runin_geom: runin_time_s = _calculate_runin_time(runin_geom, sim_params)
 
-            segment_start_time = current_time
+            segment_start_time = current_time # First line starts immediately (no preceding turn)
             segment_duration_s = runin_time_s + line_time_s
             segment_end_time = segment_start_time + timedelta(seconds=segment_duration_s)
+            total_segment_time = runin_time_s + line_time_s # Turn time is 0 for first segment
+
+            log.debug(f"  Line {line_num} (First): Start={segment_start_time.strftime('%H:%M:%S')}, RunIn={runin_time_s:.1f}s, Line={line_time_s:.1f}s, End={segment_end_time.strftime('%H:%M:%S')}")
 
             timings[line_num] = {
                 'start': segment_start_time, 'end': segment_end_time,
                 'turn': 0.0, 'runin': runin_time_s, 'line': line_time_s,
-                'total_segment': segment_duration_s
+                'total_segment': total_segment_time # Corrected: Use total_segment_time
             }
             current_time = segment_end_time
-            total_cost_seconds += segment_duration_s
+            total_cost_seconds += total_segment_time # Corrected: Use total_segment_time
 
             current_exit_pt, current_exit_hdg = _get_next_exit_state(line_num, is_reciprocal, line_data)
             if current_exit_pt is None or current_exit_hdg is None:
@@ -194,38 +256,50 @@ class SequenceEditDialog(QDialog):
                 if not p_entry or h_entry is None or not exit_pt or exit_hdg is None:
                     raise ValueError(f"Missing turn data for {from_line}->{line_num}")
 
+                # --- Calculate Turn ---
                 turn_geom, turn_length, turn_time_s = _get_cached_turn(from_line, line_num, is_reciprocal, exit_pt, exit_hdg, p_entry, h_entry, sim_params, turn_cache)
                 if turn_geom is None or turn_time_s is None:
                     raise ValueError(f"Turn calculation failed for {from_line}->{line_num}")
 
-                line_time_s = line_info['length'] / sim_params['avg_shooting_speed_mps']
+                # --- Calculate Run-in and Line Time ---
+                line_time_s = line_info.get('length', 0) / sim_params.get('avg_shooting_speed_mps', 1.0)
                 runin_time_s = 0.0
                 runin_geom = _find_runin_geom(required_layers['runins'], line_num, "End" if is_reciprocal else "Start")
                 if runin_geom: runin_time_s = _calculate_runin_time(runin_geom, sim_params)
 
+                # --- Calculate Segment Timings ---
+                # Start time is the end time of the previous segment PLUS the turn time
                 segment_start_time = current_time + timedelta(seconds=turn_time_s)
+                # Duration only includes run-in and line shooting
                 segment_duration_s = runin_time_s + line_time_s
                 segment_end_time = segment_start_time + timedelta(seconds=segment_duration_s)
+                # Total time added to cost includes turn + run-in + line
                 total_segment_time = turn_time_s + runin_time_s + line_time_s
+
+                log.debug(f"  Line {line_num}: PrevEnd={current_time.strftime('%H:%M:%S')}, Turn={turn_time_s:.1f}s, Start={segment_start_time.strftime('%H:%M:%S')}, RunIn={runin_time_s:.1f}s, Line={line_time_s:.1f}s, End={segment_end_time.strftime('%H:%M:%S')}")
 
                 timings[line_num] = {
                     'start': segment_start_time, 'end': segment_end_time,
                     'turn': turn_time_s, 'runin': runin_time_s, 'line': line_time_s,
                     'total_segment': total_segment_time
                 }
-                current_time = segment_end_time
-                total_cost_seconds += total_segment_time
+                current_time = segment_end_time # Update current time to the end of this segment
+                total_cost_seconds += total_segment_time # Add the full time (turn+runin+line) to the total
 
+                # --- Get Exit State for Next Iteration ---
                 current_exit_pt, current_exit_hdg = _get_next_exit_state(line_num, is_reciprocal, line_data)
                 if current_exit_pt is None or current_exit_hdg is None:
                      raise ValueError(f"Could not determine exit state after line {line_num}")
                 current_state = { 'exit_pt': current_exit_pt, 'exit_hdg': current_exit_hdg }
 
-            self.current_sequence_info['cost'] = total_cost_seconds
+            # --- End Loop ---
+            log.debug(f"Total Calculated Cost: {total_cost_seconds:.1f} seconds")
+            self.current_sequence_info['cost'] = total_cost_seconds # Update cost in sequence info
+            log.debug("--- Finished Calculating Segment Times ---") # End Logging Block
             return timings
 
         except Exception as e:
-            print(f"Error calculating segment times: {e}") # Log error
+            log.exception(f"Error calculating segment times: {e}") # Log full traceback
             QMessageBox.warning(self, "Timing Error", f"Could not calculate segment times:\n{e}")
             return None # Indicate failure
 
@@ -238,6 +312,13 @@ class SequenceEditDialog(QDialog):
             sequence = self.current_sequence_info.get('seq', [])
             directions = self.current_sequence_info.get('state', {}).get('line_directions', {})
 
+            if not sequence:
+                 log.warning("Cannot calculate timing, sequence is empty.")
+                 self.timeLabel.setText("Estimated Total Time: No Sequence")
+                 self.populate_table() # Clear table
+                 return False
+
+            log.info("Running full timing calculation...")
             new_timings = self._calculate_segment_times(sequence, directions)
 
             if new_timings is not None:
@@ -247,16 +328,18 @@ class SequenceEditDialog(QDialog):
                 if show_message:
                     QMessageBox.information(self, "Calculation Complete", "Timings updated.")
                 calculation_ok = True
+                log.info("Timing calculation successful.")
             else:
                 # Error handled/shown in _calculate_segment_times
                 self.timeLabel.setText("Estimated Total Time: Error")
+                log.error("Timing calculation failed.")
 
         finally:
             QApplication.restoreOverrideCursor()
         return calculation_ok # Return success/failure
 
     def populate_table(self):
-        """ Fills the table including SPs and formatted duration. """
+        """ Fills the table including Sequence numbers, SPs and formatted duration. """
         sequence = self.current_sequence_info.get('seq', [])
         directions = self.current_sequence_info.get('state', {}).get('line_directions', {})
         line_data_map = self.recalculation_context.get("line_data", {}) # Get line_data from context
@@ -268,19 +351,38 @@ class SequenceEditDialog(QDialog):
         for i, line_num in enumerate(sequence):
             line_specific_data = line_data_map.get(line_num, {}) # Get data for this line
 
-            # Line Number
-            line_item = QTableWidgetItem(str(line_num)); line_item.setFlags(line_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_LINE_NUM, line_item)
+            # --- Sequence Number (Requirement 3) ---
+            seq_num_val = self.start_seq_num + i
+            seq_item = QTableWidgetItem(str(seq_num_val))
+            seq_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            seq_item.setFlags(seq_item.flags() & ~Qt.ItemIsEditable)
+            self.tableWidget.setItem(i, COL_SEQ_NUM, seq_item)
+            # ---
 
-            # --- Get SP based on Direction ---
-            direction_str = directions.get(line_num, 'low_to_high')
+            # Line Number
+            line_item = QTableWidgetItem(str(line_num))
+            line_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            line_item.setFlags(line_item.flags() & ~Qt.ItemIsEditable)
+            self.tableWidget.setItem(i, COL_LINE_NUM, line_item)
+
+            # --- Get SP based on Direction (Requirement 1 - Ensure consistency) ---
+            direction_str = directions.get(line_num, 'low_to_high') # Get stored direction
             is_reciprocal = (direction_str == 'high_to_low')
+            # Fetch SPs based on the *stored* direction
             start_sp_val = line_specific_data.get('highest_sp') if is_reciprocal else line_specific_data.get('lowest_sp')
             end_sp_val = line_specific_data.get('lowest_sp') if is_reciprocal else line_specific_data.get('highest_sp')
             start_sp_str = str(start_sp_val) if start_sp_val is not None else "N/A"
             end_sp_str = str(end_sp_val) if end_sp_val is not None else "N/A"
 
-            start_sp_item = QTableWidgetItem(start_sp_str); start_sp_item.setFlags(start_sp_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_START_SP, start_sp_item)
-            end_sp_item = QTableWidgetItem(end_sp_str); end_sp_item.setFlags(end_sp_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_END_SP, end_sp_item)
+            start_sp_item = QTableWidgetItem(start_sp_str)
+            start_sp_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            start_sp_item.setFlags(start_sp_item.flags() & ~Qt.ItemIsEditable)
+            self.tableWidget.setItem(i, COL_START_SP, start_sp_item)
+
+            end_sp_item = QTableWidgetItem(end_sp_str)
+            end_sp_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            end_sp_item.setFlags(end_sp_item.flags() & ~Qt.ItemIsEditable)
+            self.tableWidget.setItem(i, COL_END_SP, end_sp_item)
             # ---
 
             # Timing Items
@@ -289,22 +391,40 @@ class SequenceEditDialog(QDialog):
             if line_timing:
                 start_time_str = line_timing['start'].strftime(dt_format)
                 end_time_str = line_timing['end'].strftime(dt_format)
-                total_seconds = line_timing.get('total_segment', 0)
+                # Calculate duration from start/end times for robustness
+                try:
+                    segment_delta = line_timing['end'] - line_timing['start']
+                    total_seconds = segment_delta.total_seconds()
+                except TypeError:
+                    total_seconds = -1 # Indicate error if dates are not valid
+
                 if total_seconds >= 0:
                     hours = int(total_seconds // 3600)
                     minutes = int((total_seconds % 3600) // 60)
                     duration_str_hhmm = f"{hours:02d}:{minutes:02d}" # Format HH:MM
-                else: duration_str_hhmm = "Error"
+                else:
+                    duration_str_hhmm = "Error"
+            else:
+                log.warning(f"No timing info found for line {line_num} during table population.")
+
 
             start_item = QTableWidgetItem(start_time_str); start_item.setFlags(start_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_START_TIME, start_item)
             end_item = QTableWidgetItem(end_time_str); end_item.setFlags(end_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_END_TIME, end_item)
             duration_item = QTableWidgetItem(duration_str_hhmm); duration_item.setFlags(duration_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_DURATION, duration_item)
+            duration_item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter) # Center align duration
 
-            # Direction ComboBox
-            combo = QComboBox(); combo.addItems(["Low to High", "High to Low"]); combo.setCurrentText(direction_str.replace("_", " ").title()); combo.setProperty("row", i); combo.currentIndexChanged.connect(self.direction_changed); self.tableWidget.setCellWidget(i, COL_DIRECTION, combo)
+            # Direction ComboBox (Set based on stored direction)
+            combo = QComboBox()
+            combo.addItems(["Low to High", "High to Low"])
+            combo.setCurrentText(direction_str.replace("_", " ").title()) # Use stored direction
+            combo.setProperty("row", i)
+            combo.currentIndexChanged.connect(self.direction_changed)
+            self.tableWidget.setCellWidget(i, COL_DIRECTION, combo)
 
             # Actions Item
-            actions_item = QTableWidgetItem(""); actions_item.setFlags(actions_item.flags() & ~Qt.ItemIsEditable); self.tableWidget.setItem(i, COL_ACTIONS, actions_item)
+            actions_item = QTableWidgetItem("") # Placeholder
+            actions_item.setFlags(actions_item.flags() & ~Qt.ItemIsEditable)
+            self.tableWidget.setItem(i, COL_ACTIONS, actions_item)
 
         self.tableWidget.blockSignals(False)
         self.tableWidget.resizeRowsToContents()
@@ -315,13 +435,14 @@ class SequenceEditDialog(QDialog):
         if not sender_combo: return
 
         row = sender_combo.property("row")
+        # Get line number from the correct column now (COL_LINE_NUM)
         line_num_item = self.tableWidget.item(row, COL_LINE_NUM)
         if line_num_item is None: return # Should not happen
 
         try:
             line_num = int(line_num_item.text())
         except (ValueError, TypeError):
-            print(f"Error getting line number from row {row}")
+            log.error(f"Error getting line number from row {row}")
             return
 
         new_direction_text = sender_combo.currentText()
@@ -330,25 +451,105 @@ class SequenceEditDialog(QDialog):
         if 'state' in self.current_sequence_info and 'line_directions' in self.current_sequence_info['state']:
             if self.current_sequence_info['state']['line_directions'].get(line_num) != new_direction_str:
                 self.current_sequence_info['state']['line_directions'][line_num] = new_direction_str
-                print(f"Direction updated for line {line_num} to {new_direction_str}")
+                log.info(f"Direction updated for line {line_num} to {new_direction_str}")
+                # Recalculate and update table (important to refresh SPs and timings)
                 self.run_full_timing_calculation_and_update(show_message=False)
         else:
-            print(f"Error: Could not update direction state for line {line_num}")
+            log.error(f"Error: Could not update direction state for line {line_num}")
+
+    # --- Export to XLSX (Requirement 4) ---
+    def export_to_xlsx(self):
+        """Exports the current table data to an XLSX file."""
+        log.debug("Export to XLSX button clicked.")
+        try:
+            import openpyxl
+        except ImportError:
+            log.error("Cannot export to XLSX: openpyxl library not found.")
+            QMessageBox.critical(self, "Export Error", "The 'openpyxl' library is required to export to XLSX.\nPlease install it (e.g., 'pip install openpyxl') and restart QGIS.")
+            return
+
+        # Suggest filename
+        now = datetime.now()
+        default_filename = f"Shooting_Plan_{now.strftime('%Y%m%d_%H%M%S')}.xlsx"
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save Shooting Plan", default_filename, "Excel Files (*.xlsx)")
+
+        if not save_path:
+            log.info("XLSX export cancelled by user.")
+            return
+
+        # Ensure correct extension
+        if not save_path.lower().endswith(".xlsx"):
+            save_path += ".xlsx"
+
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Shooting Plan"
+
+            # Write Header
+            headers = []
+            for j in range(self.tableWidget.columnCount()):
+                header_item = self.tableWidget.horizontalHeaderItem(j)
+                headers.append(header_item.text() if header_item else f"Col_{j+1}")
+            ws.append(headers)
+
+            # Write Data Rows
+            for i in range(self.tableWidget.rowCount()):
+                row_data = []
+                for j in range(self.tableWidget.columnCount()):
+                    widget = self.tableWidget.cellWidget(i, j)
+                    if isinstance(widget, QComboBox):
+                        row_data.append(widget.currentText())
+                    else:
+                        item = self.tableWidget.item(i, j)
+                        row_data.append(item.text() if item else "")
+                ws.append(row_data)
+
+            # Auto-adjust column widths (optional but nice)
+            for col_idx, column_cells in enumerate(ws.columns):
+                 max_length = 0
+                 column = get_column_letter(col_idx + 1)
+                 for cell in column_cells:
+                     try:
+                         if len(str(cell.value)) > max_length:
+                             max_length = len(cell.value)
+                     except:
+                         pass
+                 adjusted_width = (max_length + 2)
+                 ws.column_dimensions[column].width = adjusted_width
 
 
+            # Save Workbook
+            wb.save(save_path)
+            log.info(f"Successfully exported shooting plan to {save_path}")
+            QMessageBox.information(self, "Export Successful", f"Shooting plan exported to:\n{save_path}")
+
+        except Exception as e:
+            log.exception(f"Error exporting data to XLSX: {e}")
+            QMessageBox.critical(self, "Export Error", f"An error occurred while exporting to XLSX:\n{e}")
+
+
+    # --- Movement and Update Methods (Adjusted for new column indices) ---
     def move_up(self):
         """ Moves row up, updates internal sequence, recalculates timings. """
         currentRow = self.tableWidget.currentRow()
         if currentRow > 0:
-            seq = self.current_sequence_info['seq']; seq.insert(currentRow - 1, seq.pop(currentRow)); print(f"Internal sequence updated: {seq}")
-            if self.run_full_timing_calculation_and_update(show_message=False): self.tableWidget.selectRow(currentRow - 1)
+            seq = self.current_sequence_info['seq']
+            seq.insert(currentRow - 1, seq.pop(currentRow))
+            log.debug(f"Internal sequence updated: {seq}")
+            if self.run_full_timing_calculation_and_update(show_message=False):
+                self.tableWidget.selectRow(currentRow - 1)
 
     def move_down(self):
         """ Moves row down, updates internal sequence, recalculates timings. """
-        currentRow = self.tableWidget.currentRow(); rowCount = self.tableWidget.rowCount()
+        currentRow = self.tableWidget.currentRow()
+        rowCount = self.tableWidget.rowCount()
         if currentRow < rowCount - 1 and currentRow != -1:
-            seq = self.current_sequence_info['seq']; seq.insert(currentRow + 1, seq.pop(currentRow)); print(f"Internal sequence updated: {seq}")
-            if self.run_full_timing_calculation_and_update(show_message=False): self.tableWidget.selectRow(currentRow + 1)
+            seq = self.current_sequence_info['seq']
+            seq.insert(currentRow + 1, seq.pop(currentRow))
+            log.debug(f"Internal sequence updated: {seq}")
+            if self.run_full_timing_calculation_and_update(show_message=False):
+                self.tableWidget.selectRow(currentRow + 1)
 
     def update_button_states(self):
         """ Enables/disables Up/Down buttons based on selection. """
@@ -357,16 +558,23 @@ class SequenceEditDialog(QDialog):
 
     def update_time_label(self):
         """ Updates the total time label based on current_sequence_info cost. """
-        cost_seconds = self.current_sequence_info.get('cost');
-        if cost_seconds is None: self.timeLabel.setText("Estimated Total Time: Error"); return
-        cost_hours = cost_seconds / 3600.0; self.timeLabel.setText(f"Est. Total Time: {cost_hours:.2f} hours")
+        cost_seconds = self.current_sequence_info.get('cost')
+        if cost_seconds is None or cost_seconds < 0:
+            self.timeLabel.setText("Estimated Total Time: Error")
+            return
+        cost_hours = cost_seconds / 3600.0
+        self.timeLabel.setText(f"Est. Total Time: {cost_hours:.2f} hours")
 
     def on_accept(self):
         """ Run final recalculation before accepting to ensure consistency. """
-        print("Accepting sequence edit dialog.")
-        if self.run_full_timing_calculation_and_update(show_message=False): super().accept()
-        else: QMessageBox.warning(self, "Accept Failed", "Final timing calculation failed. Cannot accept.")
+        log.info("Accepting sequence edit dialog.")
+        if self.run_full_timing_calculation_and_update(show_message=False):
+            super().accept()
+        else:
+            QMessageBox.warning(self, "Accept Failed", "Final timing calculation failed. Cannot accept.")
 
     def get_final_sequence_info(self):
         """ Returns the potentially modified sequence info dictionary. """
+        # Ensure the cost is up-to-date before returning
+        self.update_time_label() # Recalculates cost if needed via run_full... called by other methods
         return self.current_sequence_info

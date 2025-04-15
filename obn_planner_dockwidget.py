@@ -1914,144 +1914,99 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
            
     def handle_calculate_deviations(self):
         """
-        Handler for the Calculate Deviations button.
-        Performs the deviation calculation process with visualization.
+        Handler for the Calculate Deviations button. Performs the deviation
+        calculation process directly.
         """
         log.info("Starting deviation calculation...")
+        QApplication.setOverrideCursor(Qt.WaitCursor) # Set busy cursor
 
         # --- Input Validation ---
-        # Ensure we have the necessary input layers
         lines_layer = self.generated_lines_layer
         if not lines_layer or not lines_layer.isValid():
             QMessageBox.warning(self, "Input Error", "No survey lines layer available. Generate lines first.")
+            QApplication.restoreOverrideCursor()
             return False
 
         nogo_layer = self.nogo_zone_combo.currentLayer()
         if not nogo_layer or not nogo_layer.isValid():
             QMessageBox.warning(self, "Input Error", "Select a valid No-Go Zone layer.")
+            QApplication.restoreOverrideCursor()
             return False
 
         # --- Parameter Setup ---
-        clearance_m = self.deviationClearanceDoubleSpinBox.value()
-        turn_radius_m = self.turnRadiusDoubleSpinBox.value()
+        clearance_m = 0.0
+        turn_radius_m = 0.0
+        try:
+            # Use try-except for UI access
+            clearance_m = self.deviationClearanceDoubleSpinBox.value()
+            turn_radius_m = self.turnRadiusDoubleSpinBox.value()
+        except AttributeError as ae:
+             log.error(f"UI element missing for parameters: {ae}")
+             QMessageBox.critical(self, "UI Error", f"Could not find UI element for parameters: {ae}")
+             QApplication.restoreOverrideCursor()
+             return False
 
         # Validate parameter ranges
         if clearance_m <= 0:
             QMessageBox.warning(self, "Parameter Error", "Clearance distance must be greater than zero.")
+            QApplication.restoreOverrideCursor()
             return False
 
         if turn_radius_m <= 0:
             QMessageBox.warning(self, "Parameter Error", "Turn radius must be greater than zero.")
+            QApplication.restoreOverrideCursor()
             return False
 
-        log.info(f"Starting deviation calculation with clearance={clearance_m}m, turn_radius={turn_radius_m}m")
+        log.info(f"Starting direct deviation calculation with clearance={clearance_m}m, turn_radius={turn_radius_m}m")
 
         try:
-            # --- Debug Option First ---
-            # Add debug visualization if the user needs it
-            debug_response = QMessageBox.question(
-                self, 
-                "Debug Options", 
-                "Would you like to:\n\n" + 
-                "1. Visualize obstacles and NoGo zones for debugging first?\n" +
-                "2. Run full calculation with detailed logging?\n\n" +
-                "Visualizing first helps debug geometry issues before running the full calculation.",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
+            # --- Determine Debug Mode (Optional - can be hardcoded or read from a setting) ---
+            # For now, let's default to False unless you have a specific debug checkbox
+            debug_mode = False # Default to non-debug mode for direct calculation
+            # Example: if hasattr(self, 'debugCheckBox') and self.debugCheckBox.isChecked():
+            #     debug_mode = True
+            #     log.info("Debug mode enabled for deviation calculation.")
 
-            if debug_response == QMessageBox.Yes:
-                log.info("Performing debug visualization before calculation...")
-                # Prepare visualization of inputs
-                avoidance_geom = self._prepare_avoidance_geometry(nogo_layer, clearance_m)
-                obstacle_geometries = self._separate_avoidance_geometry(avoidance_geom)
-
-                # Create temporary visualization layers
-                debugging_group = self._add_debug_layers(avoidance_geom, obstacle_geometries, clearance_m)
-                if debugging_group:
-                    QMessageBox.information(self, "Debug Visualization Created", 
-                        "Visualization layers have been added to the map.\n" +
-                        "Review the NoGo zones (with clearance buffer) and separated obstacles.\n\n" +
-                        "Click OK to continue with the full calculation...")
-
-            # --- Run Initial Calculation for Visualization ---
-            calculation_response = QMessageBox.question(
-                self, 
-                "Choose Calculation Method", 
-                "How would you like to proceed?\n\n" +
-                "1. Prepare intermediate components (reference lines, peaks) first\n" +
-                "2. Run full deviation calculation immediately\n\n" +
-                "Option 1 is recommended for debugging geometry issues.",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
-
-            if calculation_response == QMessageBox.Yes:
-                # First phase: Calculate reference lines and peaks only
-                log.info("Calculating intermediate components only...")
-
-                # Start processing without creating final deviation paths
-                # Note: We're deliberately skipping the final _complete_deviation_calculation call
-                success = self._calculate_intermediate_components(
-                    lines_layer, nogo_layer, clearance_m, turn_radius_m, True
-                )
-
-                if success:
-                    log.info("Intermediate components calculated successfully.")
-
-                    # Visualize the intermediate components
-                    self._visualize_deviation_steps()
-
-                    # Ask if user wants to continue with full calculation
-                    continue_response = QMessageBox.question(
-                        self,
-                        "Continue with Deviation Calculation?",
-                        "Intermediate components have been visualized.\n\n" +
-                        "Would you like to proceed with the full deviation calculation?",
-                        QMessageBox.Yes | QMessageBox.No,
-                        QMessageBox.Yes
-                    )
-
-                    if continue_response == QMessageBox.No:
-                        log.info("User chose to stop after intermediate visualization.")
-                        return True
-
-                    debug_mode = True  # Enable debug mode for the full calculation
-                else:
-                    log.error("Failed to calculate intermediate components.")
-                    QMessageBox.critical(self, "Calculation Error", 
-                                        "Failed to calculate intermediate components.\n"
-                                        "Check the log for details.")
-                    return False
-            else:
-                debug_mode = False
-
-            # --- Run Full Calculation ---
+            # --- Run Full Calculation Directly ---
+            log.info("Proceeding directly to full deviation calculation...")
             success = self._calculate_and_apply_deviations_v2(
                 lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode
             )
 
+            # --- Process Results ---
             if success:
                 log.info("Deviation calculation completed successfully.")
-                QMessageBox.information(self, "Success", 
+                QMessageBox.information(self, "Success",
                                        "Deviation calculation completed successfully.\n"
-                                       "Check the results in the map canvas.")
+                                       "Check the results in the 'Generated_Survey_Lines' layer.")
+                # Optional: Refresh relevant layers or zoom to extent
+                lines_layer.triggerRepaint()
+                if hasattr(self, 'iface') and self.iface:
+                    self.iface.mapCanvas().refresh()
                 return True
             else:
+                # Specific error messages should ideally be handled within _calculate_and_apply_deviations_v2
                 log.error("Deviation calculation failed or was aborted.")
-                QMessageBox.critical(self, "Calculation Error", 
-                                   "There was an error during deviation calculation.\n"
-                                   "Please check the log for details.")
+                QMessageBox.critical(self, "Calculation Error",
+                                   "Deviation calculation failed or was aborted.\n"
+                                   "Please check the log file for details.")
                 return False
 
         except Exception as e:
-            log.exception(f"Error in deviation calculation: {e}")
+            log.exception(f"Unhandled error during deviation calculation: {e}")
             QMessageBox.critical(
-                self, 
-                "Processing Error", 
-                f"An error occurred during calculation:\n{str(e)}\n\nCheck the log for details."
+                self,
+                "Processing Error",
+                f"An unexpected error occurred during calculation:\n{str(e)}\n\nCheck the log for details."
             )
+            # Attempt to rollback if editing was started within the called function
+            if lines_layer and lines_layer.isEditable():
+                 log.warning("Attempting to roll back changes on lines layer due to error.")
+                 lines_layer.rollBack()
             return False
+        finally:
+             QApplication.restoreOverrideCursor() # Ensure cursor is always restored
+
 
     def _calculate_intermediate_components(self, lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode=False):
         """
@@ -2665,90 +2620,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.error(f"Error calc heading at dist {distance:.2f}: {e}")
             return None
             
-    # def _extract_line_segment(self, line_geom, start_dist, end_dist):
-    #     """
-    #     Custom method to extract a segment of a line geometry between two distances along the line.
-    #     Works across different QGIS versions by manually calculating the segment.
-        
-    #     Args:
-    #         line_geom (QgsGeometry): The input line geometry
-    #         start_dist (float): Start distance along the line
-    #         end_dist (float): End distance along the line
-            
-    #     Returns:
-    #         QgsGeometry: The extracted line segment, or None on error
-    #     """
-    #     if not line_geom or line_geom.isEmpty() or not self._is_line_type(line_geom):
-    #         log.warning("Cannot extract segment from empty or non-line geometry")
-    #         return None
-            
-    #     # Ensure valid start/end distances
-    #     line_length = line_geom.length()
-    #     if start_dist < 0: start_dist = 0
-    #     if end_dist > line_length: end_dist = line_length
-    #     if start_dist >= end_dist: return None  # Empty segment
-        
-    #     try:
-    #         # Extract all vertices from the line
-    #         vertices = list(line_geom.vertices())
-    #         if len(vertices) < 2:
-    #             log.warning("Line has fewer than 2 vertices")
-    #             return None
-                
-    #         # Initialize variables to track our progress
-    #         current_dist = 0.0
-    #         segment_points = []
-    #         point_added = False
-            
-    #         # Process each segment of the line
-    #         for i in range(len(vertices) - 1):
-    #             p1 = vertices[i]
-    #             p2 = vertices[i + 1]
-                
-    #             # Convert to QgsPointXY for distance calculation
-    #             pt1 = QgsPointXY(p1.x(), p1.y())
-    #             pt2 = QgsPointXY(p2.x(), p2.y())
-                
-    #             # Calculate segment length
-    #             segment_length = math.sqrt((p2.x() - p1.x())**2 + (p2.y() - p1.y())**2)
-    #             next_dist = current_dist + segment_length
-                
-    #             # Check if this segment contains our start point
-    #             if current_dist <= start_dist < next_dist and not point_added:
-    #                 # Interpolate position along segment
-    #                 fraction = (start_dist - current_dist) / segment_length
-    #                 x = p1.x() + fraction * (p2.x() - p1.x())
-    #                 y = p1.y() + fraction * (p2.y() - p1.y())
-    #                 segment_points.append(QgsPointXY(x, y))
-    #                 point_added = True
-                
-    #             # Add any vertices that fall within our range
-    #             if start_dist <= next_dist and current_dist < end_dist:
-    #                 if next_dist <= end_dist:
-    #                     # The whole segment is within range, add end point
-    #                     if len(segment_points) == 0 or segment_points[-1] != pt2:
-    #                         segment_points.append(pt2)
-    #                 else:
-    #                     # This segment contains our end point
-    #                     fraction = (end_dist - current_dist) / segment_length
-    #                     x = p1.x() + fraction * (p2.x() - p1.x())
-    #                     y = p1.y() + fraction * (p2.y() - p1.y())
-    #                     segment_points.append(QgsPointXY(x, y))
-    #                     break  # We're done after adding the end point
-                
-    #             current_dist = next_dist
-            
-    #         # Create a geometry from the collected points
-    #         if len(segment_points) >= 2:
-    #             return QgsGeometry.fromPolylineXY(segment_points)
-    #         else:
-    #             log.warning(f"Could not extract line segment ({start_dist}-{end_dist}) - insufficient points")
-    #             return None
-                
-    #     except Exception as e:
-    #         log.exception(f"Error extracting line segment: {e}")
-    #         return None
-
     def _calculate_and_apply_deviations(self, line_data, nogo_layer, clearance_m, turn_radius_m, vessel_turn_rate_dpm=180.0):
         """
         Calculates deviations for lines that intersect with nogo zones using RRT algorithm.
@@ -4513,341 +4384,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         log.info(f"[DIRECT-ASSIGN] Assigned self.path_options. Keys: {list(self.path_options.keys())}")
         log.info(f"[RETURN-CHECK] Returning dict. Path options keys: {list(return_dict.get('path_options', {}).keys())}")
         return return_dict
-    # <<< Function End: _process_conflicted_lines >>>
-
-    # # <<< Function Start: _complete_deviation_calculation (with QGIS Native Smoothing - Endpoint Fix) >>>
-    # def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
-    #     """
-    #     Completes deviation: Calculates headings, creates SMOOTHED connectors (QGIS native), finalizes layer updates.
-    #     (Refined V4 + QGIS Native Smoothing - Endpoint Fix)
-    #     """
-    #     log.info("Completing deviation calculation and finalizing paths (Refined V4 + QGIS Native Smoothing - Endpoint Fix)...")
-    #     project = QgsProject.instance()
-
-    #     # Layers Setup (Unchanged)
-    #     deviation_connectors_layer_name = "Deviation_Connectors_Final"
-    #     self._remove_layer_by_name(deviation_connectors_layer_name)
-    #     deviation_connectors_layer = QgsVectorLayer(f"LineString?crs={lines_layer.crs().authid()}", deviation_connectors_layer_name, "memory")
-    #     deviation_provider = deviation_connectors_layer.dataProvider()
-    #     provider_fields = [ QgsField("LineNum", QVariant.Int), QgsField("OriginalFID", QVariant.Int), QgsField("ObstacleID", QVariant.Int), QgsField("ChosenPeak", QVariant.String), QgsField("Status", QVariant.String) ] # Added Status field
-    #     deviation_provider.addAttributes(provider_fields)
-    #     deviation_connectors_layer.updateFields(); deviation_connectors_layer.startEditing()
-    #     unified_split_layer = None # Placeholder if needed for debug
-
-    #     # --- Smoothing Parameters (Tune these) ---
-    #     densify_factor = 5.0       # Smaller -> more points (e.g., radius / 5.0)
-    #     smooth_iterations = 3      # Number of smoothing passes
-    #     smooth_offset = 0.25       # Smoothing offset factor (0 to 0.5)
-    #     endpoint_tolerance = 0.5   # Max allowed endpoint shift in meters (Increased slightly for flexibility)
-    #     # --- End Smoothing Parameters ---
-
-    #     # --- Process Pre-calculated Results ---
-    #     try:
-    #         log.info("Processing pre-calculated conflicted lines and path options...")
-    #         # Ensure results are fetched correctly
-    #         results = self._process_conflicted_lines(lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode)
-    #         if not results: # Handle case where _process_conflicted_lines might fail
-    #              log.error("Failed to process conflicted lines. Aborting.")
-    #              return False # Or raise an exception
-
-    #         log.info(f"[COMPLETE] Received results. Path options keys: {list(results.get('path_options', {}).keys())}")
-    #         path_options = results['path_options']; chosen_paths = results['chosen_paths']
-    #         segments_to_add_outside = results['segments_to_add']
-    #         segments_to_delete_fids = results['segments_to_delete']
-    #         process_stats = results['process_stats']
-    #         self.path_options = path_options; self.chosen_paths = chosen_paths
-    #         log.info(f"[COMPLETE] Assigned self.path_options ({len(self.path_options)} lines), self.chosen_paths ({len(self.chosen_paths)} lines)")
-
-
-    #         log.debug("Caching attributes of original lines before deletion...")
-    #         original_feature_attributes = {}
-    #         if segments_to_delete_fids:
-    #             request = QgsFeatureRequest().setFilterFids(segments_to_delete_fids)
-    #             # Set default flags assuming attributes are okay
-    #             request.setFlags(QgsFeatureRequest.NoGeometry | QgsFeatureRequest.SubsetOfAttributes)
-    #             request.setSubsetOfAttributes(list(range(lines_layer.fields().count()))) # Request all attributes initially
-
-    #             # Check if essential field exists, reset flags if needed to fetch geometry
-    #             if lines_layer.fields().lookupField("LineNum") == -1: # <<< CORRECT CHECK
-    #                 log.warning("Essential 'LineNum' field missing, ensuring geometry is fetched for attribute caching.")
-    #                 request.setFlags(QgsFeatureRequest.NoFlags) # Reset flags to ensure geometry is fetched
-    #             # Add other essential field checks if needed
-
-    #             for feat in lines_layer.getFeatures(request):
-    #                 # Ensure attributes are fetched correctly, handle potential errors if flags were wrong
-    #                 attrs = feat.attributes()
-    #                 if not attrs and lines_layer.fields().lookupField("LineNum") != -1:
-    #                     log.warning(f"Failed to fetch attributes for FID {feat.id()} despite fields existing? Check request flags.")
-    #                     # Attempt to fetch again with geometry? Or assign NULLs? For now, assign NULLs.
-    #                     attrs = [NULL] * len(target_fields)
-
-    #                 original_feature_attributes[feat.id()] = attrs # Store fetched attributes
-
-    #             log.debug(f"Cached attributes for {len(original_feature_attributes)} original features.")
-    #         else: log.debug("No original lines marked for deletion.")
-
-    #         # Generate Connector Segments
-    #         log.info(f"Generating connector paths for {len(chosen_paths)} lines...")
-    #         segments_to_add_connectors = []; connectors_added_debug = 0
-    #         target_fields = lines_layer.fields(); lines_layer_provider = lines_layer.dataProvider()
-    #         fld_lsx = target_fields.lookupField("LowestSP_x"); fld_lsy = target_fields.lookupField("LowestSP_y")
-    #         fld_hsx = target_fields.lookupField("HighestSP_x"); fld_hsy = target_fields.lookupField("HighestSP_y")
-    #         coord_indices_valid = all(idx != -1 for idx in [fld_lsx, fld_lsy, fld_hsx, fld_hsy])
-    #         if not coord_indices_valid: log.error("SP coordinate fields missing. Cannot update connector coords.")
-
-    #         for line_num, choices in chosen_paths.items():
-    #             for choice in choices:
-    #                 original_fid = choice.get('original_fid')
-    #                 # Ensure original_attributes is a list of appropriate size
-    #                 if original_fid in original_feature_attributes:
-    #                     original_attributes = original_feature_attributes[original_fid]
-    #                 else:
-    #                     log.warning(f"No cached attributes for FID {original_fid} (L{line_num}). Using NULLs.");
-    #                     original_attributes = [NULL] * len(target_fields)
-
-    #                 connector_geom = None # Initialize connector geometry
-    #                 smoothing_status = "Not Attempted"
-
-    #                 try:
-    #                     obs_idx = choice['obstacle_id']; peak_label = choice['peak']
-    #                     entry_point = choice['entry_point']; peak_point = choice['peak_point']; exit_point = choice['exit_point']
-    #                     geom_outside1 = choice.get('geom_outside1'); geom_outside2 = choice.get('geom_outside2')
-
-    #                     # --- Validate crucial points ---
-    #                     if not all([entry_point, peak_point, exit_point]):
-    #                         log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Missing point data."); continue
-    #                     if not all(isinstance(p, QgsPointXY) for p in [entry_point, peak_point, exit_point]):
-    #                          log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Invalid point types."); continue
-
-    #                     log.debug(f"  [Smooth Prep] L{line_num} Obs{obs_idx}: Points: Entry({entry_point.x():.1f},{entry_point.y():.1f}), Peak({peak_point.x():.1f},{peak_point.y():.1f}), Exit({exit_point.x():.1f},{exit_point.y():.1f})")
-
-    #                     # --- Create Initial Sharp Connector ---
-    #                     initial_sharp_geom = QgsGeometry.fromPolylineXY([entry_point, peak_point, exit_point])
-    #                     if initial_sharp_geom.isEmpty() or not initial_sharp_geom.isGeosValid():
-    #                         log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Initial sharp connector geometry invalid. Skipping smoothing.")
-    #                         connector_geom = None
-    #                         smoothing_status = "Sharp Geom Invalid"
-    #                     else:
-    #                         # --- Attempt Smoothing ---
-    #                         smoothing_status = "Attempted"
-    #                         # a. Densify
-    #                         densify_distance = max(1.0, turn_radius_m / densify_factor)
-    #                         densified_geom = initial_sharp_geom.densifyByDistance(densify_distance)
-    #                         if densified_geom.isEmpty():
-    #                             log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Densification failed. Falling back to sharp.")
-    #                             connector_geom = initial_sharp_geom
-    #                             smoothing_status = "Densify Failed"
-    #                         else:
-    #                             log.debug(f"  [Smooth Step] L{line_num}, Obs{obs_idx}: Densified to {len(list(densified_geom.vertices()))} vertices (dist={densify_distance:.1f}m)")
-    #                             # b. Smooth
-    #                             smoothed_geom_candidate = densified_geom.smooth(smooth_iterations, smooth_offset)
-    #                             if smoothed_geom_candidate.isEmpty():
-    #                                 log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Smoothing resulted in empty geometry. Falling back to sharp.")
-    #                                 connector_geom = initial_sharp_geom
-    #                                 smoothing_status = "Smooth Failed (Empty)"
-    #                             else:
-    #                                 log.debug(f"  [Smooth Step] L{line_num}, Obs{obs_idx}: Smoothed geom length {smoothed_geom_candidate.length():.1f}m")
-
-    #                                 # c. Validate Endpoints (Revised Access)
-    #                                 start_ok = False; end_ok = False
-    #                                 try:
-    #                                     smooth_start_pt = QgsPointXY(smoothed_geom_candidate.vertexAt(0))
-    #                                     # --- FIX: Access last vertex explicitly ---
-    #                                     vertex_iter = smoothed_geom_candidate.vertices()
-    #                                     vertex_count = 0
-    #                                     last_v = None
-    #                                     while vertex_iter.hasNext():
-    #                                          last_v = vertex_iter.next()
-    #                                          vertex_count += 1
-    #                                     if last_v and vertex_count > 0:
-    #                                          smooth_end_pt = QgsPointXY(last_v)
-    #                                          # Log points being compared
-    #                                          log.debug(f"    Expected Exit: ({exit_point.x():.3f}, {exit_point.y():.3f})")
-    #                                          log.debug(f"    Smoothed End:  ({smooth_end_pt.x():.3f}, {smooth_end_pt.y():.3f})")
-
-    #                                          start_dist = entry_point.distance(smooth_start_pt)
-    #                                          end_dist = exit_point.distance(smooth_end_pt)
-    #                                          start_ok = start_dist <= endpoint_tolerance
-    #                                          end_ok = end_dist <= endpoint_tolerance
-    #                                          log.debug(f"  [Smooth Validate] L{line_num}, Obs{obs_idx}: Endpoint shift: Start={start_dist:.3f}m (OK={start_ok}), End={end_dist:.3f}m (OK={end_ok})")
-    #                                     else:
-    #                                          log.warning(f"  [Smooth Validate] Could not get last vertex for L{line_num}, Obs{obs_idx}")
-    #                                     # --- END FIX ---
-    #                                 except Exception as ep_err:
-    #                                     log.warning(f"  [Smooth Validate] Error checking endpoints L{line_num}, Obs{obs_idx}: {ep_err}")
-
-    #                                 # d. Validate Obstacle Intersection (Temporarily Disabled)
-    #                                 obstacle_ok = True # Assume OK for now
-    #                                 # TODO: Re-enable obstacle validation after confirming endpoint fix
-    #                                 try:
-    #                                     if 0 <= obs_idx < len(obstacle_geometries):
-    #                                         specific_obstacle_buffer = obstacle_geometries[obs_idx]
-    #                                         intersects = smoothed_geom_candidate.intersects(specific_obstacle_buffer)
-    #                                         obstacle_ok = not intersects
-    #                                         log.debug(f"  [Smooth Validate] L{line_num}, Obs{obs_idx}: Intersects obstacle buffer: {intersects} (OK={obstacle_ok})")
-    #                                     else:
-    #                                         log.error(f"  [Smooth Validate] Invalid obs_idx {obs_idx} for L{line_num}. Cannot validate intersection.")
-    #                                         obstacle_ok = False # Fail safe
-    #                                 except Exception as obs_err:
-    #                                     log.warning(f"  [Smooth Validate] Error checking intersection L{line_num}, Obs{obs_idx}: {obs_err}")
-
-    #                                 if start_ok and end_ok and obstacle_ok:
-    #                                     log.info(f"  [Smooth Success] L{line_num}, Obs{obs_idx}: Using smoothed geometry.")
-    #                                     connector_geom = smoothed_geom_candidate
-    #                                     # Check if obstacle_ok was assumed True (meaning the check was skipped)
-    #                                     obstacle_check_skipped = obstacle_ok is True # This condition means the check was skipped
-    #                                     smoothing_status = "Success (Obstacle Check Skipped)" if obstacle_check_skipped else "Success" # <<< CORRECTED HERE
-    #                                 else:
-    #                                     log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Validation failed (EndpointOK={start_ok and end_ok}, ObstacleOK={obstacle_ok}). Falling back to sharp geometry.")
-    #                                     connector_geom = initial_sharp_geom # Fallback
-    #                                     smoothing_status = "Validation Failed"
-    #                     # --- End Smoothing Attempt ---
-
-    #                     # --- Add Feature if Geometry is Valid ---
-    #                     if connector_geom and not connector_geom.isEmpty():
-    #                         # Calculate Heading (Unchanged)
-    #                         connector_heading = None
-    #                         try:
-    #                             if len(list(connector_geom.vertices())) >= 2:
-    #                                  connector_heading = self._calculate_segment_heading(connector_geom, start=True)
-    #                         except: pass
-
-    #                         # Add Feature to Main Layer (Unchanged)
-    #                         # ... (connector_feat_main setup and attribute setting) ...
-    #                         connector_feat_main = QgsFeature(target_fields)
-    #                         connector_feat_main.setGeometry(connector_geom)
-    #                         connector_feat_main.setAttributes(original_attributes) # Copy original line attributes
-    #                         connector_feat_main["Length_m"] = connector_geom.length()
-    #                         connector_feat_main["is_line_merged"] = True # Part of merged line
-    #                         connector_feat_main["is_deviation_created"] = True # Deviation applied
-    #                         connector_feat_main["Heading"] = connector_heading if connector_heading is not None else NULL
-    #                         fld_seg_type_idx = target_fields.lookupField("SegmentType"); fld_linenum_idx = target_fields.lookupField("LineNum")
-    #                         if fld_seg_type_idx != -1: connector_feat_main[fld_seg_type_idx] = "Connector" # Mark as connector
-    #                         if fld_linenum_idx != -1: connector_feat_main[fld_linenum_idx] = line_num # Associate with original line
-
-    #                         # Coordinate Update (Unchanged)
-    #                         # ... (update LowestSP_x/y, HighestSP_x/y) ...
-    #                         if coord_indices_valid:
-    #                             try:
-    #                                 if connector_geom.type() == QgsWkbTypes.LineGeometry:
-    #                                     points = connector_geom.asPolyline()
-    #                                     if len(points) >= 2:
-    #                                         start_v_xy = points[0]; end_v_xy = points[-1]
-    #                                         connector_feat_main.setAttribute(fld_lsx, start_v_xy.x()); connector_feat_main.setAttribute(fld_lsy, start_v_xy.y())
-    #                                         connector_feat_main.setAttribute(fld_hsx, end_v_xy.x()); connector_feat_main.setAttribute(fld_hsy, end_v_xy.y())
-    #                                     else: log.warning(f"Cannot update coords Connector L{line_num}: < 2 points.")
-    #                                 else: log.warning(f"Cannot update coords Connector L{line_num}: Not LineString.")
-    #                             except Exception as update_ex: log.warning(f"Error updating coords Connector L{line_num}: {update_ex}")
-
-    #                         segments_to_add_connectors.append(connector_feat_main)
-
-    #                         # Add Feature to DEBUG Layer (Unchanged)
-    #                         debug_connector_feat = QgsFeature(deviation_connectors_layer.fields())
-    #                         debug_connector_feat.setGeometry(connector_geom)
-    #                         debug_connector_feat.setAttributes([line_num, original_fid, obs_idx, peak_label, smoothing_status]) # Add status
-    #                         deviation_provider.addFeature(debug_connector_feat)
-    #                         connectors_added_debug += 1
-    #                     else:
-    #                          log.warning(f"  [Smooth Skip] L{line_num}, Obs{obs_idx}: Final connector geometry invalid or empty. No connector added.")
-
-    #                 except Exception as conn_err:
-    #                     log.error(f"Error creating connector L{line_num}, Obs{obs_idx}: {conn_err}")
-    #                     # Add error status to debug layer
-    #                     debug_connector_feat = QgsFeature(deviation_connectors_layer.fields())
-    #                     debug_connector_feat.setGeometry(QgsGeometry())
-    #                     debug_connector_feat.setAttributes([line_num, original_fid, obs_idx, peak_label, f"Error: {conn_err}"])
-    #                     deviation_provider.addFeature(debug_connector_feat)
-
-    #         log.info(f"Generated {len(segments_to_add_connectors)} connector features for main layer.")
-    #         log.info(f"Generated {connectors_added_debug} connector features for debug layer.")
-
-    #         # --- Finalize Layer Updates ---
-    #         # (Commit/Add logic unchanged)
-    #         # ... (add features, delete originals, commit layers, display table) ...
-    #         if not deviation_connectors_layer.commitChanges(): log.error(f"Failed commit debug connectors")
-    #         if not lines_layer.isEditable():
-    #             if not lines_layer.startEditing(): raise RuntimeError("Editing failed.")
-    #         if segments_to_delete_fids:
-    #             unique_fids_to_delete = list(set(segments_to_delete_fids))
-    #             log.info(f"Deleting {len(unique_fids_to_delete)} original lines from '{lines_layer.name()}'.")
-    #             if not lines_layer_provider.deleteFeatures(unique_fids_to_delete): log.error(f"Failed delete original: {lines_layer_provider.lastError()}")
-    #             else: log.debug("Success delete original features.")
-    #         if segments_to_add_outside:
-    #             log.info(f"Adding {len(segments_to_add_outside)} 'Outside' segments to '{lines_layer.name()}'.")
-    #             success, added_outside = lines_layer_provider.addFeatures(segments_to_add_outside, QgsFeatureSink.FastInsert)
-    #             if not success: log.error(f"Failed add 'Outside': {lines_layer_provider.lastError()}")
-    #             else: log.debug(f"Success add {len(added_outside)} 'Outside' segments.")
-    #         if segments_to_add_connectors:
-    #             log.info(f"Adding {len(segments_to_add_connectors)} 'Connector' segments to '{lines_layer.name()}'.")
-    #             success, added_connectors = lines_layer_provider.addFeatures(segments_to_add_connectors, QgsFeatureSink.FastInsert)
-    #             if not success: log.error(f"Failed add 'Connector': {lines_layer_provider.lastError()}")
-    #             else: log.debug(f"Success add {len(added_connectors)} 'Connector' segments.")
-
-    #         # Commit the main lines layer
-    #         if lines_layer.isEditable():
-    #              if not lines_layer.commitChanges():
-    #                   log.error(f"CRITICAL: Failed commit lines layer: {lines_layer.commitErrors()}"); QMessageBox.critical(self, "Commit Error", "Failed save lines layer.")
-    #              else: log.info("Successfully committed changes to lines layer.")
-
-    #         # Add the debug connectors layer if it has features
-    #         project = QgsProject.instance()
-    #         if deviation_connectors_layer.featureCount() > 0:
-    #              project.addMapLayer(deviation_connectors_layer)
-    #              try:
-    #                 # Style the debug layer based on Smoothing Status
-    #                 categories = []
-    #                 symbols = {
-    #                     "Success": QgsLineSymbol.createSimple({'color': '#00DD00', 'width': '0.7'}), # Green
-    #                     "Success (Obstacle Check Skipped)": QgsLineSymbol.createSimple({'color': '#90EE90', 'width': '0.7', 'line_style': 'dash'}), # Light Green Dashed
-    #                     "Validation Failed": QgsLineSymbol.createSimple({'color': '#FFA500', 'width': '0.7', 'line_style': 'dash'}), # Orange Dashed
-    #                     "Sharp Geom Invalid": QgsLineSymbol.createSimple({'color': '#FF0000', 'width': '0.7', 'line_style': 'dot'}), # Red Dotted
-    #                     "Densify Failed": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dash'}), # Magenta Dashed
-    #                     "Smooth Failed (Empty)": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dot'}), # Magenta Dotted
-    #                     "Not Attempted": QgsLineSymbol.createSimple({'color': '#888888', 'width': '0.5'}), # Grey
-    #                 }
-    #                 default_symbol = QgsLineSymbol.createSimple({'color': '#FF0000', 'width': '1.0', 'line_style': 'dashdot'}) # Default for errors
-
-    #                 status_values = set()
-    #                 for f in deviation_connectors_layer.getFeatures():
-    #                     status_val = f['Status']
-    #                     if status_val and isinstance(status_val, str):
-    #                        if status_val.startswith("Error:"): status_values.add("Error")
-    #                        else: status_values.add(status_val)
-    #                     elif status_val is None or status_val == NULL:
-    #                          status_values.add("Unknown/NULL")
-
-    #                 # Create categories for existing statuses
-    #                 for status in status_values:
-    #                     sym = symbols.get(status, default_symbol)
-    #                     # Use status itself as the value for categorization unless it's NULL
-    #                     cat_value = status if status != "Unknown/NULL" else NULL
-    #                     categories.append(QgsRendererCategory(cat_value, sym, status)) # Label is the descriptive status
-
-    #                 renderer = QgsCategorizedSymbolRenderer("Status", categories)
-    #                 deviation_connectors_layer.setRenderer(renderer)
-    #                 deviation_connectors_layer.triggerRepaint()
-
-    #              except Exception as style_ex: log.warning(f"Could not style debug connector layer: {style_ex}")
-    #         else: log.warning("No deviation connector paths generated for debug layer.")
-
-    #         # Display path options table (Unchanged)
-    #         # ... (code to display table) ...
-    #         if hasattr(self, 'path_options') and self.path_options:
-    #              log.info(f"[DISPLAY] Calling display table. self.path_options keys: {list(self.path_options.keys())}")
-    #              if not hasattr(self, 'chosen_paths'): self.chosen_paths = chosen_paths
-    #              self._display_path_options_table()
-    #         else: log.warning("No path options recorded.")
-
-    #         return True
-
-    #     except Exception as e:
-    #          log.exception(f"Error during complete deviation calculation (QGIS Smooth - Endpoint Fix): {e}")
-    #          if lines_layer.isEditable(): log.info("Rolling back lines layer."); lines_layer.rollBack()
-    #          if deviation_connectors_layer.isEditable(): deviation_connectors_layer.rollBack()
-    #          if unified_split_layer and unified_split_layer.isEditable(): unified_split_layer.rollBack()
-    #          return False
-    # # <<< Function End: _complete_deviation_calculation >>>
-
 
     # <<< Function Start: _complete_deviation_calculation (Merging Version - Final) >>>
     def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
@@ -5155,48 +4691,48 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                       log.info("Successfully committed changes to lines layer.")
                       edit_started_here = False # Mark commit as successful
 
-            # --- Finalize Debug Layer ---
-            if deviation_connectors_layer and deviation_provider:
-                if not deviation_connectors_layer.commitChanges():
-                     log.error(f"Failed commit debug connectors: {deviation_connectors_layer.commitErrors()}")
-                if deviation_connectors_layer.featureCount() > 0:
-                     project.addMapLayer(deviation_connectors_layer)
-                     try:
-                        # Style the debug layer based on Smoothing Status
-                        categories = []
-                        symbols = { # Define symbols for each status
-                            "Success": QgsLineSymbol.createSimple({'color': '#00DD00', 'width': '0.7'}), # Green
-                            "Success (Obstacle Check Skipped)": QgsLineSymbol.createSimple({'color': '#90EE90', 'width': '0.7', 'line_style': 'dash'}),
-                            "Validation Failed": QgsLineSymbol.createSimple({'color': '#FFA500', 'width': '0.7', 'line_style': 'dash'}),
-                            "Sharp Geom Invalid": QgsLineSymbol.createSimple({'color': '#FF0000', 'width': '0.7', 'line_style': 'dot'}),
-                            "Densify Failed": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dash'}),
-                            "Smooth Failed (Empty)": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dot'}),
-                            "Not Attempted": QgsLineSymbol.createSimple({'color': '#888888', 'width': '0.5'}),
-                            "Error": QgsLineSymbol.createSimple({'color': '#AA0000', 'width': '1.0', 'line_style': 'dashdot'}), # Dark Red for Errors
-                        }
-                        default_symbol = QgsLineSymbol.createSimple({'color': '#555555', 'width': '0.5', 'line_style': 'dot'}) # Default Grey Dotted
+            # # --- Finalize Debug Layer ---
+            # if deviation_connectors_layer and deviation_provider:
+            #     if not deviation_connectors_layer.commitChanges():
+            #          log.error(f"Failed commit debug connectors: {deviation_connectors_layer.commitErrors()}")
+            #     if deviation_connectors_layer.featureCount() > 0:
+            #          project.addMapLayer(deviation_connectors_layer)
+            #          try:
+            #             # Style the debug layer based on Smoothing Status
+            #             categories = []
+            #             symbols = { # Define symbols for each status
+            #                 "Success": QgsLineSymbol.createSimple({'color': '#00DD00', 'width': '0.7'}), # Green
+            #                 "Success (Obstacle Check Skipped)": QgsLineSymbol.createSimple({'color': '#90EE90', 'width': '0.7', 'line_style': 'dash'}),
+            #                 "Validation Failed": QgsLineSymbol.createSimple({'color': '#FFA500', 'width': '0.7', 'line_style': 'dash'}),
+            #                 "Sharp Geom Invalid": QgsLineSymbol.createSimple({'color': '#FF0000', 'width': '0.7', 'line_style': 'dot'}),
+            #                 "Densify Failed": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dash'}),
+            #                 "Smooth Failed (Empty)": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dot'}),
+            #                 "Not Attempted": QgsLineSymbol.createSimple({'color': '#888888', 'width': '0.5'}),
+            #                 "Error": QgsLineSymbol.createSimple({'color': '#AA0000', 'width': '1.0', 'line_style': 'dashdot'}), # Dark Red for Errors
+            #             }
+            #             default_symbol = QgsLineSymbol.createSimple({'color': '#555555', 'width': '0.5', 'line_style': 'dot'}) # Default Grey Dotted
 
-                        status_values = set()
-                        for f in deviation_connectors_layer.getFeatures():
-                            status_val = f['Status']
-                            if status_val and isinstance(status_val, str):
-                               if status_val.startswith("Error:"): status_values.add("Error") # Group all errors
-                               else: status_values.add(status_val)
-                            elif status_val is None or status_val == NULL:
-                                 status_values.add("Unknown/NULL")
+            #             status_values = set()
+            #             for f in deviation_connectors_layer.getFeatures():
+            #                 status_val = f['Status']
+            #                 if status_val and isinstance(status_val, str):
+            #                    if status_val.startswith("Error:"): status_values.add("Error") # Group all errors
+            #                    else: status_values.add(status_val)
+            #                 elif status_val is None or status_val == NULL:
+            #                      status_values.add("Unknown/NULL")
 
-                        # Create categories only for statuses that actually occurred
-                        for status in status_values:
-                            sym = symbols.get(status, default_symbol) # Use specific symbol or fallback
-                            cat_value = status if status != "Unknown/NULL" else NULL
-                            categories.append(QgsRendererCategory(cat_value, sym, status))
+            #             # Create categories only for statuses that actually occurred
+            #             for status in status_values:
+            #                 sym = symbols.get(status, default_symbol) # Use specific symbol or fallback
+            #                 cat_value = status if status != "Unknown/NULL" else NULL
+            #                 categories.append(QgsRendererCategory(cat_value, sym, status))
 
-                        renderer = QgsCategorizedSymbolRenderer("Status", categories)
-                        deviation_connectors_layer.setRenderer(renderer)
-                        deviation_connectors_layer.triggerRepaint()
+            #             # renderer = QgsCategorizedSymbolRenderer("Status", categories)
+            #             # deviation_connectors_layer.setRenderer(renderer)
+            #             # deviation_connectors_layer.triggerRepaint()
 
-                     except Exception as style_ex: log.warning(f"Could not style debug connector layer: {style_ex}")
-                else: log.warning("No deviation connector paths generated for debug layer.")
+            #          except Exception as style_ex: log.warning(f"Could not style debug connector layer: {style_ex}")
+            #     else: log.warning("No deviation connector paths generated for debug layer.")
 
             # --- Display Path Options Table ---
             if hasattr(self, 'path_options') and self.path_options:
