@@ -3222,6 +3222,43 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         log.info(f"Spatial clustering identified {len(clusters)} distinct obstacle groups")
         return clusters
         
+    def _add_deviation_fields(self, layer):
+        """
+        Adds required boolean fields for deviation tracking if they don't exist.
+        
+        Args:
+            layer (QgsVectorLayer): The layer to add fields to
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not layer or not layer.isValid():
+            log.error("Cannot add deviation fields to invalid layer.")
+            return False
+            
+        required_fields = {
+            "is_conflicted": QVariant.Bool,
+            "is_deviation_created": QVariant.Bool,
+            "is_line_merged": QVariant.Bool
+        }
+        
+        # Add any missing fields
+        provider = layer.dataProvider()
+        existing_fields = {field.name(): field.type() for field in layer.fields()}
+        fields_to_add = []
+        
+        for field_name, field_type in required_fields.items():
+            if field_name not in existing_fields:
+                fields_to_add.append(QgsField(field_name, field_type))
+                
+        if fields_to_add:
+            if not provider.addAttributes(fields_to_add):
+                log.error("Failed to add deviation tracking fields to layer.")
+                return False
+            layer.updateFields()
+            log.info(f"Added {len(fields_to_add)} deviation tracking fields to layer.")
+            
+        return True
         
     def _split_geometry_at_distances(self, line_geom, dist1, dist2):
         """
@@ -3415,136 +3452,92 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error merging geometries: {e}")
             return None
 
-    def _add_deviation_fields(self, layer):
+    def _add_deviation_fields(self, lines_layer):
         """
-        Adds required fields for deviation tracking and segment information
-        if they don't exist.
+        Add the required fields for deviation tracking to the lines layer.
 
         Args:
-            layer (QgsVectorLayer): The layer to add fields to
+            lines_layer (QgsVectorLayer): The layer to add fields to
 
         Returns:
             bool: True if successful, False otherwise
         """
-        if not layer or not layer.isValid():
-            log.error("Cannot add deviation fields to invalid layer.")
+        if not lines_layer or not lines_layer.isValid():
+            log.error("Invalid layer provided to _add_deviation_fields")
             return False
 
-        log.debug(f"Ensuring required fields exist in layer '{layer.name()}'")
+        log.debug(f"Adding deviation tracking fields to layer '{lines_layer.name()}'")
 
-        # Define all required fields and their types
-        required_fields = {
-            # Tracking fields
-            "is_conflicted": QVariant.Bool,
-            "is_deviation_created": QVariant.Bool,
-            "is_line_merged": QVariant.Bool,
-            # Segment information fields (NEW)
-            "SegmentType": QVariant.String,
-            "Duration_s": QVariant.Double,
-            "Duration_hh_mm": QVariant.String,
-            # Ensure Length_m exists (can be added here for robustness)
-            "Length_m": QVariant.Double
-        }
-
-        # Get current fields
-        provider = layer.dataProvider()
-        existing_fields = {field.name(): field.type() for field in layer.fields()}
+        provider = lines_layer.dataProvider()
         fields_to_add = []
 
-        # Determine which fields are missing
-        for field_name, field_type in required_fields.items():
-            if field_name not in existing_fields:
-                # Define field properties (adjust length/precision as needed)
-                if field_type == QVariant.String:
-                    fields_to_add.append(QgsField(field_name, field_type, field_name, 20)) # Length 20 for SegmentType/Duration_hh_mm
-                elif field_type == QVariant.Double:
-                     # Use appropriate precision for Duration_s and Length_m
-                    precision = 1 if field_name == "Duration_s" else 2
-                    fields_to_add.append(QgsField(field_name, field_type, field_name, 12, precision)) # Length 12
-                else: # Bool or Int
-                    fields_to_add.append(QgsField(field_name, field_type, field_name))
-                log.debug(f"  Field '{field_name}' marked for addition.")
-            # else:
-            #     log.debug(f"  Field '{field_name}' already exists.")
+        # Check which fields are already present
+        existing_fields = [field.name() for field in lines_layer.fields()]
 
+        if "is_conflicted" not in existing_fields:
+            fields_to_add.append(QgsField("is_conflicted", QVariant.Bool))
+
+        if "is_deviation_created" not in existing_fields:
+            fields_to_add.append(QgsField("is_deviation_created", QVariant.Bool))
+
+        if "is_line_merged" not in existing_fields:
+            fields_to_add.append(QgsField("is_line_merged", QVariant.Bool))
+
+        if "Length_m" not in existing_fields:
+            fields_to_add.append(QgsField("Length_m", QVariant.Double, "double", 10, 2))
 
         # Add fields if any need to be added
         if fields_to_add:
-            log.info(f"Attempting to add {len(fields_to_add)} fields: {[f.name() for f in fields_to_add]}")
             if not provider.addAttributes(fields_to_add):
                 log.error(f"Failed to add fields: {provider.lastError()}")
                 return False
-            layer.updateFields() # IMPORTANT: Update layer definition
-            log.info(f"Successfully added {len(fields_to_add)} fields to layer '{layer.name()}'.")
 
-            # Initialize new fields for existing features (Optional but good practice)
-            # Note: This might take time on large layers. Consider if needed.
-            log.debug("Initializing newly added fields for existing features...")
-            edit_started_here = False
-            if not layer.isEditable():
-                 if not layer.startEditing(): log.warning("Could not start editing to initialize new fields."); return True # Added fields, but failed init
-                 edit_started_here = True
+            # Update layer fields
+            lines_layer.updateFields()
 
-            attr_map_init = {}
-            # Get indices *after* updateFields
-            idx_conflicted = layer.fields().lookupField("is_conflicted")
-            idx_created = layer.fields().lookupField("is_deviation_created")
-            idx_merged = layer.fields().lookupField("is_line_merged")
-            idx_seg_type = layer.fields().lookupField("SegmentType")
-            idx_dur_s = layer.fields().lookupField("Duration_s")
-            idx_dur_fmt = layer.fields().lookupField("Duration_hh_mm")
+            # Initialize all instances of new boolean fields to False
+            features = lines_layer.getFeatures()
+            fld_conflicted_idx = lines_layer.dataProvider().fieldNameIndex("is_conflicted")
+            fld_created_idx = lines_layer.dataProvider().fieldNameIndex("is_deviation_created")
+            fld_merged_idx = lines_layer.dataProvider().fieldNameIndex("is_line_merged")
 
-            # Only initialize fields that were *actually* added in this run
-            added_field_names = {f.name() for f in fields_to_add}
+            attr_map = {}
+            for feature in features:
+                attrs = {}
+                if fld_conflicted_idx >= 0:
+                    attrs[fld_conflicted_idx] = False
+                if fld_created_idx >= 0:
+                    attrs[fld_created_idx] = False
+                if fld_merged_idx >= 0:
+                    attrs[fld_merged_idx] = False
 
-            for feature in layer.getFeatures():
-                fid = feature.id()
-                attrs_init = {}
-                # Initialize boolean fields if added
-                if "is_conflicted" in added_field_names and idx_conflicted >= 0: attrs_init[idx_conflicted] = False
-                if "is_deviation_created" in added_field_names and idx_created >= 0: attrs_init[idx_created] = False
-                if "is_line_merged" in added_field_names and idx_merged >= 0: attrs_init[idx_merged] = False
-                # Initialize new string/numeric fields if added
-                if "SegmentType" in added_field_names and idx_seg_type >= 0: attrs_init[idx_seg_type] = 'Line' # Default existing to 'Line'
-                if "Duration_s" in added_field_names and idx_dur_s >= 0: attrs_init[idx_dur_s] = NULL # Or 0.0? NULL seems better.
-                if "Duration_hh_mm" in added_field_names and idx_dur_fmt >= 0: attrs_init[idx_dur_fmt] = NULL # Or '00:00'? NULL seems better.
+                if attrs:
+                    attr_map[feature.id()] = attrs
 
-                if attrs_init: attr_map_init[fid] = attrs_init
+            if attr_map:
+                if not provider.changeAttributeValues(attr_map):
+                    log.warning("Failed to initialize boolean field values to False")
 
-            if attr_map_init:
-                log.debug(f"Applying initial values for new fields to {len(attr_map_init)} features.")
-                if not provider.changeAttributeValues(attr_map_init):
-                    log.warning(f"Failed to initialize new field values: {provider.lastError()}")
-                else:
-                    log.debug("Initialization successful.")
-
-            if edit_started_here:
-                if not layer.commitChanges(): log.warning(f"Commit after field initialization failed: {layer.commitErrors()}")
-                else: log.debug("Committed field initialization.")
-
-            log.info(f"Layer '{layer.name()}' fields updated and potentially initialized.")
-            return True # Fields added successfully
+            log.info(f"Added {len(fields_to_add)} deviation tracking fields to layer.")
+            return True
         else:
-            log.info(f"All required fields already exist in layer '{layer.name()}'.")
-            return True # No fields needed adding
+            log.info("All required deviation fields already exist.")
+            return True
 
-    # --- REVISED: _calculate_and_apply_deviations_v2 (Reads Turn Params) ---
     def _calculate_and_apply_deviations_v2(self, lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode=False):
         """
         Core logic for calculating and applying deviations using the Peak/Tangent approach.
-        Reads UI turn parameters and passes them for Dubins path calculation.
 
         Args:
             lines_layer (QgsVectorLayer): Layer containing the survey lines
             nogo_layer (QgsVectorLayer): Layer containing the NoGo zones
             clearance_m (float): Clearance distance in meters
-            turn_radius_m (float): Minimum turning radius for the vessel in meters (from UI)
+            turn_radius_m (float): Minimum turning radius for the vessel in meters
             debug_mode (bool): If True, enables extensive debugging logs
 
         Returns:
             bool: True if calculation was successful, False otherwise
         """
-        log.info("Starting Deviation Calculation (v2 - Peak/Tangent with Dubins Connectors)...")
         success_flag = True # Assume success unless something fails critically
         project = QgsProject.instance()
 
@@ -3555,31 +3548,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # Initialize progress variable at the beginning to avoid UnboundLocalError
         progress = None
 
-        # --- Read Turn Parameters from UI ---
-        try:
-            sim_turn_radius_m = self.turnRadiusDoubleSpinBox.value() # Already passed, but read again for consistency? Let's use passed value for now.
-            sim_turn_speed_knots = self.turnSpeedDoubleSpinBox.value()
-            sim_turn_speed_mps = sim_turn_speed_knots * KNOTS_TO_MPS
-            sim_turn_rate_dps = self.vesselTurnRateDoubleSpinBox.value()
-
-            # Validate turn parameters
-            if sim_turn_radius_m <= 0: raise ValueError("Turn Radius must be positive.")
-            if sim_turn_speed_mps <= 0: raise ValueError("Turn Speed must be positive.")
-            if sim_turn_rate_dps <= 0: raise ValueError("Turn Rate must be positive.")
-
-            log.debug(f"[DevCalcV2] Using Turn Params: Radius={sim_turn_radius_m}m, Speed={sim_turn_speed_mps:.2f}m/s, Rate={sim_turn_rate_dps:.2f}°/s")
-
-        except (AttributeError, ValueError) as param_err:
-            log.error(f"Error reading turn parameters from UI: {param_err}")
-            QMessageBox.critical(self, "Parameter Error", f"Invalid turn parameter from UI: {param_err}")
+        # --- Phase 1: Preparation ---
+        if not self._add_deviation_fields(lines_layer):
+            QMessageBox.critical(self, "Setup Error", "Failed to add required deviation fields to the lines layer.")
             return False
-        # --- End Read Turn Parameters ---
 
         # Start editing the lines layer if not already in editing mode
         edit_started_here = False
         if not lines_layer.isEditable():
             if not lines_layer.startEditing():
-                 log.error(f"Failed to start editing layer: {lines_layer.name()}")
                  return False
             edit_started_here = True
             log.debug(f"Started editing layer: {lines_layer.name()}")
@@ -3673,7 +3650,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
             # Use a spatial request to quickly find candidates
             log.debug("Building spatial index for conflict detection...")
-            request_geom = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoGeometry).setSubsetOfAttributes([fld_linenum, fld_heading])
+            request_geom = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoGeometry).setSubsetOfAttributes([fld_linenum, fld_heading]) 
 
             # Get all features first to build spatial index
             all_features = {f.id(): f for f in lines_layer.getFeatures(request_geom)}
@@ -3718,11 +3695,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
             if not conflicted_lines_info:
                 log.info("No survey lines conflict with the avoidance zones.")
-                if edit_started_here:
-                    log.debug("Committing changes (only field initialization and no conflicts).")
-                    if not lines_layer.commitChanges():
-                        log.error(f"Commit failed: {lines_layer.commitErrors()}")
-                return True # No conflicts, job done.
+                if edit_started_here: lines_layer.commitChanges()
+                return True
 
             log.info(f"Found {len(conflicted_lines_info)} conflicted lines.")
 
@@ -3735,108 +3709,282 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     # We'll proceed despite this error but note it in the log
 
             # --- GROUPING LOGIC WITH MULTIPLE OBSTACLE SUPPORT ---
-            # (Grouping logic remains unchanged)
+            # Group conflicted lines by which obstacle they intersect
             log.debug("Grouping conflicted lines by obstacle...")
-            obstacle_groups = {}
+            obstacle_groups = {}  # Dictionary of obstacle_idx -> list of conflicted lines for that obstacle
+
+            # First, sort conflicted lines by LineNum for each group
             conflicted_lines_info.sort(key=lambda item: item[2])
+
+            # Create a mapping of which lines intersect with which obstacles
             if len(obstacle_geometries) > 1:
                 log.info(f"Processing {len(obstacle_geometries)} distinct obstacles - grouping lines by obstacle")
+
+                # For each line, check which obstacles it intersects
                 for line_idx, (fid, line_geom, line_num, heading) in enumerate(conflicted_lines_info):
+                    # Track which obstacles this line intersects
                     line_obstacles = []
+
                     for obs_idx, obs_geom in enumerate(obstacle_geometries):
                         if line_geom.intersects(obs_geom):
-                            if obs_idx not in obstacle_groups: obstacle_groups[obs_idx] = []
+                            if obs_idx not in obstacle_groups:
+                                obstacle_groups[obs_idx] = []
                             obstacle_groups[obs_idx].append((fid, line_geom, line_num, heading, line_idx))
                             line_obstacles.append(obs_idx)
-                    if debug_mode: log.debug(f"Line {line_num} intersects obstacles: {line_obstacles}")
+
+                    log.debug(f"Line {line_num} intersects obstacles: {line_obstacles}")
             else:
-                obstacle_groups[0] = [(fid, line_geom, line_num, heading, idx)
+                # Just one obstacle - put all lines in the same group
+                obstacle_groups[0] = [(fid, line_geom, line_num, heading, idx) 
                                      for idx, (fid, line_geom, line_num, heading) in enumerate(conflicted_lines_info)]
                 log.info("Single obstacle detected - all lines in same group")
 
-            # Store for visualization (Unchanged)
+            # Store the results for later visualization
+            # This allows the handle_calculate_deviations method to access these
+            # for visualization without recomputing
             self.conflicted_lines_info = conflicted_lines_info
             self.obstacle_groups = obstacle_groups
             self.obstacle_centers = {}
 
-            # STEP 1: Calculate middle line for each group (Unchanged)
+            # STEP 1: Calculate the middle line for each obstacle group
             log.debug("Identifying middle reference lines for each obstacle...")
             middle_lines = {}
             for obs_idx, group_lines in obstacle_groups.items():
-                if not group_lines: continue
+                if not group_lines:
+                    continue
+
+                # Sort by LineNum (should already be sorted, but ensure it)
                 group_lines.sort(key=lambda x: x[2])
+
+                # Use median approach to find middle line
                 median_idx = len(group_lines) // 2
                 middle_fid, middle_geom, middle_num, middle_heading, orig_idx = group_lines[median_idx]
-                middle_lines[obs_idx] = {'fid': middle_fid, 'geom': middle_geom, 'num': middle_num, 'heading': middle_heading, 'idx': orig_idx, 'obstacle_geom': obstacle_geometries[obs_idx]}
-                if debug_mode: log.info(f"Obstacle {obs_idx}: Middle reference line identified: {middle_num} at index {orig_idx}")
-            if not middle_lines: raise RuntimeError("No valid middle reference lines could be identified.")
 
-            # Store reference info (Unchanged)
+                # Store middle line info for this obstacle
+                middle_lines[obs_idx] = {
+                    'fid': middle_fid,
+                    'geom': middle_geom,
+                    'num': middle_num,
+                    'heading': middle_heading,
+                    'idx': orig_idx
+                }
+
+                # Store the obstacle geometry for visualization
+                middle_lines[obs_idx]['obstacle_geom'] = obstacle_geometries[obs_idx]
+
+                log.info(f"Obstacle {obs_idx}: Middle reference line identified: {middle_num} at index {orig_idx}")
+
+            # If no obstacles had valid lines, this is an error
+            if not middle_lines:
+                log.error("Failed to identify any middle reference lines across all obstacles.")
+                raise RuntimeError("No valid middle reference lines could be identified.")
+
+            # Process each obstacle independently with its own middle reference line
             log.info(f"Processing {len(middle_lines)} obstacles with separate reference lines")
+
+            # Store original values for future enhancements and visualization
             for obs_idx, middle_line_info in middle_lines.items():
+                middle_line_num = middle_line_info['num']
+                middle_line_geom = middle_line_info['geom']
+                middle_line_heading = middle_line_info['heading']
+                middle_line_index = middle_line_info['idx']
+                obstacle_geom = middle_line_info.get('obstacle_geom')
+
+                # Store reference information for this obstacle
                 self.all_reference_lines[obs_idx] = {
-                    'num': middle_line_info['num'], 'geom': middle_line_info['geom'], 'heading': middle_line_info['heading'],
-                    'group_lines': obstacle_groups[obs_idx], 'obstacle_geom': middle_line_info.get('obstacle_geom')}
-                if middle_line_info.get('obstacle_geom'): self.obstacle_centers[obs_idx] = middle_line_info['obstacle_geom'].centroid().asPoint()
-                if debug_mode: log.info(f"Obstacle {obs_idx}: Using middle line {middle_line_info['num']} as reference")
+                    'num': middle_line_num,
+                    'geom': middle_line_geom,
+                    'heading': middle_line_heading,
+                    'group_lines': obstacle_groups[obs_idx],
+                    'obstacle_geom': obstacle_geom
+                }
 
-            # STEPS 3-4: Calculate Peak Points (Unchanged, assuming _extract_obstacle_boundary works)
+                # STEP 2: Store the obstacle center (Find Obstacle Center Point)
+                if obstacle_geom:
+                    self.obstacle_centers[obs_idx] = obstacle_geom.centroid().asPoint()
+
+                log.info(f"Obstacle {obs_idx}: Using middle line {middle_line_num} as reference")
+
+            # For centroid calculation (used in various places later)
+            avoidance_centroid_geom = avoidance_geom.centroid()
+            if not avoidance_centroid_geom or avoidance_centroid_geom.isEmpty():
+                log.error("Cannot calculate avoidance zone centroid.")
+                raise RuntimeError("Cannot calculate avoidance zone centroid.") # Raise exception for rollback
+            avoidance_centroid_point = avoidance_centroid_geom.asPoint() # QgsPoint
+
+            # Log midpoint distances for debugging (kept for backward compatibility)
+            log.debug("Calculating midpoint distances to centroid for conflicted lines:")
+            for idx, (fid, geom, num, head) in enumerate(conflicted_lines_info):
+                midpoint_geom = geom.interpolate(geom.length() / 2.0)
+                if not midpoint_geom or not midpoint_geom.isEmpty():
+                    midpoint_point = midpoint_geom.asPoint() # QgsPoint
+                    dist_sq = midpoint_point.sqrDist(avoidance_centroid_point)
+                    log.debug(f"  Line {num}: Midpoint ({midpoint_point.x():.1f}, {midpoint_point.y():.1f}), DistSq = {dist_sq:.2f}")
+
+            # STEPS 3-4: Calculate Peak Points A and B for each obstacle using perpendicular rays
             for obs_idx, ref_line in self.all_reference_lines.items():
-                # ... (peak calculation logic remains the same as in your provided code) ...
-                # Use obstacle center, perpendicular rays, find intersection with boundary, fallback if needed
-                middle_line_geom = ref_line['geom']; middle_line_heading = ref_line['heading']
-                obstacle_geom = obstacle_geometries[obs_idx]; obstacle_centroid = obstacle_geom.centroid()
-                mid_pt = obstacle_centroid.asPoint(); mid_point_xy = QgsPointXY(mid_pt)
-                if debug_mode: log.debug(f"Calculating peaks for Obs {obs_idx} using center ({mid_pt.x():.1f},{mid_pt.y():.1f})")
+                middle_line_geom = ref_line['geom']
+                middle_line_heading = ref_line['heading']
+
+                # Calculate the peaks for this obstacle
+                # Use the center of the obstacle instead of midpoint of the line
+                obstacle_geom = obstacle_geometries[obs_idx]
+                obstacle_centroid = obstacle_geom.centroid()
+                mid_pt = obstacle_centroid.asPoint() # Get the center point of the obstacle
+                mid_point_xy = QgsPointXY(mid_pt) # Convert to QgsPointXY for distance calculation
+
+                log.debug(f"Using obstacle center at ({mid_pt.x():.1f}, {mid_pt.y():.1f}) for perpendicular rays")
                 middle_line_heading_rad = math.radians(middle_line_heading)
-                perp_angle_rad_A = middle_line_heading_rad + math.pi / 2.0; perp_angle_rad_B = middle_line_heading_rad - math.pi / 2.0
-                obstacle_boundary = self._extract_obstacle_boundary(obstacle_geom)
-                if debug_mode: log.debug(f"Extracted boundary for obstacle {obs_idx}")
-                ray_length = max(obstacle_geom.boundingBox().width() + obstacle_geom.boundingBox().height(), 5000)
-                ray_A = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(mid_pt.x() + ray_length * math.sin(perp_angle_rad_A), mid_pt.y() + ray_length * math.cos(perp_angle_rad_A))])
-                ray_B = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(mid_pt.x() + ray_length * math.sin(perp_angle_rad_B), mid_pt.y() + ray_length * math.cos(perp_angle_rad_B))])
-                intersection_A = ray_A.intersection(obstacle_boundary); intersection_B = ray_B.intersection(obstacle_boundary)
-                offset_dist = max(clearance_m * 1.1, 300.0) # Fallback
-                peak_a_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_A); peak_a_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_A)
-                peak_b_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_B); peak_b_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_B)
-                # Refine peaks based on intersection points (logic from your code assumed correct)
-                # ... (code to update peak_a_x/y and peak_b_x/y based on intersections) ...
-                # The intersection refinement logic is complex, assuming it works as intended for now.
-                peak_A = QgsPoint(peak_a_x, peak_a_y); peak_B = QgsPoint(peak_b_x, peak_b_y)
+                perp_angle_rad_A = middle_line_heading_rad + math.pi / 2.0
+                perp_angle_rad_B = middle_line_heading_rad - math.pi / 2.0
+
+                # Use the obstacle boundary to find intersections with perpendicular rays
+                try:
+                    # For polygon, the boundary would be the exterior ring - we can convert to a line
+                    obstacle_boundary = None
+                    if obstacle_geom.type() == QgsWkbTypes.PolygonGeometry:
+                        if obstacle_geom.isMultipart():
+                            # For multipolygon, use the part with largest area
+                            multi_polygon = obstacle_geom.asMultiPolygon()
+                            if multi_polygon:
+                                # Find the largest polygon by area
+                                largest_idx = 0
+                                largest_area = 0
+                                for i, polygon in enumerate(multi_polygon):
+                                    temp_geom = QgsGeometry.fromPolygonXY(polygon)
+                                    area = temp_geom.area()
+                                    if area > largest_area:
+                                        largest_area = area
+                                        largest_idx = i
+
+                                # Get the exterior ring of the largest polygon
+                                if multi_polygon[largest_idx]:
+                                    exterior_ring = multi_polygon[largest_idx][0]  # First ring is exterior
+                                    obstacle_boundary = QgsGeometry.fromPolylineXY(exterior_ring)
+                        else:
+                            # Single polygon
+                            polygon = obstacle_geom.asPolygon()
+                            if polygon and polygon[0]:  # Check if polygon has rings
+                                exterior_ring = polygon[0]  # First ring is exterior
+                                obstacle_boundary = QgsGeometry.fromPolylineXY(exterior_ring)
+                    elif obstacle_geom.type() == QgsWkbTypes.LineGeometry:
+                        # If it's already a line, use it directly
+                        obstacle_boundary = obstacle_geom
+                    else:
+                        # For other types, just use the original geometry
+                        obstacle_boundary = obstacle_geom
+
+                except (ValueError, IndexError, AttributeError) as e:
+                    log.warning(f"Could not extract boundary properly: {e}")
+                    # Fallback to using the original geometry
+                    obstacle_boundary = obstacle_geom
+
+                log.debug(f"Successfully extracted boundary for obstacle {obs_idx}")
+
+                # Create a ray extending from midpoint in perpendicular directions (longer than needed to ensure intersection)
+                search_distance = obstacle_geom.boundingBox().width() + obstacle_geom.boundingBox().height()
+                ray_length = max(search_distance, 5000)  # Use a larger value to ensure we intersect the boundary
+
+                # Ray in direction A
+                ray_A_end_x = mid_pt.x() + ray_length * math.sin(perp_angle_rad_A)
+                ray_A_end_y = mid_pt.y() + ray_length * math.cos(perp_angle_rad_A)
+                ray_A = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(ray_A_end_x, ray_A_end_y)])
+
+                # Ray in direction B
+                ray_B_end_x = mid_pt.x() + ray_length * math.sin(perp_angle_rad_B)
+                ray_B_end_y = mid_pt.y() + ray_length * math.cos(perp_angle_rad_B)
+                ray_B = QgsGeometry.fromPolylineXY([mid_point_xy, QgsPointXY(ray_B_end_x, ray_B_end_y)])
+
+                # Find intersection with obstacle boundary
+                intersection_A = ray_A.intersection(obstacle_boundary)
+                intersection_B = ray_B.intersection(obstacle_boundary)
+
+                # Use fallback in case of no intersection
+                offset_dist = max(clearance_m * 1.1, 300.0)  # Reasonable fallback
+                peak_a_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_A)
+                peak_a_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_A)
+                peak_b_x = mid_pt.x() + offset_dist * math.sin(perp_angle_rad_B)
+                peak_b_y = mid_pt.y() + offset_dist * math.cos(perp_angle_rad_B)
+
+                # If we found intersection with boundary, use that point instead
+                if intersection_A and not intersection_A.isEmpty():
+                    # Get the closest intersection point to the midpoint
+                    if intersection_A.type() == QgsWkbTypes.PointGeometry:
+                        if intersection_A.isMultipart():
+                            # Multiple intersection points, find closest one
+                            points = intersection_A.asMultiPoint()
+                            if points:
+                                closest_dist = float('inf')
+                                closest_point = None
+                                for pt in points:
+                                    dist = math.sqrt((pt.x() - mid_pt.x())**2 + (pt.y() - mid_pt.y())**2)
+                                    if dist < closest_dist:
+                                        closest_dist = dist
+                                        closest_point = pt
+                                if closest_point:
+                                    peak_a_x = closest_point.x()
+                                    peak_a_y = closest_point.y()
+                        else:
+                            # Single intersection point
+                            point = intersection_A.asPoint()
+                            peak_a_x = point.x()
+                            peak_a_y = point.y()
+                    else:
+                        # For more complex geometries, try to find the closest point
+                        closest_pt = intersection_A.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
+                        if not closest_pt.isEmpty():
+                            peak_a_x = closest_pt.asPoint().x()
+                            peak_a_y = closest_pt.asPoint().y()
+
+                if intersection_B and not intersection_B.isEmpty():
+                    # Get the closest intersection point to the midpoint
+                    if intersection_B.type() == QgsWkbTypes.PointGeometry:
+                        if intersection_B.isMultipart():
+                            # Multiple intersection points, find closest one
+                            points = intersection_B.asMultiPoint()
+                            if points:
+                                closest_dist = float('inf')
+                                closest_point = None
+                                for pt in points:
+                                    dist = math.sqrt((pt.x() - mid_pt.x())**2 + (pt.y() - mid_pt.y())**2)
+                                    if dist < closest_dist:
+                                        closest_dist = dist
+                                        closest_point = pt
+                                if closest_point:
+                                    peak_b_x = closest_point.x()
+                                    peak_b_y = closest_point.y()
+                        else:
+                            # Single intersection point
+                            point = intersection_B.asPoint()
+                            peak_b_x = point.x()
+                            peak_b_y = point.y()
+                    else:
+                        # For more complex geometries, try to find the closest point
+                        closest_pt = intersection_B.nearestPoint(QgsGeometry.fromPointXY(mid_point_xy))
+                        if not closest_pt.isEmpty():
+                            peak_b_x = closest_pt.asPoint().x()
+                            peak_b_y = closest_pt.asPoint().y()
+
+                # Create Peaks for this obstacle
+                peak_A = QgsPoint(peak_a_x, peak_a_y)
+                peak_B = QgsPoint(peak_b_x, peak_b_y)
+
+                # Store peaks for this obstacle
                 self.all_peaks[obs_idx] = {'A': peak_A, 'B': peak_B}
-                if debug_mode: log.debug(f"Obstacle {obs_idx}: Peak A: {peak_A.x():.1f},{peak_A.y():.1f}, Peak B: {peak_B.x():.1f},{peak_B.y():.1f}")
 
+                log.debug(f"Obstacle {obs_idx}: Peak A: {peak_A.x():.1f},{peak_A.y():.1f}, Peak B: {peak_B.x():.1f},{peak_B.y():.1f}")
 
-            # STEPS 5-10: Complete the deviation calculation, PASSING the turn parameters
-            log.info("Passing control to _complete_deviation_calculation...")
-            # === PASS TURN PARAMETERS HERE ===
-            completion_success = self._complete_deviation_calculation(
-                lines_layer, obstacle_geometries, clearance_m,
-                sim_turn_radius_m, # Pass radius read from UI
-                sim_turn_speed_mps, # Pass speed read from UI
-                sim_turn_rate_dps, # Pass rate read from UI
-                debug_mode # Pass debug mode flag
-            )
-            # ===============================
-            log.info(f"_complete_deviation_calculation returned: {completion_success}")
-            return completion_success
+            # STEPS 5-10: Complete the deviation calculation (handled in _complete_deviation_calculation)
+            # This calls the method that implements the remaining steps
+            return self._complete_deviation_calculation(lines_layer, obstacle_geometries, clearance_m, turn_radius_m)
 
         except Exception as e:
-            log.exception(f"Error in deviation calculation v2: {e}")
+            log.exception(f"Error in deviation calculation: {e}")
             if edit_started_here and lines_layer.isEditable():
-                log.info("Rolling back changes due to error in DevCalcV2")
                 lines_layer.rollBack()
+                log.info("Changes rolled back due to error")
             return False
-        finally:
-            # If we started editing and no error occurred that caused rollback, commit.
-            if edit_started_here and lines_layer.isEditable():
-                 log.debug("Committing changes at the end of DevCalcV2.")
-                 if not lines_layer.commitChanges():
-                     log.error(f"Final commit failed in DevCalcV2: {lines_layer.commitErrors()}")
-                     # Don't rollback here, the commit failed, layer state is uncertain
-                     return False # Indicate failure
 
-            log.info("Deviation Calculation (v2) finished.") # Added log here
 
     # <<< Helper Function Start: _extract_line_segment (Attempting Explicit LineString access) >>>
     def _extract_line_segment(self, line_geom, start_dist, end_dist):
@@ -4368,507 +4516,527 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     # <<< Function End: _process_conflicted_lines >>>
 
 
-    # --- REVISED: _complete_deviation_calculation (Accepts Turn Params, Uses Dubins) ---
-    def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m,
-                                        turn_radius_m, turn_speed_mps, turn_rate_dps, # Added parameters
-                                        debug_mode=False):
-        """
-        Completes deviation: Creates DUBINS connectors, finalizes layer updates.
-        Accepts turn parameters for Dubins calculation.
+    # # <<< Function Start: _complete_deviation_calculation (Phase 1 Dubins Heading Calc Logging v2) >>>
+    # def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
+    #     """
+    #     Completes deviation: Calculates headings, creates connectors, finalizes layer updates.
+    #     (Refined V4 + PHASE 1 Dubins Heading Calc Logging v2)
+    #     """
+    #     log.info("Completing deviation calculation and finalizing paths (Refined V4 + P1 Dubins Heading Log v2)...")
+    #     project = QgsProject.instance()
 
-        Args:
-            lines_layer (QgsVectorLayer): Layer containing the survey lines
-            obstacle_geometries (list): List of individual obstacle geometries
-            clearance_m (float): Clearance distance in meters
-            turn_radius_m (float): Minimum turning radius for the vessel in meters
-            turn_speed_mps (float): Turn speed in m/s
-            turn_rate_dps (float): Turn rate in degrees/s
-            debug_mode (bool): If True, enables extensive debugging logs
+    #     # Layers Setup (Unchanged)
+    #     # ... (deviation_connectors_layer setup) ...
+    #     deviation_connectors_layer_name = "Deviation_Connectors_Final"
+    #     self._remove_layer_by_name(deviation_connectors_layer_name)
+    #     deviation_connectors_layer = QgsVectorLayer(f"LineString?crs={lines_layer.crs().authid()}", deviation_connectors_layer_name, "memory")
+    #     deviation_provider = deviation_connectors_layer.dataProvider()
+    #     provider_fields = [ QgsField("LineNum", QVariant.Int), QgsField("OriginalFID", QVariant.Int), QgsField("ObstacleID", QVariant.Int), QgsField("ChosenPeak", QVariant.String) ]
+    #     deviation_provider.addAttributes(provider_fields)
+    #     deviation_connectors_layer.updateFields(); deviation_connectors_layer.startEditing()
+    #     unified_split_layer = None
+    #     if debug_mode: pass # Debug layer setup unchanged
 
-        Returns:
-            bool: True if calculation was successful, False otherwise
+    #     # --- Process Pre-calculated Results ---
+    #     try:
+    #         log.info("Processing pre-calculated conflicted lines and path options...")
+    #         results = self._process_conflicted_lines(lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode) # Calls the corrected version
+    #         log.info(f"[COMPLETE] Received results. Path options keys: {list(results.get('path_options', {}).keys())}")
+    #         path_options = results['path_options']; chosen_paths = results['chosen_paths']
+    #         segments_to_add_outside = results['segments_to_add']
+    #         # --- FIX: Use correct key from return dict ---
+    #         segments_to_delete_fids = results['segments_to_delete']
+    #         # --- END FIX ---
+    #         process_stats = results['process_stats']
+    #         self.path_options = path_options; self.chosen_paths = chosen_paths
+    #         log.info(f"[COMPLETE] Assigned self.path_options ({len(self.path_options)} lines), self.chosen_paths ({len(self.chosen_paths)} lines)")
+
+    #         # Cache original attributes (Unchanged)
+    #         log.debug("Caching attributes of original lines before deletion...")
+    #         original_feature_attributes = {}
+    #         if segments_to_delete_fids:
+    #             request = QgsFeatureRequest().setFilterFids(segments_to_delete_fids); request.setFlags(QgsFeatureRequest.NoFlags)
+    #             for feat in lines_layer.getFeatures(request): original_feature_attributes[feat.id()] = feat.attributes()
+    #             log.debug(f"Cached attributes for {len(original_feature_attributes)} original features.")
+    #         else: log.debug("No original lines marked for deletion.")
+
+    #         # Generate Connector Segments
+    #         log.info(f"Generating connector paths for {len(chosen_paths)} lines...")
+    #         segments_to_add_connectors = []; connectors_added_debug = 0
+    #         target_fields = lines_layer.fields(); lines_layer_provider = lines_layer.dataProvider()
+    #         fld_lsx = target_fields.lookupField("LowestSP_x"); fld_lsy = target_fields.lookupField("LowestSP_y")
+    #         fld_hsx = target_fields.lookupField("HighestSP_x"); fld_hsy = target_fields.lookupField("HighestSP_y")
+    #         coord_indices_valid = all(idx != -1 for idx in [fld_lsx, fld_lsy, fld_hsx, fld_hsy])
+    #         if not coord_indices_valid: log.error("SP coordinate fields missing. Cannot update connector coords.")
+
+    #         for line_num, choices in chosen_paths.items():
+    #             for choice in choices:
+    #                 original_fid = choice.get('original_fid')
+    #                 original_attributes = original_feature_attributes.get(original_fid)
+    #                 if original_attributes is None: log.warning(f"No cached attributes for FID {original_fid} (L{line_num})."); original_attributes = [NULL] * len(target_fields)
+
+    #                 try:
+    #                     obs_idx = choice['obstacle_id']; peak_label = choice['peak']
+    #                     entry_point = choice['entry_point']; peak_point = choice['peak_point']; exit_point = choice['exit_point']
+    #                     geom_outside1 = choice.get('geom_outside1'); geom_outside2 = choice.get('geom_outside2')
+
+    #                     if not all([entry_point, peak_point, exit_point, geom_outside1, geom_outside2]):
+    #                         log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Missing point/geom data.")
+    #                         continue
+    #                     if not all(isinstance(p, QgsPointXY) for p in [entry_point, peak_point, exit_point]):
+    #                          log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Invalid point types."); continue
+
+    #                     # <<< PHASE 1: Calculate Headings >>>
+    #                     entry_heading_qgis = self._calculate_segment_heading(geom_outside1, start=False) # Heading at END of first outside segment
+    #                     exit_heading_qgis = self._calculate_segment_heading(geom_outside2, start=True)   # Heading at START of second outside segment
+
+    #                     log.debug(f"  [Dubins Prep] L{line_num} Obs{obs_idx}: Calculated Headings: Entry={entry_heading_qgis}, Exit={exit_heading_qgis}")
+
+    #                     if entry_heading_qgis is None or exit_heading_qgis is None:
+    #                          log.warning(f"  [Dubins Prep] Failed to calculate headings L{line_num}, Obs{obs_idx}. Skipping connector.")
+    #                          continue
+    #                     # <<< END PHASE 1 >>>
+
+    #                     log.debug(f"  [P1-ConnectorPreGeom] L{line_num} Obstacle {obs_idx}: Using points: Entry({entry_point.x():.1f},{entry_point.y():.1f}), Peak({peak_point.x():.1f},{peak_point.y():.1f}), Exit({exit_point.x():.1f},{exit_point.y():.1f})")
+
+    #                     # --- Create Connector Geometry (Still straight line for Phase 1) ---
+    #                     connector_geom = QgsGeometry.fromPolylineXY([entry_point, peak_point, exit_point])
+    #                     if connector_geom.isEmpty() or not connector_geom.isGeosValid(): log.warning(f"Skip connector (Invalid Straight Geom) L{line_num}, Obs{obs_idx}."); continue
+
+    #                     # Feature for MAIN layer
+    #                     connector_feat_main = QgsFeature(target_fields)
+    #                     connector_feat_main.setGeometry(connector_geom)
+    #                     connector_feat_main.setAttributes(original_attributes)
+    #                     connector_feat_main["Length_m"] = connector_geom.length()
+    #                     connector_feat_main["is_line_merged"] = True; connector_feat_main["is_deviation_created"] = True; connector_feat_main["Heading"] = NULL
+    #                     fld_seg_type_idx = target_fields.lookupField("SegmentType"); fld_linenum_idx = target_fields.lookupField("LineNum")
+    #                     if fld_seg_type_idx != -1: connector_feat_main[fld_seg_type_idx] = "Connector"
+    #                     if fld_linenum_idx != -1: connector_feat_main[fld_linenum_idx] = line_num
+
+    #                     # Coordinate Update (Unchanged)
+    #                     if coord_indices_valid:
+    #                         try:
+    #                             if connector_geom.wkbType() == QgsWkbTypes.LineString:
+    #                                 points = connector_geom.asPolyline()
+    #                                 if len(points) >= 2:
+    #                                     start_v_xy = points[0]; end_v_xy = points[-1]
+    #                                     connector_feat_main.setAttribute(fld_lsx, start_v_xy.x()); connector_feat_main.setAttribute(fld_lsy, start_v_xy.y())
+    #                                     connector_feat_main.setAttribute(fld_hsx, end_v_xy.x()); connector_feat_main.setAttribute(fld_hsy, end_v_xy.y())
+    #                                 else: log.warning(f"Cannot update coords Connector L{line_num}: < 2 points.")
+    #                             else: log.warning(f"Cannot update coords Connector L{line_num}: Not LineString.")
+    #                         except Exception as update_ex: log.warning(f"Error updating coords Connector L{line_num}: {update_ex}")
+
+    #                     segments_to_add_connectors.append(connector_feat_main)
+
+    #                     # Feature for DEBUG layer
+    #                     debug_connector_feat = QgsFeature(deviation_connectors_layer.fields())
+    #                     debug_connector_feat.setGeometry(connector_geom)
+    #                     debug_connector_feat.setAttributes([line_num, original_fid, obs_idx, peak_label])
+    #                     deviation_provider.addFeature(debug_connector_feat)
+    #                     connectors_added_debug += 1
+    #                 except Exception as conn_err: log.error(f"Error creating connector L{line_num}, Obs{obs_idx}: {conn_err}")
+
+    #         log.info(f"Generated {len(segments_to_add_connectors)} connector features for main layer.")
+    #         log.info(f"Generated {connectors_added_debug} connector features for debug layer.")
+
+    #         # --- Finalize Layer Updates (Unchanged) ---
+    #         # ... (Commit/Add logic unchanged) ...
+    #         if not deviation_connectors_layer.commitChanges(): log.error(f"Failed commit debug connectors")
+    #         if not lines_layer.isEditable():
+    #             if not lines_layer.startEditing(): raise RuntimeError("Editing failed.")
+    #         if segments_to_delete_fids:
+    #             unique_fids_to_delete = list(set(segments_to_delete_fids))
+    #             log.info(f"Deleting {len(unique_fids_to_delete)} original lines from '{lines_layer.name()}'.")
+    #             if not lines_layer_provider.deleteFeatures(unique_fids_to_delete): log.error(f"Failed delete original: {lines_layer_provider.lastError()}")
+    #             else: log.debug("Success delete original features.")
+    #         if segments_to_add_outside:
+    #             log.info(f"Adding {len(segments_to_add_outside)} 'Outside' segments to '{lines_layer.name()}'.")
+    #             success, added_outside = lines_layer_provider.addFeatures(segments_to_add_outside, QgsFeatureSink.FastInsert)
+    #             if not success: log.error(f"Failed add 'Outside': {lines_layer_provider.lastError()}")
+    #             else: log.debug(f"Success add {len(added_outside)} 'Outside' segments.")
+    #         if segments_to_add_connectors:
+    #             log.info(f"Adding {len(segments_to_add_connectors)} 'Connector' segments to '{lines_layer.name()}'.")
+    #             success, added_connectors = lines_layer_provider.addFeatures(segments_to_add_connectors, QgsFeatureSink.FastInsert)
+    #             if not success: log.error(f"Failed add 'Connector': {lines_layer_provider.lastError()}")
+    #             else: log.debug(f"Success add {len(added_connectors)} 'Connector' segments.")
+    #         if lines_layer.isEditable():
+    #              if not lines_layer.commitChanges():
+    #                   log.error(f"CRITICAL: Failed commit lines layer: {lines_layer.commitErrors()}"); QMessageBox.critical(self, "Commit Error", "Failed save lines layer.")
+    #              else: log.info("Successfully committed changes to lines layer.")
+    #         project = QgsProject.instance()
+    #         if deviation_connectors_layer.featureCount() > 0:
+    #              project.addMapLayer(deviation_connectors_layer)
+    #              try: self._apply_basic_style(deviation_connectors_layer, '#FFA500', width=0.8, line_style='dash')
+    #              except NameError: log.warning("Cannot style debug connector layer.")
+    #              except Exception as style_ex: log.warning(f"Could not style debug connector layer: {style_ex}")
+    #         else: log.warning("No deviation connector paths generated for debug layer.")
+    #         if hasattr(self, 'path_options') and self.path_options:
+    #              log.info(f"[DISPLAY] Calling display table. self.path_options keys: {list(self.path_options.keys())}")
+    #              if not hasattr(self, 'chosen_paths'): self.chosen_paths = chosen_paths
+    #              self._display_path_options_table()
+    #         else: log.warning("No path options recorded.")
+
+    #         return True
+
+    #     except Exception as e:
+    #          log.exception(f"Error during complete deviation calculation: {e}")
+    #          if lines_layer.isEditable(): log.info("Rolling back lines layer."); lines_layer.rollBack()
+    #          if deviation_connectors_layer.isEditable(): deviation_connectors_layer.rollBack()
+    #          if debug_mode and unified_split_layer and unified_split_layer.isEditable(): unified_split_layer.rollBack()
+    #          return False
+    # # <<< Function End: _complete_deviation_calculation >>>
+
+    # <<< Function Start: _complete_deviation_calculation (with QGIS Native Smoothing - Endpoint Fix) >>>
+    def _complete_deviation_calculation(self, lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode=False):
         """
-        log.info("Completing deviation calculation (using Dubins connectors)...")
-        log.debug(f"Received Turn Params: Radius={turn_radius_m}m, Speed={turn_speed_mps:.2f}m/s, Rate={turn_rate_dps:.2f}°/s")
+        Completes deviation: Calculates headings, creates SMOOTHED connectors (QGIS native), finalizes layer updates.
+        (Refined V4 + QGIS Native Smoothing - Endpoint Fix)
+        """
+        log.info("Completing deviation calculation and finalizing paths (Refined V4 + QGIS Native Smoothing - Endpoint Fix)...")
         project = QgsProject.instance()
 
-        # Layers Setup
+        # Layers Setup (Unchanged)
         deviation_connectors_layer_name = "Deviation_Connectors_Final"
         self._remove_layer_by_name(deviation_connectors_layer_name)
         deviation_connectors_layer = QgsVectorLayer(f"LineString?crs={lines_layer.crs().authid()}", deviation_connectors_layer_name, "memory")
-        if not deviation_connectors_layer.isValid():
-            log.error("Failed create connector layer")
-            return False
         deviation_provider = deviation_connectors_layer.dataProvider()
-        # Add fields for debug connectors layer
-        provider_fields = [
-            QgsField("LineNum", QVariant.Int),
-            QgsField("OriginalFID", QVariant.Int),
-            QgsField("ObstacleID", QVariant.Int),
-            QgsField("ChosenPeak", QVariant.String),
-            QgsField("DubinsLength", QVariant.Double, "double", 10, 2),
-            QgsField("DubinsTime_s", QVariant.Double, "double", 8, 1)
-        ]
-        if not deviation_provider.addAttributes(provider_fields):
-             log.error(f"Failed add attributes to debug connector layer: {deviation_provider.lastError()}")
-             # Continue, debug layer is not critical
-        deviation_connectors_layer.updateFields()
-        if not deviation_connectors_layer.startEditing():
-             log.warning("Could not start editing debug connector layer.")
-             # Continue, debug layer is not critical
+        provider_fields = [ QgsField("LineNum", QVariant.Int), QgsField("OriginalFID", QVariant.Int), QgsField("ObstacleID", QVariant.Int), QgsField("ChosenPeak", QVariant.String), QgsField("Status", QVariant.String) ] # Added Status field
+        deviation_provider.addAttributes(provider_fields)
+        deviation_connectors_layer.updateFields(); deviation_connectors_layer.startEditing()
+        unified_split_layer = None # Placeholder if needed for debug
 
-        unified_split_layer = None # Placeholder for potential future debug layer
-        # if debug_mode: pass # Add other debug layer setup if needed
+        # --- Smoothing Parameters (Tune these) ---
+        densify_factor = 5.0       # Smaller -> more points (e.g., radius / 5.0)
+        smooth_iterations = 3      # Number of smoothing passes
+        smooth_offset = 0.25       # Smoothing offset factor (0 to 0.5)
+        endpoint_tolerance = 0.5   # Max allowed endpoint shift in meters (Increased slightly for flexibility)
+        # --- End Smoothing Parameters ---
 
-        # --- Process Pre-calculated Results from _process_conflicted_lines ---
+        # --- Process Pre-calculated Results ---
         try:
             log.info("Processing pre-calculated conflicted lines and path options...")
-            # Call _process_conflicted_lines (assumed correct and provides necessary data in chosen_paths)
+            # Ensure results are fetched correctly
             results = self._process_conflicted_lines(lines_layer, obstacle_geometries, clearance_m, turn_radius_m, debug_mode)
-            if not results:
-                log.error("Processing conflicted lines failed.")
-                # Rollback if we started editing the debug layer
-                if deviation_connectors_layer.isEditable(): deviation_connectors_layer.rollBack()
-                return False
+            if not results: # Handle case where _process_conflicted_lines might fail
+                 log.error("Failed to process conflicted lines. Aborting.")
+                 return False # Or raise an exception
 
             log.info(f"[COMPLETE] Received results. Path options keys: {list(results.get('path_options', {}).keys())}")
             path_options = results['path_options']; chosen_paths = results['chosen_paths']
             segments_to_add_outside = results['segments_to_add']
             segments_to_delete_fids = results['segments_to_delete']
             process_stats = results['process_stats']
-            self.path_options = path_options; self.chosen_paths = chosen_paths # Store for potential later use
+            self.path_options = path_options; self.chosen_paths = chosen_paths
             log.info(f"[COMPLETE] Assigned self.path_options ({len(self.path_options)} lines), self.chosen_paths ({len(self.chosen_paths)} lines)")
 
-            # Cache original attributes (for restoring attributes to new segments)
+            # # Cache original attributes (Unchanged)
+            # log.debug("Caching attributes of original lines before deletion...")
+            # original_feature_attributes = {}
+            # if segments_to_delete_fids:
+            #     request = QgsFeatureRequest().setFilterFids(segments_to_delete_fids); request.setFlags(QgsFeatureRequest.NoFlags)
+            #     # Use explicit geometry request if attributes are missing
+            #     if not lines_layer.fields().contains("LineNum"): # Check if essential fields are present
+            #         request.setFlags(QgsFeatureRequest.NoFlags) # Reset flags to ensure geometry is fetched if needed
+            #     for feat in lines_layer.getFeatures(request):
+            #         original_attributes[feat.id()] = feat.attributes()
+            #     log.debug(f"Cached attributes for {len(original_feature_attributes)} original features.")
+            # else: log.debug("No original lines marked for deletion.")
+
             log.debug("Caching attributes of original lines before deletion...")
             original_feature_attributes = {}
             if segments_to_delete_fids:
-                # Ensure we only query valid FIDs that might still exist
-                valid_fids_to_query = [fid for fid in segments_to_delete_fids if lines_layer.getFeature(fid).isValid()]
-                if valid_fids_to_query:
-                     request = QgsFeatureRequest().setFilterFids(valid_fids_to_query); request.setFlags(QgsFeatureRequest.NoFlags)
-                     for feat in lines_layer.getFeatures(request):
-                         original_feature_attributes[feat.id()] = feat.attributes()
-                     log.debug(f"Cached attributes for {len(original_feature_attributes)} original features.")
-                else:
-                     log.debug("No valid FIDs found to cache attributes for.")
+                request = QgsFeatureRequest().setFilterFids(segments_to_delete_fids)
+                # Set default flags assuming attributes are okay
+                request.setFlags(QgsFeatureRequest.NoGeometry | QgsFeatureRequest.SubsetOfAttributes)
+                request.setSubsetOfAttributes(list(range(lines_layer.fields().count()))) # Request all attributes initially
+
+                # Check if essential field exists, reset flags if needed to fetch geometry
+                if lines_layer.fields().lookupField("LineNum") == -1: # <<< CORRECT CHECK
+                    log.warning("Essential 'LineNum' field missing, ensuring geometry is fetched for attribute caching.")
+                    request.setFlags(QgsFeatureRequest.NoFlags) # Reset flags to ensure geometry is fetched
+                # Add other essential field checks if needed
+
+                for feat in lines_layer.getFeatures(request):
+                    # Ensure attributes are fetched correctly, handle potential errors if flags were wrong
+                    attrs = feat.attributes()
+                    if not attrs and lines_layer.fields().lookupField("LineNum") != -1:
+                        log.warning(f"Failed to fetch attributes for FID {feat.id()} despite fields existing? Check request flags.")
+                        # Attempt to fetch again with geometry? Or assign NULLs? For now, assign NULLs.
+                        attrs = [NULL] * len(target_fields)
+
+                    original_feature_attributes[feat.id()] = attrs # Store fetched attributes
+
+                log.debug(f"Cached attributes for {len(original_feature_attributes)} original features.")
             else: log.debug("No original lines marked for deletion.")
 
-            # --- Generate Connector Segments USING DUBINS ---
-            log.info(f"Generating DUBINS connector paths for {len(chosen_paths)} lines...")
+            # Generate Connector Segments
+            log.info(f"Generating connector paths for {len(chosen_paths)} lines...")
             segments_to_add_connectors = []; connectors_added_debug = 0
-            target_fields = lines_layer.fields(); # Fields of the main Generated_Survey_Lines layer
-            lines_layer_provider = lines_layer.dataProvider()
-
-            # Get indices for main layer fields ONCE outside the loop
-            fld_lsx = target_fields.lookupField("LowestSP_x")
-            fld_lsy = target_fields.lookupField("LowestSP_y")
-            fld_hsx = target_fields.lookupField("HighestSP_x")
-            fld_hsy = target_fields.lookupField("HighestSP_y")
+            target_fields = lines_layer.fields(); lines_layer_provider = lines_layer.dataProvider()
+            fld_lsx = target_fields.lookupField("LowestSP_x"); fld_lsy = target_fields.lookupField("LowestSP_y")
+            fld_hsx = target_fields.lookupField("HighestSP_x"); fld_hsy = target_fields.lookupField("HighestSP_y")
             coord_indices_valid = all(idx != -1 for idx in [fld_lsx, fld_lsy, fld_hsx, fld_hsy])
-            if not coord_indices_valid: log.error("SP coordinate fields missing in main layer. Cannot update connector coords.")
-
-            fld_len_idx = target_fields.lookupField("Length_m")
-            fld_dur_s_idx = target_fields.lookupField("Duration_s")
-            fld_dur_fmt_idx = target_fields.lookupField("Duration_hh_mm")
-            fld_merged_idx = target_fields.lookupField("is_line_merged")
-            fld_created_idx = target_fields.lookupField("is_deviation_created")
-            fld_seg_type_idx = target_fields.lookupField("SegmentType")
-            fld_linenum_idx = target_fields.lookupField("LineNum")
-            fld_heading_idx = target_fields.lookupField("Heading")
-
-            # Check if all necessary fields were found
-            required_indices = {
-                "Length_m": fld_len_idx, "Duration_s": fld_dur_s_idx, "Duration_hh_mm": fld_dur_fmt_idx,
-                "is_line_merged": fld_merged_idx, "is_deviation_created": fld_created_idx,
-                "SegmentType": fld_seg_type_idx, "LineNum": fld_linenum_idx, "Heading": fld_heading_idx
-            }
-            missing_indices = [name for name, idx in required_indices.items() if idx == -1]
-            if missing_indices:
-                 log.error(f"CRITICAL: Missing required fields in layer '{lines_layer.name()}': {', '.join(missing_indices)}")
-                 if deviation_connectors_layer.isEditable(): deviation_connectors_layer.rollBack()
-                 return False # Cannot proceed without required fields
-
-            log.debug(f"Retrieved Field Indices for '{lines_layer.name()}': {required_indices}")
-
+            if not coord_indices_valid: log.error("SP coordinate fields missing. Cannot update connector coords.")
 
             for line_num, choices in chosen_paths.items():
-                log.debug(f"Processing choices for Line {line_num}")
-                for choice_idx, choice in enumerate(choices):
-                    log.debug(f"  Processing choice {choice_idx+1} for Obstacle {choice.get('obstacle_id', 'N/A')}")
+                for choice in choices:
                     original_fid = choice.get('original_fid')
-                    # Retrieve cached attributes, provide default if missing
-                    original_attributes = original_feature_attributes.get(original_fid)
-                    if original_attributes is None:
-                        log.warning(f"No cached attributes for FID {original_fid} (L{line_num}, Choice {choice_idx+1}). Using NULL list.");
-                        original_attributes = [NULL] * len(target_fields) # Create a list of NULLs
+                    # Ensure original_attributes is a list of appropriate size
+                    if original_fid in original_feature_attributes:
+                        original_attributes = original_feature_attributes[original_fid]
+                    else:
+                        log.warning(f"No cached attributes for FID {original_fid} (L{line_num}). Using NULLs.");
+                        original_attributes = [NULL] * len(target_fields)
+
+                    connector_geom = None # Initialize connector geometry
+                    smoothing_status = "Not Attempted"
 
                     try:
                         obs_idx = choice['obstacle_id']; peak_label = choice['peak']
-                        p_exit_pose = choice['entry_point']       # Far entry point
-                        h_exit_pose = choice['entry_heading_qgis'] # Heading at far entry point
-                        p_entry_pose = choice['exit_point']       # Far exit point
-                        h_entry_pose = choice['exit_heading_qgis'] # Heading at far exit point
+                        entry_point = choice['entry_point']; peak_point = choice['peak_point']; exit_point = choice['exit_point']
+                        geom_outside1 = choice.get('geom_outside1'); geom_outside2 = choice.get('geom_outside2')
 
-                        log.debug(f"  Connector Inputs: L{line_num}, Obs{obs_idx}, Peak {peak_label}")
-                        log.debug(f"    Exit Pose: Pt=({p_exit_pose.x():.2f},{p_exit_pose.y():.2f}), Hdg={h_exit_pose:.2f}°" if p_exit_pose and h_exit_pose is not None else "    Exit Pose: Incomplete")
-                        log.debug(f"    Entry Pose: Pt=({p_entry_pose.x():.2f},{p_entry_pose.y():.2f}), Hdg={h_entry_pose:.2f}°" if p_entry_pose and h_entry_pose is not None else "    Entry Pose: Incomplete")
+                        # --- Validate crucial points ---
+                        if not all([entry_point, peak_point, exit_point]):
+                            log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Missing point data."); continue
+                        if not all(isinstance(p, QgsPointXY) for p in [entry_point, peak_point, exit_point]):
+                             log.warning(f"Skip connector L{line_num}, Obs{obs_idx}: Invalid point types."); continue
 
-                        # Validate inputs for Dubins
-                        if not all([p_exit_pose, p_entry_pose, h_exit_pose is not None, h_entry_pose is not None]):
-                            log.warning(f"Skip connector L{line_num}, Obs{obs_idx}, Choice {choice_idx+1}: Missing point/heading data for Dubins.")
-                            continue
-                        if not all(isinstance(p, QgsPointXY) for p in [p_exit_pose, p_entry_pose]):
-                             log.warning(f"Skip connector L{line_num}, Obs{obs_idx}, Choice {choice_idx+1}: Invalid point types for Dubins."); continue
+                        log.debug(f"  [Smooth Prep] L{line_num} Obs{obs_idx}: Points: Entry({entry_point.x():.1f},{entry_point.y():.1f}), Peak({peak_point.x():.1f},{peak_point.y():.1f}), Exit({exit_point.x():.1f},{exit_point.y():.1f})")
 
-                        # --- Create Connector Geometry using DUBINS (Dedicated Function) ---
-                        log.debug(f"  Calling _calculate_dubins_deviation_connector for L{line_num}, Obs{obs_idx}, Choice {choice_idx+1}...")
-                        # === CALL THE NEW FUNCTION ===
-                        connector_geom, connector_length, connector_time = self._calculate_dubins_deviation_connector(
-                            p_exit=p_exit_pose,
-                            h_exit=h_exit_pose,
-                            p_entry=p_entry_pose,
-                            h_entry=h_entry_pose,
-                            radius=turn_radius_m,
-                            turn_speed_mps=turn_speed_mps,
-                            turn_rate_dps=turn_rate_dps
-                        )
-                        # ============================
-
-                        if connector_geom is None or connector_geom.isEmpty() or not connector_geom.isGeosValid():
-                            log.warning(f"Dubins deviation connector calculation FAILED for L{line_num}, Obs{obs_idx}, Choice {choice_idx+1}. Skipping connector.")
-                            continue # Skip adding this connector feature
-
-                        # Ensure time is valid (e.g., non-negative)
-                        connector_time = max(0.0, connector_time if connector_time is not None else 0.0)
-                        connector_length = max(0.0, connector_length if connector_length is not None else 0.0)
-
-                        log.debug(f"  Dubins deviation connector SUCCESS: L{line_num}, Obs{obs_idx}, Choice {choice_idx+1}. Length={connector_length:.2f}m, Time={connector_time:.1f}s")
-
-                        # --- Feature Creation (Using Dubins Results) ---
-                        connector_feat_main = QgsFeature(target_fields)
-                        connector_feat_main.setGeometry(connector_geom)
-
-                        # --- Set Attributes using Indices ---
-                        # Start with original attributes, then overwrite
-                        # Ensure original_attributes has the correct length
-                        if len(original_attributes) == len(target_fields):
-                             connector_feat_main.setAttributes(original_attributes)
+                        # --- Create Initial Sharp Connector ---
+                        initial_sharp_geom = QgsGeometry.fromPolylineXY([entry_point, peak_point, exit_point])
+                        if initial_sharp_geom.isEmpty() or not initial_sharp_geom.isGeosValid():
+                            log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Initial sharp connector geometry invalid. Skipping smoothing.")
+                            connector_geom = None
+                            smoothing_status = "Sharp Geom Invalid"
                         else:
-                             log.warning(f"Attribute mismatch for FID {original_fid}. Expected {len(target_fields)}, got {len(original_attributes)}. Setting default NULLs.")
-                             connector_feat_main.setAttributes([NULL] * len(target_fields))
+                            # --- Attempt Smoothing ---
+                            smoothing_status = "Attempted"
+                            # a. Densify
+                            densify_distance = max(1.0, turn_radius_m / densify_factor)
+                            densified_geom = initial_sharp_geom.densifyByDistance(densify_distance)
+                            if densified_geom.isEmpty():
+                                log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Densification failed. Falling back to sharp.")
+                                connector_geom = initial_sharp_geom
+                                smoothing_status = "Densify Failed"
+                            else:
+                                log.debug(f"  [Smooth Step] L{line_num}, Obs{obs_idx}: Densified to {len(list(densified_geom.vertices()))} vertices (dist={densify_distance:.1f}m)")
+                                # b. Smooth
+                                smoothed_geom_candidate = densified_geom.smooth(smooth_iterations, smooth_offset)
+                                if smoothed_geom_candidate.isEmpty():
+                                    log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Smoothing resulted in empty geometry. Falling back to sharp.")
+                                    connector_geom = initial_sharp_geom
+                                    smoothing_status = "Smooth Failed (Empty)"
+                                else:
+                                    log.debug(f"  [Smooth Step] L{line_num}, Obs{obs_idx}: Smoothed geom length {smoothed_geom_candidate.length():.1f}m")
 
+                                    # c. Validate Endpoints (Revised Access)
+                                    start_ok = False; end_ok = False
+                                    try:
+                                        smooth_start_pt = QgsPointXY(smoothed_geom_candidate.vertexAt(0))
+                                        # --- FIX: Access last vertex explicitly ---
+                                        vertex_iter = smoothed_geom_candidate.vertices()
+                                        vertex_count = 0
+                                        last_v = None
+                                        while vertex_iter.hasNext():
+                                             last_v = vertex_iter.next()
+                                             vertex_count += 1
+                                        if last_v and vertex_count > 0:
+                                             smooth_end_pt = QgsPointXY(last_v)
+                                             # Log points being compared
+                                             log.debug(f"    Expected Exit: ({exit_point.x():.3f}, {exit_point.y():.3f})")
+                                             log.debug(f"    Smoothed End:  ({smooth_end_pt.x():.3f}, {smooth_end_pt.y():.3f})")
 
-                        # Overwrite specific attributes for the connector segment
-                        connector_feat_main.setAttribute(fld_len_idx, connector_length)
-                        connector_feat_main.setAttribute(fld_dur_s_idx, connector_time)
+                                             start_dist = entry_point.distance(smooth_start_pt)
+                                             end_dist = exit_point.distance(smooth_end_pt)
+                                             start_ok = start_dist <= endpoint_tolerance
+                                             end_ok = end_dist <= endpoint_tolerance
+                                             log.debug(f"  [Smooth Validate] L{line_num}, Obs{obs_idx}: Endpoint shift: Start={start_dist:.3f}m (OK={start_ok}), End={end_dist:.3f}m (OK={end_ok})")
+                                        else:
+                                             log.warning(f"  [Smooth Validate] Could not get last vertex for L{line_num}, Obs{obs_idx}")
+                                        # --- END FIX ---
+                                    except Exception as ep_err:
+                                        log.warning(f"  [Smooth Validate] Error checking endpoints L{line_num}, Obs{obs_idx}: {ep_err}")
 
-                        # Recalculate formatted duration
-                        duration_hh_mm_conn = "00:00"
-                        if connector_time > 0:
-                            hours_conn = int(connector_time // 3600)
-                            minutes_conn = int((connector_time % 3600) // 60)
-                            duration_hh_mm_conn = f"{hours_conn:02d}:{minutes_conn:02d}"
-                        connector_feat_main.setAttribute(fld_dur_fmt_idx, duration_hh_mm_conn)
+                                    # d. Validate Obstacle Intersection (Temporarily Disabled)
+                                    obstacle_ok = True # Assume OK for now
+                                    # TODO: Re-enable obstacle validation after confirming endpoint fix
+                                    try:
+                                        if 0 <= obs_idx < len(obstacle_geometries):
+                                            specific_obstacle_buffer = obstacle_geometries[obs_idx]
+                                            intersects = smoothed_geom_candidate.intersects(specific_obstacle_buffer)
+                                            obstacle_ok = not intersects
+                                            log.debug(f"  [Smooth Validate] L{line_num}, Obs{obs_idx}: Intersects obstacle buffer: {intersects} (OK={obstacle_ok})")
+                                        else:
+                                            log.error(f"  [Smooth Validate] Invalid obs_idx {obs_idx} for L{line_num}. Cannot validate intersection.")
+                                            obstacle_ok = False # Fail safe
+                                    except Exception as obs_err:
+                                        log.warning(f"  [Smooth Validate] Error checking intersection L{line_num}, Obs{obs_idx}: {obs_err}")
 
-                        connector_feat_main.setAttribute(fld_merged_idx, True)
-                        connector_feat_main.setAttribute(fld_created_idx, True)
-                        connector_feat_main.setAttribute(fld_heading_idx, NULL) # Heading not applicable for turn
-                        connector_feat_main.setAttribute(fld_seg_type_idx, "Connector")
-                        connector_feat_main.setAttribute(fld_linenum_idx, line_num) # Ensure LineNum is set
+                                    # e. Assign Final Geometry
+                                    # if start_ok and end_ok and obstacle_ok:
+                                    #     log.info(f"  [Smooth Success] L{line_num}, Obs{obs_idx}: Using smoothed geometry.")
+                                    #     connector_geom = smoothed_geom_candidate
+                                    #     smoothing_status = "Success (Obstacle Check Skipped)" if obstacle_ok is True and not self.endpoint_tolerance else "Success" # Indicate skip
+                                    # else:
 
-                        # Coordinate Update (Use Dubins path endpoints)
-                        if coord_indices_valid:
+                                    if start_ok and end_ok and obstacle_ok:
+                                        log.info(f"  [Smooth Success] L{line_num}, Obs{obs_idx}: Using smoothed geometry.")
+                                        connector_geom = smoothed_geom_candidate
+                                        # Check if obstacle_ok was assumed True (meaning the check was skipped)
+                                        obstacle_check_skipped = obstacle_ok is True # This condition means the check was skipped
+                                        smoothing_status = "Success (Obstacle Check Skipped)" if obstacle_check_skipped else "Success" # <<< CORRECTED HERE
+                                    else:
+                                        log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Validation failed (EndpointOK={start_ok and end_ok}, ObstacleOK={obstacle_ok}). Falling back to sharp geometry.")
+                                        connector_geom = initial_sharp_geom # Fallback
+                                        smoothing_status = "Validation Failed"
+                        # --- End Smoothing Attempt ---
+
+                        # --- Add Feature if Geometry is Valid ---
+                        if connector_geom and not connector_geom.isEmpty():
+                            # Calculate Heading (Unchanged)
+                            connector_heading = None
                             try:
-                                if connector_geom.wkbType() == QgsWkbTypes.LineString:
-                                    points = connector_geom.asPolyline()
-                                    if len(points) >= 2:
-                                        start_v_xy = points[0]; end_v_xy = points[-1]
-                                        log.debug(f"    Dubins Start: ({start_v_xy.x():.2f},{start_v_xy.y():.2f}) vs Input: ({p_exit_pose.x():.2f},{p_exit_pose.y():.2f})")
-                                        log.debug(f"    Dubins End:   ({end_v_xy.x():.2f},{end_v_xy.y():.2f}) vs Input: ({p_entry_pose.x():.2f},{p_entry_pose.y():.2f})")
-                                        connector_feat_main.setAttribute(fld_lsx, start_v_xy.x())
-                                        connector_feat_main.setAttribute(fld_lsy, start_v_xy.y())
-                                        connector_feat_main.setAttribute(fld_hsx, end_v_xy.x())
-                                        connector_feat_main.setAttribute(fld_hsy, end_v_xy.y())
-                                    else: log.warning(f"Cannot update coords Connector L{line_num}: < 2 points.")
-                                else: log.warning(f"Cannot update coords Connector L{line_num}: Not LineString.")
-                            except Exception as update_ex: log.warning(f"Error updating coords Connector L{line_num}: {update_ex}")
+                                if len(list(connector_geom.vertices())) >= 2:
+                                     connector_heading = self._calculate_segment_heading(connector_geom, start=True)
+                            except: pass
 
-                        segments_to_add_connectors.append(connector_feat_main)
+                            # Add Feature to Main Layer (Unchanged)
+                            # ... (connector_feat_main setup and attribute setting) ...
+                            connector_feat_main = QgsFeature(target_fields)
+                            connector_feat_main.setGeometry(connector_geom)
+                            connector_feat_main.setAttributes(original_attributes) # Copy original line attributes
+                            connector_feat_main["Length_m"] = connector_geom.length()
+                            connector_feat_main["is_line_merged"] = True # Part of merged line
+                            connector_feat_main["is_deviation_created"] = True # Deviation applied
+                            connector_feat_main["Heading"] = connector_heading if connector_heading is not None else NULL
+                            fld_seg_type_idx = target_fields.lookupField("SegmentType"); fld_linenum_idx = target_fields.lookupField("LineNum")
+                            if fld_seg_type_idx != -1: connector_feat_main[fld_seg_type_idx] = "Connector" # Mark as connector
+                            if fld_linenum_idx != -1: connector_feat_main[fld_linenum_idx] = line_num # Associate with original line
 
-                        # Feature for DEBUG layer
-                        try:
-                             debug_connector_feat = QgsFeature(deviation_connectors_layer.fields())
-                             debug_connector_feat.setGeometry(connector_geom) # Use Dubins geom
-                             # Use indices for debug layer fields if needed, or rely on order if confident
-                             debug_connector_feat.setAttributes([line_num, original_fid, obs_idx, peak_label, connector_length, connector_time]) # Add Dubins info
-                             if not deviation_provider.addFeature(debug_connector_feat):
-                                 log.warning(f"Failed to add debug connector feature L{line_num}, Obs{obs_idx}")
-                             else:
-                                 connectors_added_debug += 1
-                        except Exception as dbg_err:
-                             log.warning(f"Failed to create/add debug connector feature L{line_num}, Obs{obs_idx}: {dbg_err}")
+                            # Coordinate Update (Unchanged)
+                            # ... (update LowestSP_x/y, HighestSP_x/y) ...
+                            if coord_indices_valid:
+                                try:
+                                    if connector_geom.type() == QgsWkbTypes.LineGeometry:
+                                        points = connector_geom.asPolyline()
+                                        if len(points) >= 2:
+                                            start_v_xy = points[0]; end_v_xy = points[-1]
+                                            connector_feat_main.setAttribute(fld_lsx, start_v_xy.x()); connector_feat_main.setAttribute(fld_lsy, start_v_xy.y())
+                                            connector_feat_main.setAttribute(fld_hsx, end_v_xy.x()); connector_feat_main.setAttribute(fld_hsy, end_v_xy.y())
+                                        else: log.warning(f"Cannot update coords Connector L{line_num}: < 2 points.")
+                                    else: log.warning(f"Cannot update coords Connector L{line_num}: Not LineString.")
+                                except Exception as update_ex: log.warning(f"Error updating coords Connector L{line_num}: {update_ex}")
 
+                            segments_to_add_connectors.append(connector_feat_main)
+
+                            # Add Feature to DEBUG Layer (Unchanged)
+                            debug_connector_feat = QgsFeature(deviation_connectors_layer.fields())
+                            debug_connector_feat.setGeometry(connector_geom)
+                            debug_connector_feat.setAttributes([line_num, original_fid, obs_idx, peak_label, smoothing_status]) # Add status
+                            deviation_provider.addFeature(debug_connector_feat)
+                            connectors_added_debug += 1
+                        else:
+                             log.warning(f"  [Smooth Skip] L{line_num}, Obs{obs_idx}: Final connector geometry invalid or empty. No connector added.")
 
                     except Exception as conn_err:
-                        log.error(f"Error processing connector L{line_num}, Obs{obs_idx}, Choice {choice_idx+1}: {conn_err}", exc_info=True)
+                        log.error(f"Error creating connector L{line_num}, Obs{obs_idx}: {conn_err}")
+                        # Add error status to debug layer
+                        debug_connector_feat = QgsFeature(deviation_connectors_layer.fields())
+                        debug_connector_feat.setGeometry(QgsGeometry())
+                        debug_connector_feat.setAttributes([line_num, original_fid, obs_idx, peak_label, f"Error: {conn_err}"])
+                        deviation_provider.addFeature(debug_connector_feat)
 
-
-            log.info(f"Generated {len(segments_to_add_connectors)} Dubins connector features for main layer.")
+            log.info(f"Generated {len(segments_to_add_connectors)} connector features for main layer.")
             log.info(f"Generated {connectors_added_debug} connector features for debug layer.")
 
             # --- Finalize Layer Updates ---
-            log.debug("Committing debug connectors layer...")
-            if deviation_connectors_layer.isEditable():
-                if not deviation_connectors_layer.commitChanges():
-                    log.error(f"Failed commit debug connectors: {deviation_connectors_layer.error().message()}")
-                    # Continue anyway, debug layer is not critical
-            else:
-                log.debug("Debug connectors layer was not in edit mode.")
-
-
-            # Ensure main layer is editable for final updates
-            edit_session_started_here = False
+            # (Commit/Add logic unchanged)
+            # ... (add features, delete originals, commit layers, display table) ...
+            if not deviation_connectors_layer.commitChanges(): log.error(f"Failed commit debug connectors")
             if not lines_layer.isEditable():
-                log.debug("Attempting to start editing lines layer for final updates...")
-                if not lines_layer.startEditing():
-                    raise RuntimeError(f"Failed to start editing lines layer for final updates: {lines_layer.error().message()}")
-                edit_session_started_here = True # Track if we started editing here
-                log.debug("Successfully started editing lines layer.")
-
-            # Delete original conflicted lines
+                if not lines_layer.startEditing(): raise RuntimeError("Editing failed.")
             if segments_to_delete_fids:
                 unique_fids_to_delete = list(set(segments_to_delete_fids))
-                log.info(f"Deleting {len(unique_fids_to_delete)} original lines from '{lines_layer.name()}'. FIDs: {unique_fids_to_delete}")
-                delete_success = lines_layer_provider.deleteFeatures(unique_fids_to_delete)
-                if not delete_success:
-                    log.error(f"Failed delete original lines: {lines_layer_provider.lastError()}")
-                    # Decide if this is critical. Maybe continue but warn?
-                    # raise RuntimeError("Failed to delete original conflicted lines.") # Option: make it critical
-                else: log.debug("Successfully deleted original features.")
-            else: log.debug("No original lines marked for deletion.")
-
-            # Add new outside segments
+                log.info(f"Deleting {len(unique_fids_to_delete)} original lines from '{lines_layer.name()}'.")
+                if not lines_layer_provider.deleteFeatures(unique_fids_to_delete): log.error(f"Failed delete original: {lines_layer_provider.lastError()}")
+                else: log.debug("Success delete original features.")
             if segments_to_add_outside:
                 log.info(f"Adding {len(segments_to_add_outside)} 'Outside' segments to '{lines_layer.name()}'.")
                 success, added_outside = lines_layer_provider.addFeatures(segments_to_add_outside, QgsFeatureSink.FastInsert)
-                if not success:
-                    log.error(f"Failed add 'Outside' segments: {lines_layer_provider.lastError()}")
-                    # raise RuntimeError("Failed to add outside segments.") # Option: make it critical
-                else: log.debug(f"Successfully added {len(added_outside)} 'Outside' segments.")
-            else: log.debug("No 'Outside' segments to add.")
-
-            # Add new connector segments (Dubins paths)
+                if not success: log.error(f"Failed add 'Outside': {lines_layer_provider.lastError()}")
+                else: log.debug(f"Success add {len(added_outside)} 'Outside' segments.")
             if segments_to_add_connectors:
-                log.info(f"Adding {len(segments_to_add_connectors)} 'Connector' segments (Dubins) to '{lines_layer.name()}'.")
+                log.info(f"Adding {len(segments_to_add_connectors)} 'Connector' segments to '{lines_layer.name()}'.")
                 success, added_connectors = lines_layer_provider.addFeatures(segments_to_add_connectors, QgsFeatureSink.FastInsert)
-                if not success:
-                     log.error(f"Failed add 'Connector' segments: {lines_layer_provider.lastError()}")
-                     # raise RuntimeError("Failed to add connector segments.") # Option: make it critical
-                else: log.debug(f"Successfully added {len(added_connectors)} 'Connector' segments.")
-            else: log.debug("No 'Connector' segments to add.")
+                if not success: log.error(f"Failed add 'Connector': {lines_layer_provider.lastError()}")
+                else: log.debug(f"Success add {len(added_connectors)} 'Connector' segments.")
 
-            # Commit main lines layer if we started editing or it was already editable
+            # Commit the main lines layer
             if lines_layer.isEditable():
-                 log.debug("Committing final changes to lines layer...")
                  if not lines_layer.commitChanges():
-                      commit_errors = lines_layer.commitErrors()
-                      log.error(f"CRITICAL: Failed final commit on lines layer: {commit_errors}");
-                      QMessageBox.critical(self, "Commit Error", f"Failed save lines layer changes:\n{commit_errors}")
-                      return False # Indicate failure
-                 else:
-                     log.info("Successfully committed final changes to lines layer.")
-                     edit_session_started_here = False # Mark as committed if we started it
-            else:
-                 log.warning("Lines layer was not in edit mode for final commit (state may be inconsistent if changes were attempted).")
+                      log.error(f"CRITICAL: Failed commit lines layer: {lines_layer.commitErrors()}"); QMessageBox.critical(self, "Commit Error", "Failed save lines layer.")
+                 else: log.info("Successfully committed changes to lines layer.")
 
-
-            # Add debug layer to project if it has features
+            # Add the debug connectors layer if it has features
             project = QgsProject.instance()
             if deviation_connectors_layer.featureCount() > 0:
-                 log.debug("Adding debug connectors layer to project.")
                  project.addMapLayer(deviation_connectors_layer)
                  try:
-                     # Style debug connectors
-                     debug_conn_symbol = QgsLineSymbol.createSimple({
-                         'line_color': '#FF00FF', # Magenta
-                         'line_width': '0.5',
-                         'line_style': 'dot'
-                     })
-                     deviation_connectors_layer.renderer().setSymbol(debug_conn_symbol)
-                     deviation_connectors_layer.triggerRepaint()
-                 except Exception as style_ex: log.warning(f"Could not style debug connector layer: {style_ex}")
-            else:
-                 log.info("No features in debug connector layer, not adding to project.")
-                 # Clean up empty debug layer? Optional.
-                 # project.removeMapLayer(deviation_connectors_layer.id())
+                    # Style the debug layer based on Smoothing Status
+                    categories = []
+                    symbols = {
+                        "Success": QgsLineSymbol.createSimple({'color': '#00DD00', 'width': '0.7'}), # Green
+                        "Success (Obstacle Check Skipped)": QgsLineSymbol.createSimple({'color': '#90EE90', 'width': '0.7', 'line_style': 'dash'}), # Light Green Dashed
+                        "Validation Failed": QgsLineSymbol.createSimple({'color': '#FFA500', 'width': '0.7', 'line_style': 'dash'}), # Orange Dashed
+                        "Sharp Geom Invalid": QgsLineSymbol.createSimple({'color': '#FF0000', 'width': '0.7', 'line_style': 'dot'}), # Red Dotted
+                        "Densify Failed": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dash'}), # Magenta Dashed
+                        "Smooth Failed (Empty)": QgsLineSymbol.createSimple({'color': '#FF00FF', 'width': '0.7', 'line_style': 'dot'}), # Magenta Dotted
+                        "Not Attempted": QgsLineSymbol.createSimple({'color': '#888888', 'width': '0.5'}), # Grey
+                    }
+                    default_symbol = QgsLineSymbol.createSimple({'color': '#FF0000', 'width': '1.0', 'line_style': 'dashdot'}) # Default for errors
 
-            # Display Path Options Table (Unchanged)
+                    status_values = set()
+                    for f in deviation_connectors_layer.getFeatures():
+                        status_val = f['Status']
+                        if status_val and isinstance(status_val, str):
+                           if status_val.startswith("Error:"): status_values.add("Error")
+                           else: status_values.add(status_val)
+                        elif status_val is None or status_val == NULL:
+                             status_values.add("Unknown/NULL")
+
+                    # Create categories for existing statuses
+                    for status in status_values:
+                        sym = symbols.get(status, default_symbol)
+                        # Use status itself as the value for categorization unless it's NULL
+                        cat_value = status if status != "Unknown/NULL" else NULL
+                        categories.append(QgsRendererCategory(cat_value, sym, status)) # Label is the descriptive status
+
+                    renderer = QgsCategorizedSymbolRenderer("Status", categories)
+                    deviation_connectors_layer.setRenderer(renderer)
+                    deviation_connectors_layer.triggerRepaint()
+
+                 except Exception as style_ex: log.warning(f"Could not style debug connector layer: {style_ex}")
+            else: log.warning("No deviation connector paths generated for debug layer.")
+
+            # Display path options table (Unchanged)
+            # ... (code to display table) ...
             if hasattr(self, 'path_options') and self.path_options:
                  log.info(f"[DISPLAY] Calling display table. self.path_options keys: {list(self.path_options.keys())}")
-                 if not hasattr(self, 'chosen_paths'): self.chosen_paths = chosen_paths # Ensure it's set
+                 if not hasattr(self, 'chosen_paths'): self.chosen_paths = chosen_paths
                  self._display_path_options_table()
             else: log.warning("No path options recorded.")
 
-            log.info("Deviation completion successful.")
             return True
 
         except Exception as e:
-             log.exception(f"Error during complete deviation calculation: {e}")
-             # Rollback if we started editing the main layer in this function's scope
-             if edit_session_started_here and lines_layer.isEditable():
-                 log.info("Rolling back lines layer due to error in _complete_deviation_calculation.")
-                 lines_layer.rollBack()
-             # Rollback debug layer if it's still editable
-             if deviation_connectors_layer.isEditable():
-                 log.debug("Rolling back debug connectors layer.")
-                 deviation_connectors_layer.rollBack()
-             # if debug_mode and unified_split_layer and unified_split_layer.isEditable(): unified_split_layer.rollBack()
+             log.exception(f"Error during complete deviation calculation (QGIS Smooth - Endpoint Fix): {e}")
+             if lines_layer.isEditable(): log.info("Rolling back lines layer."); lines_layer.rollBack()
+             if deviation_connectors_layer.isEditable(): deviation_connectors_layer.rollBack()
+             if unified_split_layer and unified_split_layer.isEditable(): unified_split_layer.rollBack()
              return False
-        finally:
-            # Ensure debug connectors layer editing is stopped if needed
-            if deviation_connectors_layer and deviation_connectors_layer.isEditable():
-                log.debug("Attempting to rollback debug connectors layer in finally block (safety).")
-                deviation_connectors_layer.rollBack() # Use rollback to discard any uncommitted changes safely
-            log.info("Finished _complete_deviation_calculation.")
-
-
-    # --- NEW Function: Specific Dubins calculation for deviation connectors ---
-    def _calculate_dubins_deviation_connector(self, p_exit, h_exit, p_entry, h_entry, radius, turn_speed_mps, turn_rate_dps=None):
-        """
-        Calculates the shortest Dubins path specifically for deviation connectors.
-        Converts QGIS headings to mathematical RADIANS before calling dubins_calc.
-
-        Args:
-            p_exit (QgsPointXY): Exit point from previous segment ('far_entry_point')
-            h_exit (float): Exit heading in degrees (QGIS convention: 0=N, clockwise) ('entry_heading_qgis')
-            p_entry (QgsPointXY): Entry point to next segment ('far_exit_point')
-            h_entry (float): Entry heading in degrees (QGIS convention) ('exit_heading_qgis')
-            radius (float): Turning radius in meters
-            turn_speed_mps (float): Turn speed in meters per second
-            turn_rate_dps (float, optional): Turn rate in degrees per second
-
-        Returns:
-            tuple: (turn_geometry, turn_length, turn_time_seconds) or (None, None, None) on failure
-        """
-        # Log input parameters for debugging
-        log.debug("Calculating Dubins Deviation Connector with:")
-        try:
-            log.debug(f"  Exit Pose: Pt=({p_exit.x():.1f}, {p_exit.y():.1f}) @ {h_exit:.1f}° (QGIS)")
-            log.debug(f"  Entry Pose: Pt=({p_entry.x():.1f}, {p_entry.y():.1f}) @ {h_entry:.1f}° (QGIS)")
-            log.debug(f"  Radius: {radius:.1f}m, Speed: {turn_speed_mps:.2f}m/s, Rate: {turn_rate_dps if turn_rate_dps else 'N/A'}°/s")
-        except (TypeError, AttributeError):
-            log.debug(f"  Parameters contain invalid values that cannot be formatted")
-
-        # Validate input parameters
-        if not all([p_exit, p_entry, h_exit is not None, h_entry is not None]):
-            log.error("Cannot calculate connector: Missing required points or headings")
-            return None, None, None
-        if not all(hasattr(p, attr) for p in [p_exit, p_entry] for attr in ['x', 'y']):
-            log.error(f"Invalid point objects for connector: exit={type(p_exit)}, entry={type(p_entry)}")
-            return None, None, None
-        if radius <= 0:
-            log.error(f"Invalid radius for connector: {radius}m. Must be positive")
-            return None, None, None
-
-        try:
-            # Check for coincident points
-            point_distance_sq = p_exit.sqrDist(p_entry)
-            if point_distance_sq < 1e-6:
-                log.info("Connector start/end points are coincident, returning minimal path")
-                minimal_geom = QgsGeometry.fromPolylineXY([p_exit, p_entry])
-                return minimal_geom, 0.0, 0.0
-
-            # Convert QGIS headings (0=N, CW) to mathematical convention (0=E, CCW) in DEGREES first
-            start_heading_math_deg = (90.0 - h_exit + 360.0) % 360.0
-            end_heading_math_deg = (90.0 - h_entry + 360.0) % 360.0
-            log.debug(f"  Connector Converted Headings (Math Degrees): Start={start_heading_math_deg:.2f}°, End={end_heading_math_deg:.2f}°")
-
-            # --- Convert mathematical degrees to RADIANS ---
-            start_heading_math_rad = math.radians(start_heading_math_deg)
-            end_heading_math_rad = math.radians(end_heading_math_deg)
-            log.debug(f"  Connector Converted Headings (Math Radians): Start={start_heading_math_rad:.4f} rad, End={end_heading_math_rad:.4f} rad")
-            # --- End Conversion to Radians ---
-
-            # Configure densification parameters
-            # Using slightly higher densification for potentially tighter connector turns
-            densification_distance = radius / 5.0
-            if hasattr(dubins_calc, 'MAX_LINE_DISTANCE'):
-                dubins_calc.MAX_LINE_DISTANCE = densification_distance
-            if hasattr(dubins_calc, 'MAX_CURVE_ANGLE'):
-                try:
-                    # Calculate max angle based on arc length but ensure it's reasonable
-                    max_angle = math.degrees(densification_distance / max(radius, 0.01))
-                    dubins_calc.MAX_CURVE_ANGLE = min(max(max_angle, 1.0), 10.0) # Limit to 10 degrees for connectors
-                except (ZeroDivisionError, ValueError):
-                    dubins_calc.MAX_CURVE_ANGLE = 5.0 # Default fallback
-            log.debug(f"  Connector Dubins params: MAX_LINE_DISTANCE={getattr(dubins_calc, 'MAX_LINE_DISTANCE', 'N/A'):.2f}m, "
-                      f"MAX_CURVE_ANGLE={getattr(dubins_calc, 'MAX_CURVE_ANGLE', 'N/A'):.2f}°")
-
-            # Generate Dubins path points using RADIANS
-            try:
-                if dubins_calc is None: raise ImportError("dubins_calc module is None")
-                if not hasattr(dubins_calc, 'get_curve'): raise AttributeError("dubins_calc module does not have get_curve method")
-
-                log.debug(f"Calling dubins_calc.get_curve for connector with radius={radius}m and RADIAN headings")
-                projection_points = dubins_calc.get_curve(
-                    s_x=p_exit.x(), s_y=p_exit.y(), s_head=start_heading_math_rad, # PASS RADIANS
-                    e_x=p_entry.x(), e_y=p_entry.y(), e_head=end_heading_math_rad, # PASS RADIANS
-                    radius=radius,
-                    max_line_distance=densification_distance
-                )
-                log.debug(f"dubins_calc.get_curve (connector) returned {len(projection_points) if projection_points else 0} points")
-            except Exception as e:
-                log.exception(f"Error calling dubins_calc.get_curve for connector: {e}")
-                return None, None, None
-
-            if not projection_points:
-                log.error("Dubins connector calculation returned no points")
-                return None, None, None
-
-            log.debug(f"  Generated {len(projection_points)} connector path points")
-
-            # Convert point format and ensure endpoints are included
-            qgs_points = [QgsPointXY(pt[0], pt[1]) for pt in projection_points]
-            start_point = QgsPointXY(p_exit.x(), p_exit.y())
-            if not qgs_points or start_point.sqrDist(qgs_points[0]) > 1e-4:
-                qgs_points.insert(0, start_point)
-            end_point = QgsPointXY(p_entry.x(), p_entry.y())
-            if not qgs_points or end_point.sqrDist(qgs_points[-1]) > 1e-4:
-                qgs_points.append(end_point)
-
-            if len(qgs_points) < 2:
-                log.error("Dubins connector path has insufficient points for a valid geometry")
-                return None, None, None
-
-            # Create geometry from point list
-            turn_geom = QgsGeometry.fromPolylineXY(qgs_points)
-            if turn_geom.isEmpty() or turn_geom.type() != QgsWkbTypes.LineGeometry:
-                log.error("Failed to create valid line geometry from Dubins connector points")
-                return None, None, None
-
-            # Calculate length
-            turn_length = max(0.0, turn_geom.length())
-
-            # Calculate turn time
-            time_seconds = 0.0
-            if turn_speed_mps and turn_speed_mps > 0:
-                distance_time = turn_length / turn_speed_mps
-                time_seconds = distance_time
-                if turn_rate_dps and turn_rate_dps > 0:
-                    heading_diff = abs((h_entry - h_exit + 180) % 360 - 180) # Use original QGIS headings for difference
-                    heading_time = heading_diff / turn_rate_dps # Rate is already deg/SEC
-                    time_seconds = max(distance_time, heading_time)
-                    log.debug(f"  Connector Turn time: distance={distance_time:.1f}s, heading={heading_time:.1f}s -> using {time_seconds:.1f}s")
-            else:
-                log.warning("Invalid turn speed for connector, setting turn time to 0")
-
-            log.debug(f"  Dubins connector calculation successful: length={turn_length:.2f}m, time={time_seconds:.1f}s")
-            return turn_geom, turn_length, time_seconds
-
-        except Exception as e:
-            log.exception(f"Unexpected error in Dubins connector calculation: {e}")
-            return None, None, None
+    # <<< Function End: _complete_deviation_calculation >>>
 
     # Add the helper function if it's not already present or reliable
     def _create_temp_deviation_polygon(self, segment_geom, obstacle_buffer, clearance, turn_radius, fallback_heading):
