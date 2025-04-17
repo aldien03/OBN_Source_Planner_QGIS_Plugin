@@ -1,0 +1,77 @@
+2025-04-17 07:54:03 - obn_planner - INFO - run_full_timing_calculation_and_update:337 - Running full timing calculation...
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:218 - --- Calculating Segment Times (with DOUBLED Run-In) ---
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1403 - QgsFeatureRequest.NoGeometrySimplify flag not available, using default settings
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1419 - Found Start run-in geometry for line 1348 (length: 750.0m)
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_runin_time:1454 - Run-in time: 339.0s (length: 750.0m @ 2.2m/s)
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:233 -   Line 1348 (First): Original RunIn=339.0s, Using Doubled RunIn=678.1s
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:241 -   Line 1348 (First): Start=07:27:32, DoubledRunIn=678.1s, Line=9358.8s, End=10:14:49
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_next_exit_state:8200 - Exit state for line 1348: point=(424466.5, 7519631.8), heading=122.7Â°
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_entry_details:8150 - Entry details for line unknown: point=(424246.3, 7517767.8), heading=302.7Â°
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_cached_turn:8293 - Using cached turn for 1348->1438 (reciprocal=True)
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1403 - QgsFeatureRequest.NoGeometrySimplify flag not available, using default settings
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1419 - Found End run-in geometry for line 1438 (length: 750.0m)
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_runin_time:1454 - Run-in time: 339.0s (length: 750.0m @ 2.2m/s)
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:286 -   Line 1438: Original RunIn=339.0s, Using Doubled RunIn=678.1s
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:294 -   Line 1438: PrevEnd=10:14:49, Turn=1191.3s, Start=10:34:40, DoubledRunIn=678.1s, Line=9938.6s, End=13:31:37
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_next_exit_state:8200 - Exit state for line 1438: point=(403632.6, 7531011.2), heading=302.7Â°
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_entry_details:8150 - Entry details for line unknown: point=(403450.2, 7530860.2), heading=122.7Â°
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_cached_turn:8293 - Using cached turn for 1438->1450 (reciprocal=False)
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1403 - QgsFeatureRequest.NoGeometrySimplify flag not available, using default settings
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1419 - Found Start run-in geometry for line 1450 (length: 750.0m)
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_runin_time:1454 - Run-in time: 339.0s (length: 750.0m @ 2.2m/s)
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:286 -   Line 1450: Original RunIn=339.0s, Using Doubled RunIn=678.1s
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:294 -   Line 1450: PrevEnd=13:31:37, Turn=1525.9s, Start=13:57:03, DoubledRunIn=678.1s, Line=9982.2s, End=16:54:43
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_next_exit_state:8200 - Exit state for line 1450: point=(424149.1, 7517562.8), heading=122.7Â°
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_entry_details:8150 - Entry details for line unknown: point=(424197.7, 7517664.8), heading=302.7Â°
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_cached_turn:8293 - Using cached turn for 1450->1444 (reciprocal=True)
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1403 - QgsFeatureRequest.NoGeometrySimplify flag not available, using default settings
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _find_runin_geom:1419 - Found End run-in geometry for line 1444 (length: 750.0m)
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _calculate_runin_time:1454 - Run-in time: 339.0s (length: 750.0m @ 2.2m/s)
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:286 -   Line 1444: Original RunIn=339.0s, Using Doubled RunIn=678.1s
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:294 -   Line 1444: PrevEnd=16:54:43, Turn=12529.1s, Start=20:23:32, DoubledRunIn=678.1s, Line=9963.5s, End=23:20:54
+2025-04-17 07:54:03 - obn_planner.obn_planner_dockwidget - DEBUG - _get_next_exit_state:8200 - Exit state for line 1444: point=(403535.3, 7530939.2), heading=302.7Â°
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:312 - Total Calculated Cost (with doubled run-in): 57201.7 seconds
+2025-04-17 07:54:03 - obn_planner - DEBUG - _calculate_segment_times:314 - --- Finished Calculating Segment Times (with DOUBLED Run-In) ---
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:361 - [populate_table] Using directions map: {1348: 'low_to_high', 1450: 'low_to_high', 1438: 'high_to_low', 1444: 'high_to_low'}
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:390 -   Row 0, Line 1348: Fetched direction = 'low_to_high'
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:390 -   Row 1, Line 1438: Fetched direction = 'high_to_low'
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:390 -   Row 2, Line 1450: Fetched direction = 'low_to_high'
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:390 -   Row 3, Line 1444: Fetched direction = 'high_to_low'
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:454 - Setting ComboBox indices for 4 rows after loop...
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:458 -   Row 0, Line 1348: Setting index to 0
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:458 -   Row 1, Line 1438: Setting index to 1
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:458 -   Row 2, Line 1450: Setting index to 0
+2025-04-17 07:54:03 - obn_planner - DEBUG - populate_table:458 -   Row 3, Line 1444: Setting index to 1
+2025-04-17 07:54:03 - obn_planner - INFO - run_full_timing_calculation_and_update:347 - Timing calculation successful.
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - INFO - show_edit_sequence_dialog:7473 - Sequence Edit Dialog accepted
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - show_edit_sequence_dialog:7488 - Reconstructing final path...
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - INFO - _reconstruct_path:8848 - Reconstructing complete path for visualization...
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _add_line_segments:9033 - Added line segment 1348 (Lowâ†’High)
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_next_exit_state:8200 - Exit state for line 1348: point=(424466.5, 7519631.8), heading=122.7Â°
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_entry_details:8150 - Entry details for line unknown: point=(424246.3, 7517767.8), heading=302.7Â°
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_cached_turn:8293 - Using cached turn for 1348->1438 (reciprocal=True)
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _add_line_segments:9033 - Added line segment 1438 (Highâ†’Low)
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_next_exit_state:8200 - Exit state for line 1438: point=(403632.6, 7531011.2), heading=302.7Â°
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_entry_details:8150 - Entry details for line unknown: point=(403450.2, 7530860.2), heading=122.7Â°
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_cached_turn:8293 - Using cached turn for 1438->1450 (reciprocal=False)
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _add_line_segments:9033 - Added line segment 1450 (Lowâ†’High)
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_next_exit_state:8200 - Exit state for line 1450: point=(424149.1, 7517562.8), heading=122.7Â°
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_entry_details:8150 - Entry details for line unknown: point=(424197.7, 7517664.8), heading=302.7Â°
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _get_cached_turn:8293 - Using cached turn for 1450->1444 (reciprocal=True)
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _add_line_segments:9033 - Added line segment 1444 (Highâ†’Low)
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - INFO - _reconstruct_path:8938 - Path reconstruction complete with 7 segments
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - INFO - _visualize_optimized_path:9054 - Visualizing optimized acquisition path...
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _remove_layer_by_name:299 - Removed 1 layer(s) named 'Optimized_Path'
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _visualize_optimized_path:9072 - Creating visualization layer 'Optimized_Path' with CRS EPSG:31984
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _visualize_optimized_path:9100 - Layer structure created successfully
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _visualize_optimized_path:9194 - Added 7 features to visualization layer
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _apply_path_labeling:9454 - Applying rule-based labeling to path layer...
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _apply_path_labeling:9571 - Rule-based path labeling applied successfully
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _remove_layer_by_name:299 - Removed 1 layer(s) named 'Turn_Segments'
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - INFO - _create_turns_layer:9697 - Created specialized turn layer with 3 segments
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _apply_turn_labeling:9713 - Applying turn duration labeling...
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _apply_turn_labeling:9769 - Turn labeling applied successfully
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - INFO - _visualize_optimized_path:9211 - Added visualization layer 'Optimized_Path' to project
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _generate_lookahead_table:7667 - Generating lookahead table data...
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - DEBUG - _generate_lookahead_table:7748 - Generated 4 rows for lookahead table
+2025-04-17 07:54:04 - obn_planner.obn_planner_dockwidget - INFO - show_edit_sequence_dialog:7511 - Final plan visualized. Estimated time: 15.89 hours

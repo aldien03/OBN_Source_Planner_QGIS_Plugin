@@ -150,7 +150,7 @@ class Ui_OBNPlannerDockWidgetBase(object):
         self.horizontalLayout_12.addWidget(self.label_9)
         self.turnRadiusDoubleSpinBox = QtWidgets.QDoubleSpinBox(self.dockWidgetContents)
         self.turnRadiusDoubleSpinBox.setDecimals(0)
-        self.turnRadiusDoubleSpinBox.setMinimum(500.0)
+        self.turnRadiusDoubleSpinBox.setMinimum(300.0)
         self.turnRadiusDoubleSpinBox.setMaximum(2000.0)
         self.turnRadiusDoubleSpinBox.setSingleStep(50.0)
         self.turnRadiusDoubleSpinBox.setProperty("value", 900.0)
