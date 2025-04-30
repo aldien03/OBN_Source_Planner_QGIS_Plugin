@@ -69,7 +69,7 @@ from qgis.core import (QgsProject, QgsVectorLayer, QgsField, QgsFeature, QgsGeom
                    QgsPoint, QgsSpatialIndex, QgsDistanceArea, QgsUnitTypes, QgsRendererCategory, QgsCategorizedSymbolRenderer,
                    QgsPointLocator, QgsFeatureSink, QgsPalLayerSettings, QgsTextFormat, QgsProperty,
                    QgsRuleBasedLabeling, QgsRuleBasedRenderer, QgsVectorLayerSimpleLabeling, QgsMarkerLineSymbolLayer,
-                   QgsGeometryUtils, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression, QgsArrowSymbolLayer, QgsSingleSymbolRenderer,QgsRendererCategory, QgsVectorLayerSimpleLabeling)
+                   QgsGeometryUtils, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression, QgsArrowSymbolLayer, QgsSingleSymbolRenderer,QgsRendererCategory, QgsVectorLayerSimpleLabeling, QgsMapLayer)
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt import QtWidgets, uic, QtCore
 from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt, QDateTime
@@ -168,7 +168,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         self.nogo_zone_combo = self._replace_combo_with_map_layer_combo(self.noGoZoneLayerComboBox, self.horizontalLayout_5, QgsMapLayerProxyModel.PolygonLayer)
         # self.closepass_combo = self._replace_combo_with_map_layer_combo(self.closePassLayerComboBox, self.horizontalLayout_6, QgsMapLayerProxyModel.PolygonLayer)
         # Setup Status Filter ComboBox
-        self.statusFilterComboBox.clear(); self.statusFilterComboBox.addItems(["To Be Acquired", "Acquired", "All"]); self.statusFilterComboBox.setCurrentIndex(0)
+        self.statusFilterComboBox.clear(); self.statusFilterComboBox.addItems(["To Be Acquired", "Acquired", "Pending", "All"]); self.statusFilterComboBox.setCurrentIndex(0)
 
         # --- Setup Acquisition Mode ComboBox (with Racetrack) ---
         if hasattr(self, 'acquisitionModeComboBox'):
@@ -195,6 +195,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         else: log.warning("UI Warning: markAcquiredButton not found.")
         if hasattr(self, 'markTbaButton'): self.markTbaButton.clicked.connect(self.handle_mark_tba)
         else: log.warning("UI Warning: markTbaButton not found.")
+        if hasattr(self, 'markPendingButton'): self.markPendingButton.clicked.connect(self.handle_mark_pending)
+        else: log.warning("UI Warning: markPendingButton not found.")
         if hasattr(self, 'generateLinesButton'): self.generateLinesButton.clicked.connect(self.handle_generate_lines)
         else: log.warning("UI Warning: generateLinesButton not found.")
         if hasattr(self, 'calculateDeviationsButton'): self.calculateDeviationsButton.clicked.connect(self.handle_calculate_deviations)
@@ -461,7 +463,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         parsed_data = []  # Will hold dictionaries of parsed points
         error_log = []    # Will hold parsing errors
         line_count = 0
-        skip_headers = 36  # Standard number of header lines to skip
+        skip_headers = 0  # Standard number of header lines to skip
         
         # Step 1: Parse the SPS file
         try:
@@ -566,10 +568,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 
                 # Try to parse the line
                 try:
-                    line_num_str = line[1:5].strip()
-                    sp_str = line[21:25].strip()
-                    easting_str = line[48:56].strip()
-                    northing_str = line[57:65].strip()
+                    # line_num_str = line[1:5].strip()
+                    # sp_str = line[21:25].strip()
+                    # easting_str = line[48:56].strip()
+                    # northing_str = line[57:65].strip()
+
+                    # Modified code based on actual columns
+                    line_num_str = line[7:12].strip()  # Positions 8-11 (Python slicing is exclusive at the end)
+                    sp_str = line[17:21].strip()       # Positions 18-21
+                    easting_str = line[46:56].strip()  # Positions 47-55
+                    northing_str = line[56:66].strip() # Positions 57-65
                     
                     # Validate required fields
                     if not line_num_str or not sp_str or not easting_str or not northing_str:
@@ -1096,6 +1104,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         """
         log.info("Handling Mark To Be Acquired button click")
         self._update_selected_lines_status("To Be Acquired")
+
+    def handle_mark_pending(self):
+        """
+        Handles the 'Mark Selected as Pending' button click.
+        Updates the Status attribute of selected lines to 'Pending'.
+        """
+        log.info("Handling Mark Pending button click")
+        self._update_selected_lines_status("Pending")
 
     def _update_selected_lines_status(self, new_status):
         """
@@ -6684,6 +6700,22 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             self.last_sim_params = sim_params
 
             line_data, required_layers = self._prepare_line_data(sim_params)
+
+            # --- <<< ELEGANT HANDLING for NO VALID LINES >>> ---
+            if not line_data: # Checks for None OR empty dictionary
+                log.error("Preparation resulted in no valid 'To Be Acquired' lines for simulation based on current filters and generated layers.")
+                QMessageBox.warning(self, "No Lines Found for Simulation",
+                                    "No survey lines marked 'To Be Acquired' were found in the 'Generated_Survey_Lines' layer that match the current filter settings.\n\n"
+                                    "Please check the following:\n"
+                                    "1. **Source Layer Status:** Ensure the lines you want to simulate have their 'Status' set to 'To Be Acquired' in the original SPS point layer.\n"
+                                    "2. **Filter Settings:** Verify the 'Start Line', 'End Line', and 'Status' filter settings in the UI are correct.\n"
+                                    "3. **Apply Filter:** Click 'Apply Filter / Refresh List' to update the line list.\n"
+                                    "4. **Regenerate Lines:** Click 'Generate Lines' again *after* confirming the status and filters are correct.\n\n"
+                                    "Simulation cannot proceed without valid lines.")
+                # No need to raise an exception, just exit gracefully
+                return # Stop the simulation process here
+            # --- <<< END ELEGANT HANDLING >>> ---
+
             if not line_data: raise ValueError("Failed to prepare line data")
             self.last_required_layers = required_layers
             log.info(f"Initial line data preparation complete ({time.time() - start_prep_time:.2f}s). Found {len(line_data)} lines.")
@@ -7396,12 +7428,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
     # --- 8. Sequence Editing & Finalization ---
 
+# --- Inside OBNPlannerDockWidget class in obn_planner_dockwidget.py ---
+
     def show_edit_sequence_dialog(self):
         """
         Shows the sequence editor dialog, passing context including deviated line data.
 
         This function creates and displays a dialog for editing the acquisition sequence,
-        visualizes the updated path after edits, and prepares for RRT integration.
+        visualizes the updated path after edits, and prepares for potential future RRT integration.
         """
         log.debug("Edit Sequence button clicked")
 
@@ -7428,16 +7462,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         if missing_context:
             log.error(f"Missing context for editing: {', '.join(missing_context)}")
-            QMessageBox.critical(self, "Missing Data", 
+            QMessageBox.critical(self, "Missing Data",
                                f"Missing required data: {', '.join(missing_context)}. Please re-run simulation.")
             return
 
-        # Prepare context with helper functions and data for RRT integration
+        # Prepare context with helper functions and data
         context = {
             "sim_params": self.last_sim_params,
-            "line_data": self.last_line_data,
+            "line_data": self.last_line_data, # Pass potentially deviated line data
             "required_layers": self.last_required_layers,
             "turn_cache": self.last_turn_cache,
+            # Pass necessary helper methods from the main widget
             "_get_cached_turn": self._get_cached_turn,
             "_find_runin_geom": self._find_runin_geom,
             "_calculate_runin_time": self._calculate_runin_time,
@@ -7445,84 +7480,120 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             "_get_entry_details": self._get_entry_details,
         }
 
-        # Support for RRT-based deviation features (placeholder for future integration)
-        if hasattr(self, 'rrt_manager') and self.rrt_manager:
-            context["rrt_manager"] = self.rrt_manager
-
-        # --- ADD DEBUG LOG ---
+        # --- Initial Simulation Result Logging (for debugging) ---
         sim_result_to_pass = self.last_simulation_result
-        log.debug(f"[show_edit_sequence_dialog] Passing simulation result to dialog:")
+        log.debug(f"[show_edit_sequence_dialog - Before Dialog] Passing initial simulation result:")
         log.debug(f"  Sequence: {sim_result_to_pass.get('seq')}")
         log.debug(f"  Cost: {sim_result_to_pass.get('cost')}")
         log.debug(f"  State (raw): {sim_result_to_pass.get('state')}")
         log.debug(f"  Directions from state: {sim_result_to_pass.get('state', {}).get('line_directions')}")
-        # --- END DEBUG LOG ---
+        # --- End Initial Logging ---
 
         # Create and show dialog
         try:
+            # Pass the current simulation result and context to the dialog
             dialog = SequenceEditDialog(
                 self.last_simulation_result,
                 context,
-                self.recalculate_edited_sequence,
+                self.recalculate_edited_sequence, # Callback for recalculation within dialog
                 parent=self
             )
 
-            result = dialog.exec_()
+            result = dialog.exec_() # Show the dialog modally
 
             if result == QDialog.Accepted:
                 log.info("Sequence Edit Dialog accepted")
+                # Get the final, potentially edited, sequence information from the dialog
                 final_info = dialog.get_final_sequence_info()
 
                 if not final_info:
-                    log.error("Dialog returned invalid sequence information")
+                    log.error("Dialog returned invalid or missing final sequence information")
+                    QMessageBox.warning(self, "Edit Error", "The edit dialog did not return valid sequence information.")
                     return
 
-                # Update the stored results with edited sequence
+                # --- ADD DEBUG LOG for final directions received ---
+                final_directions_map = final_info.get('state', {}).get('line_directions', {})
+                log.debug(f"[show_edit_sequence_dialog - After Dialog] Final directions map received from dialog: {final_directions_map}")
+                log.debug(f"[show_edit_sequence_dialog - After Dialog] Final sequence received: {final_info.get('seq')}")
+                log.debug(f"[show_edit_sequence_dialog - After Dialog] Final cost received: {final_info.get('cost')}")
+                # --- END DEBUG LOG ---
+
+                # Update the stored results with the edited sequence/cost/state
                 self.last_simulation_result = final_info
 
-                # Visualize the final path
+                # Visualize the final path based on the edited information
                 QApplication.setOverrideCursor(Qt.WaitCursor)
-
+                visualization_successful = False
                 try:
-                    # Reconstruct path with updated sequence
-                    log.debug("Reconstructing final path...")
+                    # --- >>> CLEAR THE CACHE BEFORE RECONSTRUCTION <<< ---
+                    log.debug("Clearing turn cache before final path reconstruction.")
+                    if self.last_turn_cache is not None:
+                        self.last_turn_cache.clear()
+                    else:
+                        log.warning("Turn cache object was None, cannot clear.")
+                        self.last_turn_cache = {} # Re-initialize just in case
+                    # --- >>> END CACHE CLEAR <<< --
+
+                    # Reconstruct path geometry using the FINAL edited sequence info
+                    log.debug("Reconstructing final path based on edited sequence...")
                     path_segments = self._reconstruct_path(
-                        final_info,
-                        self.last_line_data,
+                        final_info, # Pass the final edited info
+                        self.last_line_data, # Use potentially deviated line data
                         self.last_required_layers,
                         self.last_sim_params,
                         self.last_turn_cache
                     )
 
-                    # Visualize the optimized path
-                    self._visualize_optimized_path(
-                        final_info['seq'],
-                        path_segments,
-                        self.last_sim_params.get('start_datetime', datetime.now()),
-                        self.last_required_layers['lines'].crs(),
-                        self.last_line_data
-                    )
+                    if not path_segments:
+                         log.error("Path reconstruction failed after edit. Cannot visualize.")
+                         QMessageBox.warning(self, "Visualization Skipped", "Path reconstruction failed after edits, skipping visualization.")
+                    else:
+                        # Visualize the reconstructed path
+                        log.debug("Visualizing the final optimized path...")
+                        source_crs = self.last_required_layers.get('lines', QgsProject.instance()).crs()
+                        if not source_crs or not source_crs.isValid():
+                            log.warning("Source/Project CRS invalid for visualization. Using fallback.")
+                            source_crs = QgsCoordinateReferenceSystem("EPSG:4326")
 
-                    # Generate lookahead table for operator guidance
-                    lookahead_data = self._generate_lookahead_table(final_info)
+                        self._visualize_optimized_path(
+                            final_info['seq'], # Use final sequence
+                            path_segments,
+                            self.last_sim_params.get('start_datetime', datetime.now()),
+                            source_crs,
+                            self.last_line_data # Pass line data for deviation flags
+                        )
 
-                    # Show completion message with timing estimate
-                    hours = final_info.get('cost', 0) / 3600.0
-                    log.info(f"Final plan visualized. Estimated time: {hours:.2f} hours")
+                        # Generate and optionally display lookahead table
+                        log.debug("Generating final lookahead table...")
+                        lookahead_data = self._generate_lookahead_table(final_info)
+                        if lookahead_data:
+                            # Optional: Automatically display the lookahead table after editing
+                            # self._display_lookahead_table(lookahead_data)
+                            log.debug("Lookahead table data generated.")
+                        else:
+                            log.warning("Failed to generate lookahead table data.")
+
+                        # Show completion message with final timing estimate
+                        hours = final_info.get('cost', 0) / 3600.0
+                        log.info(f"Final plan visualized. Estimated time: {hours:.2f} hours")
+                        visualization_successful = True
 
                 except Exception as e:
-                    log.exception(f"Error during final visualization: {e}")
-                    QMessageBox.critical(self, "Visualization Error", 
-                                       f"Error visualizing final plan: {str(e)}")
+                    log.exception(f"Error during final visualization or lookahead generation: {e}")
+                    QMessageBox.critical(self, "Finalization Error",
+                                       f"Error visualizing or finalizing the plan: {str(e)}")
                 finally:
                     QApplication.restoreOverrideCursor()
-            else:
-                log.info("Sequence Edit Dialog cancelled")
+
+            else: # Dialog was cancelled
+                log.info("Sequence Edit Dialog cancelled by user")
 
         except Exception as dialog_error:
             log.exception(f"Error creating or showing sequence edit dialog: {dialog_error}")
-            QMessageBox.critical(self, "Dialog Error", 
+            QMessageBox.critical(self, "Dialog Error",
                                f"Error opening sequence editor: {str(dialog_error)}")
+
+# --- End of show_edit_sequence_dialog method ---
 
     def recalculate_edited_sequence(self, edited_sequence, edited_directions):
         """
@@ -7896,11 +7967,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error copying table to clipboard: {e}")
 
     def _export_table_to_csv(self, table_data):
-        """Helper to export table data to CSV file"""
+        """Helper to export table data to CSV file with progress indicator"""
         try:
             if not table_data:
                 return
-
+                
+            # Get row count for progress tracking
+            row_count = len(table_data)
+            
             # Ask for filename
             filename, _ = QFileDialog.getSaveFileName(
                 self, "Export Table to CSV", "", "CSV Files (*.csv)"
@@ -7912,20 +7986,44 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Add .csv extension if missing
             if not filename.lower().endswith('.csv'):
                 filename += '.csv'
-
-            # Write CSV file
+            
+            # Create progress dialog
+            progress = QProgressDialog("Exporting data to CSV...", "Cancel", 0, row_count, self)
+            progress.setWindowTitle("Export Progress")
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setMinimumDuration(0)  # Show immediately
+            
+            # Optimize: Cache the fieldnames once
+            fieldnames = list(table_data[0].keys()) if table_data else []
+            
+            # Write CSV file with progress updates
             with open(filename, 'w', newline='') as csvfile:
-                # Get field names from first row
-                fieldnames = table_data[0].keys()
-
-                # Create CSV writer
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
-
-                # Write data rows
-                for row in table_data:
-                    writer.writerow(row)
-
+                
+                # Process in smaller batches for better UI responsiveness
+                batch_size = 100  # Adjust based on typical data size
+                for i in range(0, row_count, batch_size):
+                    # Check if user canceled
+                    if progress.wasCanceled():
+                        csvfile.close()  # Ensure file is properly closed
+                        try:
+                            os.remove(filename)  # Remove incomplete file
+                        except:
+                            pass  # Ignore if file can't be removed
+                        log.info("CSV export canceled by user")
+                        return
+                    
+                    # Process batch
+                    end_idx = min(i + batch_size, row_count)
+                    batch = table_data[i:end_idx]
+                    writer.writerows(batch)  # More efficient than row-by-row
+                    
+                    # Update progress
+                    progress.setValue(end_idx)
+                    QApplication.processEvents()  # Keep UI responsive
+            
+            progress.setValue(row_count)  # Ensure progress shows complete
             log.info(f"Table exported to CSV: {filename}")
             QMessageBox.information(self, "Export Successful", f"Table exported to {filename}")
 
@@ -8826,215 +8924,213 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
     # --- 11. Visualization ---
 
-    def _reconstruct_path(self, sequence_info, line_data, required_layers, sim_params, turn_cache):
+    # --- MODIFY _add_line_segments ---
+    def _add_line_segments(self, line_num, is_reciprocal, line_data, required_layers, sim_params, result_segments):
         """
-        Reconstructs a complete path with all segments and turns for visualization.
-
-        This function takes sequence information and generates a detailed path representation
-        including all line segments, run-ins, and turns between lines for visualization.
+        Adds line and associated run-in segments to the result segments list.
 
         Args:
-            sequence_info (dict): Dictionary containing:
-                - 'seq': List of line numbers in sequence order
-                - 'state': Dictionary with line direction information
-            line_data (dict): Dictionary of line data keyed by line number
-            required_layers (dict): Dictionary of required QGIS layers
-            sim_params (dict): Simulation parameters
-            turn_cache (dict): Cache of previously calculated turns
+            line_num (int): Line number to add.
+            is_reciprocal (bool): Whether line is acquired in reciprocal direction.
+            line_data (dict): Dictionary of line data.
+            required_layers (dict): Dictionary of required layers ('lines', 'runins').
+            sim_params (dict): Simulation parameters (needed for run-in timing).
+            result_segments (list): List to append the segments to.
 
         Returns:
-            list: List of path segments with their attributes as dictionaries
-        """
-        log.info("Reconstructing complete path for visualization...")
-
-        # Validate input parameters
-        if not sequence_info or 'seq' not in sequence_info:
-            log.warning("Cannot reconstruct path: Missing sequence information")
-            return []
-
-        line_seq = sequence_info.get('seq', [])
-        if not line_seq:
-            log.warning("Cannot reconstruct path: Empty line sequence")
-            return []
-
-        # Get line directions from sequence state
-        line_directions = {}
-        if 'state' in sequence_info and 'line_directions' in sequence_info['state']:
-            line_directions = sequence_info['state']['line_directions']
-
-        # Initialize storage for all path segments
-        result_segments = []
-
-        try:
-            # Process each line in the sequence
-            for i, line_num in enumerate(line_seq):
-                # Determine direction for current line
-                is_reciprocal = line_directions.get(line_num) == 'high_to_low'
-
-                # Add line segment and associated run-ins to result
-                self._add_line_segments(
-                    line_num, 
-                    is_reciprocal, 
-                    line_data, 
-                    required_layers,
-                    result_segments
-                )
-
-                # Skip turn calculation for the last line
-                if i == len(line_seq) - 1:
-                    continue
-
-                # Calculate turn to the next line
-                next_line = line_seq[i + 1]
-                next_is_reciprocal = line_directions.get(next_line) == 'high_to_low'
-
-                # Get exit state from current line
-                exit_pt, exit_hdg = self._get_next_exit_state(line_num, is_reciprocal, line_data)
-                if exit_pt is None or exit_hdg is None:
-                    log.warning(f"Cannot calculate turn: Invalid exit state from line {line_num}")
-                    continue
-
-                # Get entry state for next line
-                next_info = line_data.get(next_line)
-                if not next_info:
-                    log.warning(f"Cannot calculate turn: Missing data for line {next_line}")
-                    continue
-
-                entry_pt, entry_hdg = self._get_entry_details(next_info, next_is_reciprocal)
-                if entry_pt is None or entry_hdg is None:
-                    log.warning(f"Cannot calculate turn: Invalid entry state for line {next_line}")
-                    continue
-
-                # Calculate or retrieve cached turn
-                turn_geom, turn_length, turn_time = self._get_cached_turn(
-                    line_num, 
-                    next_line, 
-                    next_is_reciprocal,
-                    exit_pt, 
-                    exit_hdg, 
-                    entry_pt, 
-                    entry_hdg, 
-                    sim_params, 
-                    turn_cache
-                )
-
-                # Add turn to result if valid
-                if turn_geom and not turn_geom.isEmpty():
-                    # Format time for display
-                    time_str = f"{turn_time:.1f}" if turn_time is not None else "?"
-
-                    # Add turn segment to results
-                    result_segments.append({
-                        'Geometry': turn_geom,
-                        'StartLine': line_num,
-                        'EndLine': next_line,
-                        'SegmentType': 'Turn',
-                        'Duration_s': turn_time if turn_time is not None else 0,
-                        'Label': f"Turn: L{line_num}→L{next_line} ({time_str}s)"
-                    })
-                else:
-                    log.warning(f"Failed to generate turn between lines {line_num} and {next_line}")
-
-            log.info(f"Path reconstruction complete with {len(result_segments)} segments")
-            return result_segments
-
-        except Exception as e:
-            log.exception(f"Error reconstructing path: {e}")
-            return []
-
-    def _add_line_segments(self, line_num, is_reciprocal, line_data, required_layers, result_segments):
-        """
-        Add line segments (including run-in and line) to the result segments list.
-        Args:
-            line_num (int): Line number to add
-            is_reciprocal (bool): Whether line is acquired in reciprocal direction
-            line_data (dict): Dictionary of line data
-            required_layers (dict): Dictionary of required layers
-            result_segments (list): List to append the segments to
-        Returns:
-            bool: True if successful, False otherwise
+            bool: True if successful, False otherwise.
         """
         try:
+            log.debug(f"Adding segments for Line {line_num} (Reciprocal: {is_reciprocal})")
             if line_num not in line_data:
-                log.warning(f"Line {line_num} not found in line data")
+                log.warning(f"Line {line_num} not found in line data.")
                 return False
+
             line_info = line_data[line_num]
-            # Get the line geometry
-            lines_layer = required_layers.get('lines')
-            if not lines_layer:
-                log.warning("Lines layer not available")
-                return False
-            # Find the feature for this line
-            line_feature = None
-            for feature in lines_layer.getFeatures():
-                # Try both 'LineNum' and 'Line_Num' to handle either field naming convention
-                try:
-                    if feature['LineNum'] == line_num:
-                        line_feature = feature
-                        break
-                except KeyError:
-                    try:
-                        if feature['Line_Num'] == line_num:
-                            line_feature = feature
-                            break
-                    except KeyError:
-                        # Log available fields for debugging
-                        if line_feature is None:
-                            log.debug(f"Available fields: {[field.name() for field in lines_layer.fields()]}")                        
-            if not line_feature:
-                log.warning(f"Line feature {line_num} not found in layer")
-                return False
-            # Get the line geometry
-            line_geom = line_feature.geometry()
+            line_geom = line_info.get('line_geom') # Get potentially deviated geometry
+
             if not line_geom or line_geom.isEmpty():
-                log.warning(f"Line {line_num} has empty geometry")
-                return False
-            # Direction label
+                log.warning(f"Line {line_num} has empty/invalid geometry in line_data.")
+                # Fallback: Try getting from original layer (less ideal)
+                lines_layer = required_layers.get('lines')
+                if lines_layer:
+                    req = QgsFeatureRequest().setFilterExpression(f"\"LineNum\" = {line_num}")
+                    feats = list(lines_layer.getFeatures(req))
+                    if feats: line_geom = feats[0].geometry()
+
+            if not line_geom or line_geom.isEmpty():
+                 log.error(f"Could not retrieve valid geometry for Line {line_num}.")
+                 return False
+
+            # --- Add Run-In Segment ---
+            runins_layer = required_layers.get('runins')
+            runin_location = "End" if is_reciprocal else "Start"
+            runin_geom = self._find_runin_geom(runins_layer, line_num, runin_location)
+            runin_time_s = 0.0
+
+            if runin_geom and not runin_geom.isEmpty():
+                runin_time_s = self._calculate_runin_time(runin_geom, sim_params)
+                runin_segment_data = {
+                    'Geometry': runin_geom,
+                    'LineNum': line_num,
+                    'SegmentType': 'RunIn',
+                    'Direction': 'Entering ' + ('Highest SP' if is_reciprocal else 'Lowest SP'),
+                    'Duration_s': runin_time_s,
+                    'Label': f"RunIn L{line_num} ({runin_time_s:.1f}s)"
+                }
+                # Add run-in *before* the line segment
+                result_segments.append(runin_segment_data)
+                log.debug(f"  Added {runin_location} RunIn segment for Line {line_num}")
+            else:
+                log.warning(f"  Could not find {runin_location} RunIn geometry for Line {line_num}")
+
+            # --- Add Main Line Segment ---
             direction_label = "High→Low" if is_reciprocal else "Low→High"
-            # Calculate acquisition time
-            vessel_speed_knots = 4.5  # Default if not provided
-            if 'vessel_speed_knots' in line_info:
-                vessel_speed_knots = line_info['vessel_speed_knots']
-            # Convert knots to m/s: 1 knot = 0.514444 m/s
-            vessel_speed_ms = vessel_speed_knots * 0.514444
-            # Calculate line acquisition time
             line_length = line_geom.length()
-            duration_s = line_length / vessel_speed_ms if vessel_speed_ms > 0 else 0
-            # Calculate heading from line geometry
+            shooting_speed_mps = sim_params.get('avg_shooting_speed_mps', 1.0)
+            duration_s = line_length / shooting_speed_mps if shooting_speed_mps > 0 else 0.0
+
+            # --- Calculate Heading based on actual segment points ---
             heading = None
-            if not line_geom.isEmpty() and line_geom.type() == QgsWkbTypes.LineGeometry:
-                # Get the first and last points to calculate heading
-                points = line_geom.asPolyline()
+            if line_geom.type() == QgsWkbTypes.LineGeometry:
+                points = list(line_geom.vertices())
                 if len(points) >= 2:
-                    # If reciprocal, calculate from last to first point (reverse direction)
-                    if is_reciprocal:
-                        dx = points[0].x() - points[-1].x()
-                        dy = points[0].y() - points[-1].y()
-                    else:
-                        dx = points[-1].x() - points[0].x()
-                        dy = points[-1].y() - points[0].y()
-                    
-                    # Calculate heading in degrees (0=North, clockwise)
-                    angle_rad = math.atan2(dx, dy)  # Note: x,y order is swapped for N=0 heading
-                    heading = math.degrees(angle_rad)
-                    if heading < 0:
-                        heading += 360.0
-            
-            # Add the line segment
-            result_segments.append({
-                'Geometry': QgsGeometry(line_geom),  # Create a copy of the geometry
+                    p_start = points[0]; p_end = points[-1]
+                    # Use the direction specified by is_reciprocal
+                    dx = p_end.x() - p_start.x()
+                    dy = p_end.y() - p_start.y()
+                    # Calculate QGIS heading (0=N, CW)
+                    if abs(dx) > 1e-6 or abs(dy) > 1e-6:
+                        angle_rad = math.atan2(dx, dy)
+                        heading_deg = math.degrees(angle_rad)
+                        heading = (heading_deg + 360) % 360 # Use actual angle
+
+                        # If reciprocal, the *travel* heading is reversed
+                        if is_reciprocal:
+                            heading = (heading + 180) % 360
+
+            line_segment_data = {
+                'Geometry': QgsGeometry(line_geom), # Use potentially deviated geometry
                 'LineNum': line_num,
                 'SegmentType': 'Line',
                 'Direction': 'Reciprocal' if is_reciprocal else 'Normal',
                 'Duration_s': duration_s,
-                'Heading': heading,  # Add the calculated heading
+                'Heading': heading, # Add the calculated heading
                 'Label': f"L{line_num} {direction_label} ({duration_s:.1f}s)"
-            })
-            log.debug(f"Added line segment {line_num} ({direction_label})")
+            }
+            result_segments.append(line_segment_data)
+            log.debug(f"  Added Line segment {line_num} ({direction_label})")
+
             return True
+
         except Exception as e:
-            log.exception(f"Error adding line segments for line {line_num}: {e}")
+            log.exception(f"Error adding line/run-in segments for line {line_num}: {e}")
             return False
+    # --- END MODIFICATION ---
+
+    # --- MODIFY _add_line_segments ---
+    def _add_line_segments(self, line_num, is_reciprocal, line_data, required_layers, sim_params, result_segments):
+        """
+        Adds line and associated run-in segments to the result segments list.
+
+        Args:
+            line_num (int): Line number to add.
+            is_reciprocal (bool): Whether line is acquired in reciprocal direction.
+            line_data (dict): Dictionary of line data.
+            required_layers (dict): Dictionary of required layers ('lines', 'runins').
+            sim_params (dict): Simulation parameters (needed for run-in timing).
+            result_segments (list): List to append the segments to.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        try:
+            log.debug(f"Adding segments for Line {line_num} (Reciprocal: {is_reciprocal})")
+            if line_num not in line_data:
+                log.warning(f"Line {line_num} not found in line data.")
+                return False
+
+            line_info = line_data[line_num]
+            line_geom = line_info.get('line_geom') # Get potentially deviated geometry
+
+            if not line_geom or line_geom.isEmpty():
+                log.warning(f"Line {line_num} has empty/invalid geometry in line_data.")
+                # Fallback: Try getting from original layer (less ideal)
+                lines_layer = required_layers.get('lines')
+                if lines_layer:
+                    req = QgsFeatureRequest().setFilterExpression(f"\"LineNum\" = {line_num}")
+                    feats = list(lines_layer.getFeatures(req))
+                    if feats: line_geom = feats[0].geometry()
+
+            if not line_geom or line_geom.isEmpty():
+                 log.error(f"Could not retrieve valid geometry for Line {line_num}.")
+                 return False
+
+            # --- Add Run-In Segment ---
+            runins_layer = required_layers.get('runins')
+            runin_location = "End" if is_reciprocal else "Start"
+            runin_geom = self._find_runin_geom(runins_layer, line_num, runin_location)
+            runin_time_s = 0.0
+
+            if runin_geom and not runin_geom.isEmpty():
+                runin_time_s = self._calculate_runin_time(runin_geom, sim_params)
+                runin_segment_data = {
+                    'Geometry': runin_geom,
+                    'LineNum': line_num,
+                    'SegmentType': 'RunIn',
+                    'Direction': 'Entering ' + ('Highest SP' if is_reciprocal else 'Lowest SP'),
+                    'Duration_s': runin_time_s,
+                    'Label': f"RunIn L{line_num} ({runin_time_s:.1f}s)"
+                }
+                # Add run-in *before* the line segment
+                result_segments.append(runin_segment_data)
+                log.debug(f"  Added {runin_location} RunIn segment for Line {line_num}")
+            else:
+                log.warning(f"  Could not find {runin_location} RunIn geometry for Line {line_num}")
+
+            # --- Add Main Line Segment ---
+            direction_label = "High→Low" if is_reciprocal else "Low→High"
+            line_length = line_geom.length()
+            shooting_speed_mps = sim_params.get('avg_shooting_speed_mps', 1.0)
+            duration_s = line_length / shooting_speed_mps if shooting_speed_mps > 0 else 0.0
+
+            # --- Calculate Heading based on actual segment points ---
+            heading = None
+            if line_geom.type() == QgsWkbTypes.LineGeometry:
+                points = list(line_geom.vertices())
+                if len(points) >= 2:
+                    p_start = points[0]; p_end = points[-1]
+                    # Use the direction specified by is_reciprocal
+                    dx = p_end.x() - p_start.x()
+                    dy = p_end.y() - p_start.y()
+                    # Calculate QGIS heading (0=N, CW)
+                    if abs(dx) > 1e-6 or abs(dy) > 1e-6:
+                        angle_rad = math.atan2(dx, dy)
+                        heading_deg = math.degrees(angle_rad)
+                        heading = (heading_deg + 360) % 360 # Use actual angle
+
+                        # If reciprocal, the *travel* heading is reversed
+                        if is_reciprocal:
+                            heading = (heading + 180) % 360
+
+            line_segment_data = {
+                'Geometry': QgsGeometry(line_geom), # Use potentially deviated geometry
+                'LineNum': line_num,
+                'SegmentType': 'Line',
+                'Direction': 'Reciprocal' if is_reciprocal else 'Normal',
+                'Duration_s': duration_s,
+                'Heading': heading, # Add the calculated heading
+                'Label': f"L{line_num} {direction_label} ({duration_s:.1f}s)"
+            }
+            result_segments.append(line_segment_data)
+            log.debug(f"  Added Line segment {line_num} ({direction_label})")
+
+            return True
+
+        except Exception as e:
+            log.exception(f"Error adding line/run-in segments for line {line_num}: {e}")
+            return False
+    # --- END MODIFICATION ---
 
     def _visualize_optimized_path(self, sequence, path_segments, start_datetime, source_crs, line_data):
         """
@@ -9271,8 +9367,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             blue_interval_arrow.setSubSymbol(blue_interval_marker)
             
             # Add arrow layers to symbol
-            blue_line_symbol.appendSymbolLayer(blue_arrow)
-            blue_line_symbol.appendSymbolLayer(blue_interval_arrow)
+            # blue_line_symbol.appendSymbolLayer(blue_arrow)
+            # blue_line_symbol.appendSymbolLayer(blue_interval_arrow)
             
             # Create rule for low to high lines
             blue_line_rule = QgsRuleBasedRenderer.Rule(
@@ -9320,8 +9416,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             green_interval_arrow.setSubSymbol(green_interval_marker)
             
             # Add arrow layers to symbol
-            green_line_symbol.appendSymbolLayer(green_arrow)
-            green_line_symbol.appendSymbolLayer(green_interval_arrow)
+            # green_line_symbol.appendSymbolLayer(green_arrow)
+            # green_line_symbol.appendSymbolLayer(green_interval_arrow)
             
             # Create rule for high to low lines
             high_to_low_rule = QgsRuleBasedRenderer.Rule(
@@ -9412,8 +9508,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             runin_interval_arrow.setSubSymbol(runin_interval_marker)
             
             # Add arrow layers to symbol
-            runin_symbol.appendSymbolLayer(runin_arrow)
-            runin_symbol.appendSymbolLayer(runin_interval_arrow)
+            # runin_symbol.appendSymbolLayer(runin_arrow)
+            # runin_symbol.appendSymbolLayer(runin_interval_arrow)
             
             # Create rule for run-in segments
             runin_rule = QgsRuleBasedRenderer.Rule(
@@ -10256,6 +10352,76 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         return ref_line_layer
 
+    # --- MODIFY _reconstruct_path ---
+    def _reconstruct_path(self, sequence_info, line_data, required_layers, sim_params, turn_cache):
+        """
+        Reconstructs a complete path with all segments (lines, run-ins, turns) for visualization.
+        MODIFIED to include run-ins via _add_line_segments.
+        """
+        log.info("Reconstructing complete path for visualization...")
+        if not sequence_info or 'seq' not in sequence_info: log.warning("Cannot reconstruct path: Missing sequence info"); return []
+        line_seq = sequence_info.get('seq', []);
+        if not line_seq: log.warning("Cannot reconstruct path: Empty sequence"); return []
+        line_directions = sequence_info.get('state', {}).get('line_directions', {})
+        if not line_directions: log.warning("Reconstructing path: Missing line directions map!"); return [] # Need directions
+
+        result_segments = [] # Holds dicts: {'Geometry':..., 'SegmentType':..., ...}
+        try:
+            for i, line_num in enumerate(line_seq):
+                is_reciprocal = line_directions.get(line_num) == 'high_to_low'
+
+                # --- MODIFIED CALL: Add line AND its preceding run-in ---
+                line_added_ok = self._add_line_segments(
+                    line_num, is_reciprocal, line_data, required_layers,
+                    sim_params, # Pass sim_params
+                    result_segments
+                )
+                if not line_added_ok:
+                    log.warning(f"Failed to add segments for line {line_num}, path may be incomplete.")
+                # --- END MODIFIED CALL ---
+
+                # Add turn *after* the line segment (if not the last line)
+                if i < len(line_seq) - 1:
+                    next_line = line_seq[i+1]
+                    next_is_reciprocal = line_directions.get(next_line) == 'high_to_low'
+
+                    exit_pt, exit_hdg = self._get_next_exit_state(line_num, is_reciprocal, line_data)
+                    next_info = line_data.get(next_line);
+                    if not next_info: log.warning(f"Missing data for next line {next_line}"); continue
+                    entry_pt, entry_hdg = self._get_entry_details(next_info, next_is_reciprocal)
+
+                    if exit_pt is None or exit_hdg is None or entry_pt is None or entry_hdg is None:
+                        log.warning(f"Cannot calculate turn {line_num}->{next_line}: Invalid entry/exit state.")
+                        continue
+
+                    # --- Calculate turn ---
+                    turn_geom, turn_length, turn_time = self._get_cached_turn(
+                        line_num, next_line, next_is_reciprocal,
+                        exit_pt, exit_hdg, entry_pt, entry_hdg,
+                        sim_params, turn_cache
+                    )
+
+                    if turn_geom and not turn_geom.isEmpty():
+                        time_str = f"{turn_time:.1f}" if turn_time is not None else "?"
+                        result_segments.append({
+                            'Geometry': turn_geom,
+                            'StartLine': line_num, # Use StartLine/EndLine for Turn context
+                            'EndLine': next_line,
+                            'SegmentType': 'Turn',
+                            'Duration_s': turn_time if turn_time is not None else 0,
+                            'Label': f"Turn: L{line_num}→L{next_line} ({time_str}s)"
+                        })
+                        log.debug(f"Added Turn segment {line_num} -> {next_line}")
+                    else:
+                        log.warning(f"Failed to generate/add turn between {line_num} and {next_line}")
+                # --- End Turn Calculation ---
+
+            log.info(f"Path reconstruction complete with {len(result_segments)} segments (including run-ins)")
+            return result_segments
+        except Exception as e:
+            log.exception(f"Error reconstructing path: {e}")
+            return []
+    # --- END MODIFICATION ---
 
     # --- 12. Plugin Lifecycle ---
 

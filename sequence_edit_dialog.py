@@ -2,8 +2,11 @@
 import copy
 from datetime import datetime, timedelta
 import logging # Added for logging
-import openpyxl # Added for XLSX export
-from openpyxl.utils import get_column_letter
+# Using xlsxwriter instead of openpyxl for XLSX export
+try:
+    import xlsxwriter
+except ImportError:
+    pass  # We'll handle this in the export function
 from qgis.core import QgsGeometry, QgsPointXY, QgsPoint
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 from qgis.PyQt.QtCore import Qt, QDateTime
@@ -494,13 +497,14 @@ class SequenceEditDialog(QDialog):
 
     # --- Export to XLSX (Requirement 4) ---
     def export_to_xlsx(self):
-        """Exports the current table data to an XLSX file."""
+        """Exports the current table data to an XLSX file using xlsxwriter."""
         log.debug("Export to XLSX button clicked.")
+        
         try:
-            import openpyxl
+            import xlsxwriter
         except ImportError:
-            log.error("Cannot export to XLSX: openpyxl library not found.")
-            QMessageBox.critical(self, "Export Error", "The 'openpyxl' library is required to export to XLSX.\nPlease install it (e.g., 'pip install openpyxl') and restart QGIS.")
+            log.error("Cannot export to XLSX: xlsxwriter library not found.")
+            QMessageBox.critical(self, "Export Error", "The 'xlsxwriter' library is required to export to XLSX.\nPlease install it (e.g., 'pip install xlsxwriter') and restart QGIS.")
             return
 
         # Suggest filename
@@ -517,45 +521,50 @@ class SequenceEditDialog(QDialog):
             save_path += ".xlsx"
 
         try:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Shooting Plan"
-
-            # Write Header
+            # Create a workbook and add a worksheet
+            workbook = xlsxwriter.Workbook(save_path)
+            worksheet = workbook.add_worksheet("Shooting Plan")
+            
+            # Add a bold format for headers
+            header_format = workbook.add_format({'bold': True})
+            
+            # Get headers
             headers = []
             for j in range(self.tableWidget.columnCount()):
                 header_item = self.tableWidget.horizontalHeaderItem(j)
                 headers.append(header_item.text() if header_item else f"Col_{j+1}")
-            ws.append(headers)
-
-            # Write Data Rows
-            for i in range(self.tableWidget.rowCount()):
-                row_data = []
-                for j in range(self.tableWidget.columnCount()):
-                    widget = self.tableWidget.cellWidget(i, j)
+            
+            # Write headers
+            for col_idx, header in enumerate(headers):
+                worksheet.write(0, col_idx, header, header_format)
+            
+            # Write data rows
+            for row_idx in range(self.tableWidget.rowCount()):
+                for col_idx in range(self.tableWidget.columnCount()):
+                    widget = self.tableWidget.cellWidget(row_idx, col_idx)
                     if isinstance(widget, QComboBox):
-                        row_data.append(widget.currentText())
+                        value = widget.currentText()
                     else:
-                        item = self.tableWidget.item(i, j)
-                        row_data.append(item.text() if item else "")
-                ws.append(row_data)
-
-            # Auto-adjust column widths (optional but nice)
-            for col_idx, column_cells in enumerate(ws.columns):
-                 max_length = 0
-                 column = get_column_letter(col_idx + 1)
-                 for cell in column_cells:
-                     try:
-                         if len(str(cell.value)) > max_length:
-                             max_length = len(cell.value)
-                     except:
-                         pass
-                 adjusted_width = (max_length + 2)
-                 ws.column_dimensions[column].width = adjusted_width
-
-
-            # Save Workbook
-            wb.save(save_path)
+                        item = self.tableWidget.item(row_idx, col_idx)
+                        value = item.text() if item else ""
+                    worksheet.write(row_idx + 1, col_idx, value)
+            
+            # Auto-fit columns (equivalent to auto-adjust column widths)
+            for col_idx in range(len(headers)):
+                max_width = len(headers[col_idx])
+                for row_idx in range(self.tableWidget.rowCount()):
+                    widget = self.tableWidget.cellWidget(row_idx, col_idx)
+                    if isinstance(widget, QComboBox):
+                        cell_text = widget.currentText()
+                    else:
+                        item = self.tableWidget.item(row_idx, col_idx)
+                        cell_text = item.text() if item else ""
+                    max_width = max(max_width, len(str(cell_text)))
+                worksheet.set_column(col_idx, col_idx, max_width + 2)
+            
+            # Close the workbook
+            workbook.close()
+            
             log.info(f"Successfully exported shooting plan to {save_path}")
             QMessageBox.information(self, "Export Successful", f"Shooting plan exported to:\n{save_path}")
 
