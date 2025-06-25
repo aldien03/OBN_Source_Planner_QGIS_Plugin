@@ -284,6 +284,7 @@ class SequenceEditDialog(QDialog):
                 if runin_geom:
                      runin_time_s_original = _calculate_runin_time(runin_geom, sim_params)
 
+
                 # --- MODIFICATION: Double the run-in time ---
                 runin_time_s = runin_time_s_original * 2.0
                 log.debug(f"  Line {line_num}: Original RunIn={runin_time_s_original:.1f}s, Using Doubled RunIn={runin_time_s:.1f}s")
