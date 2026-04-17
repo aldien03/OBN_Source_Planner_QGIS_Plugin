@@ -536,73 +536,35 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"SPS file processing error: {e}")
             QtWidgets.QMessageBox.critical(self, "SPS Parse Error", f"Error processing SPS file:\n{e}")
     
-    def _parse_sps_file_content(self, sps_file_path, skip_headers=36):
-        """
-        Parse the content of an SPS file.
-        
+    def _parse_sps_file_content(self, sps_file_path, skip_headers=0):
+        """Parse the content of an SPS file via the multi-format parser.
+
+        Delegates to `io_sps.sps_parser.parse_sps` with auto-detection.
+        The `skip_headers` parameter is retained for API compatibility but
+        is effectively replaced by spec-driven header detection (lines
+        starting with 'H' are treated as headers by SPS 1.0 and 2.1 specs).
+
         Args:
             sps_file_path (str): Path to the SPS file
-            skip_headers (int): Number of header lines to skip
-            
-        Returns:
-            tuple: (parsed_data, error_log) - Lists of parsed points and error messages
-        """
-        parsed_data = []
-        error_log = []
-        line_count = 0
-        
-        with open(sps_file_path, 'r', encoding='latin-1') as f:
-            for line in f:
-                line_count += 1
-                
-                # Skip header lines
-                if line_count <= skip_headers:
-                    continue
-                    
-                line = line.rstrip()  # Remove trailing whitespace
-                
-                # Skip short lines
-                if len(line) < 65:
-                    log.debug(f"Line {line_count}: Skipped short line")
-                    error_log.append(f"Line {line_count}: Skipped short line")
-                    continue
-                
-                # Try to parse the line
-                try:
-                    # line_num_str = line[1:5].strip()
-                    # sp_str = line[21:25].strip()
-                    # easting_str = line[48:56].strip()
-                    # northing_str = line[57:65].strip()
+            skip_headers (int): Legacy — ignored by the new parser
 
-                    # Modified code based on actual columns
-                    line_num_str = line[7:12].strip()  # Positions 8-11 (Python slicing is exclusive at the end)
-                    sp_str = line[17:21].strip()       # Positions 18-21
-                    easting_str = line[46:56].strip()  # Positions 47-55
-                    northing_str = line[56:66].strip() # Positions 57-65
-                    
-                    # Validate required fields
-                    if not line_num_str or not sp_str or not easting_str or not northing_str:
-                        raise ValueError("Missing required field(s)")
-                    
-                    # Convert to appropriate types
-                    line_num = int(line_num_str)
-                    sp = int(sp_str)
-                    easting = float(easting_str)
-                    northing = float(northing_str)
-                    
-                    # Add to parsed data
-                    parsed_data.append({
-                        'line': line_num, 
-                        'sp': sp, 
-                        'e': easting, 
-                        'n': northing
-                    })
-                except (ValueError, IndexError, TypeError) as e:
-                    error_msg = f"Line {line_count}: Error parsing '{line[:70]}...' - {e}"
-                    log.warning(error_msg)
-                    error_log.append(error_msg)
-        
-        return parsed_data, error_log
+        Returns:
+            tuple: (parsed_data, error_log) — list of dicts with keys
+                'line', 'sp', 'e', 'n', and optionally 'prev_direction'
+                (present when the detected spec has a direction column,
+                e.g. Martin Linge SPS 2.1 + direction variant).
+        """
+        from .io_sps.sps_parser import parse_sps
+        result = parse_sps(sps_file_path, spec=None)   # auto-detect
+        log.info(
+            f"SPS parse: spec={result.spec_used.name}, "
+            f"confidence={result.detection_confidence:.0%}, "
+            f"records={len(result.records)}, errors={len(result.errors)}"
+        )
+        # Convert to legacy dict shape expected by _write_features_to_layer
+        # and other downstream callers. Phase 7 migrates these to SpsRecord.
+        parsed_data = [r.to_legacy_dict() for r in result.records]
+        return parsed_data, result.errors
     
     def _get_output_geopackage_path(self):
         """
