@@ -141,7 +141,6 @@ This is a QGIS plugin for Ocean Bottom Node (OBN) seismic survey source line pla
 ### Algorithmic Components
 - **RRT Planner (`rrt_planner.py`)**: Rapidly-exploring Random Tree algorithm for obstacle avoidance path planning
 - **Dubins Path (`dubins_path.py`)**: Smooth curve generation for vessel maneuvering with turning radius constraints
-- **Fixed Functions (`fixed_function.py`)**: Core simulation and processing functions
 
 ### Key Workflows
 1. **SPS Data Import**: Load seismic point set files for survey planning

@@ -1994,7 +1994,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
             # --- Run Full Calculation Directly ---
             log.info("Proceeding directly to full deviation calculation...")
-            success = self._calculate_and_apply_deviations_v2(
+            success = self._calculate_and_apply_deviations(
                 lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode
             )
 
@@ -2010,7 +2010,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     self.iface.mapCanvas().refresh()
                 return True
             else:
-                # Specific error messages should ideally be handled within _calculate_and_apply_deviations_v2
+                # Specific error messages should ideally be handled within _calculate_and_apply_deviations
                 log.error("Deviation calculation failed or was aborted.")
                 QMessageBox.critical(self, "Calculation Error",
                                    "Deviation calculation failed or was aborted.\n"
@@ -2645,259 +2645,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.error(f"Error calc heading at dist {distance:.2f}: {e}")
             return None
             
-    def _calculate_and_apply_deviations(self, line_data, nogo_layer, clearance_m, turn_radius_m, vessel_turn_rate_dpm=180.0):
-        """
-        Calculates deviations for lines that intersect with nogo zones using RRT algorithm.
-
-        This function:
-        1. Prepares nogo geometry with appropriate clearance buffer
-        2. Identifies lines that intersect with nogo zones
-        3. Applies RRT-based path planning to create deviation paths
-        4. Updates line_data with deviated geometries or marks lines as failed
-
-        Args:
-            line_data (dict): Dictionary of line data to process
-            nogo_layer (QgsVectorLayer): Layer containing nogo zones
-            clearance_m (float): Clearance distance in meters
-            turn_radius_m (float): Vessel turn radius in meters
-            vessel_turn_rate_dpm (float): Vessel turn rate in degrees per minute
-
-        Returns:
-            dict: Updated line_data dictionary with deviation information
-        """
-        log.info(f"Starting deviation calculation (Clearance: {clearance_m}m, Turn Radius: {turn_radius_m}m)...")
-
-        # Check if RRT planner is available
-        if rrt_planner is None:
-            log.critical("RRT Planner module is not available. Skipping deviations.")
-            return line_data
-
-        # Prepare nogo geometry with clearance buffer
-        avoidance_geom = self._prepare_nogo_geometry(nogo_layer, clearance_m)
-        if not avoidance_geom:
-            log.warning("No avoidance geometry available. Skipping deviations.")
-            return line_data
-
-        # Try to extract boundary for more efficient intersection tests
-        boundary_avoid = None
-        try:
-            if avoidance_geom.isMultipart():
-                boundaries = [p.exteriorRing() for p in avoidance_geom.parts() 
-                             if p.type() == QgsWkbTypes.PolygonGeometry and p.exteriorRing()]
-                boundary_avoid = QgsGeometry.collectGeometry(boundaries) if boundaries else None
-            elif avoidance_geom.type() == QgsWkbTypes.PolygonGeometry:
-                boundary_avoid = QgsGeometry.fromPolyline(avoidance_geom.exteriorRing())
-
-            if not boundary_avoid or boundary_avoid.isEmpty():
-                log.warning("Could not extract simple boundary. Will use full buffer for intersections.")
-        except Exception as b_ex:
-            log.warning(f"Error extracting boundary: {b_ex}. Will use full buffer for intersections.")
-
-        # Initialize counters and progress dialog
-        processed_count = 0
-        deviated_count = 0
-        failed_count = 0
-        lines_to_process = list(line_data.keys())
-        total_lines = len(lines_to_process)
-
-        progress = QProgressDialog("Calculating Deviations...", "Cancel", 0, total_lines, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(500)
-        progress.show()
-
-        # Process each line
-        for i, line_num in enumerate(lines_to_process):
-            progress.setValue(i)
-            QApplication.processEvents()
-
-            if progress.wasCanceled():
-                log.info("Deviation calculation cancelled by user.")
-                break
-            
-            # Get line data
-            data = line_data[line_num]
-            original_geom = data['line_geom']
-            original_length = data['length']
-
-            # Initialize deviation flags
-            data['deviated'] = False
-            data['deviation_failed'] = False
-            processed_count += 1
-
-            # Skip lines that don't intersect with nogo zones
-            if not original_geom or original_geom.isEmpty() or not original_geom.intersects(avoidance_geom):
-                continue
-            
-            log.info(f"Line {line_num}: Intersects with nogo zone. Attempting RRT deviation...")
-
-            try:
-                # Use boundary if available, otherwise use full buffer
-                intersect_target = boundary_avoid if boundary_avoid else avoidance_geom
-
-                # Find intersection points between line and nogo zone
-                intersection_points = self._find_intersection_points(original_geom, intersect_target)
-                if not intersection_points:
-                    log.warning(f"Line {line_num}: No intersection points found.")
-                    data['deviation_failed'] = True
-                    failed_count += 1
-                    continue
-                
-                # Calculate distances along line for each intersection point
-                point_distances = self._calculate_point_distances(intersection_points, original_geom)
-                if len(point_distances) < 1:
-                    log.warning(f"Line {line_num}: Failed to locate intersection points along line.")
-                    data['deviation_failed'] = True
-                    failed_count += 1
-                    continue
-                
-                # Get entry and exit points for the nogo zone
-                entry_dist = point_distances[0][0]
-                exit_dist = point_distances[-1][0]
-                log.debug(f"  Intersection span: {entry_dist:.1f}m to {exit_dist:.1f}m.")
-
-                # Calculate start and end poses for RRT planning
-                # Add offset based on turn radius for smoother transitions
-                offset = 1.0 * turn_radius_m
-                start_pose_dist = max(0.0, entry_dist - offset)
-                end_pose_dist = min(original_length, exit_dist + offset)
-
-                # Handle edge cases where start and end are too close
-                if start_pose_dist >= end_pose_dist - GEOMETRY_PRECISION:
-                    log.warning(f"Line {line_num}: Invalid RRT pose order. Using minimal separation.")
-                    start_pose_dist = max(0.0, entry_dist - GEOMETRY_PRECISION)
-                    end_pose_dist = min(original_length, exit_dist + GEOMETRY_PRECISION)
-
-                if start_pose_dist >= end_pose_dist:
-                    log.error(f"Line {line_num}: Cannot define RRT poses with valid separation.")
-                    data['deviation_failed'] = True
-                    failed_count += 1
-                    continue
-                
-                # Interpolate start and end points along the line
-                start_p_g = original_geom.interpolate(start_pose_dist)
-                end_p_g = original_geom.interpolate(end_pose_dist)
-
-                if start_p_g.isEmpty() or end_p_g.isEmpty():
-                    log.error(f"Line {line_num}: Failed to interpolate RRT points.")
-                    data['deviation_failed'] = True
-                    failed_count += 1
-                    continue
-                
-                # Convert geometries to points
-                start_p = start_p_g.asPoint()
-                end_p = end_p_g.asPoint()
-
-                # Calculate headings at start and end points
-                start_h_qgis = self._get_heading_at_distance(original_geom, start_pose_dist)
-                end_h_qgis = self._get_heading_at_distance(original_geom, end_pose_dist)
-
-                if start_h_qgis is None or end_h_qgis is None:
-                    log.error(f"Line {line_num}: Failed to calculate RRT headings.")
-                    data['deviation_failed'] = True
-                    failed_count += 1
-                    continue
-                
-                # Convert QGIS headings to RRT format (radians, different reference frame)
-                start_h_rrt = math.radians((90.0 - start_h_qgis + 360.0) % 360.0)
-                end_h_rrt = math.radians((90.0 - end_h_qgis + 360.0) % 360.0)
-
-                # Create pose tuples for RRT
-                start_pose = (start_p.x(), start_p.y(), start_h_rrt)
-                end_pose = (end_p.x(), end_p.y(), end_h_rrt)
-
-                log.debug(f"  RRT Start: ({start_pose[0]:.1f}, {start_pose[1]:.1f}) "
-                         f"Heading: {math.degrees(start_pose[2]):.1f}° | "
-                         f"End: ({end_pose[0]:.1f}, {end_pose[1]:.1f}) "
-                         f"Heading: {math.degrees(end_pose[2]):.1f}°")
-
-                # Prepare RRT parameters
-                rrt_params = {}
-
-                # Add any RRT-specific parameters from sim_params if available
-                for param_name in ['step_size', 'max_iterations', 'goal_bias']:
-                    param_key = f'rrt_{param_name}'
-                    if param_key in line_data.get('sim_params', {}):
-                        rrt_params[param_name] = line_data['sim_params'][param_key]
-
-                # Call RRT planner to generate deviation path
-                deviation_segment = rrt_planner.find_rrt_path(
-                    start_pose, end_pose, [avoidance_geom], turn_radius_m, **rrt_params)
-
-                # Process RRT result
-                if deviation_segment and not deviation_segment.isEmpty() and deviation_segment.isGeosValid():
-                    log.info(f"Line {line_num}: RRT Success (Length: {deviation_segment.length():.1f}m). Assembling final path...")
-
-                    try:
-                        # Extract geometry before and after the deviation using our custom method
-                        geom_before = self._extract_line_segment(original_geom, 0, start_pose_dist)
-                        geom_after = self._extract_line_segment(original_geom, end_pose_dist, original_length)
-
-                        # Combine geometries to create the final path
-                        combined = [g for g in [geom_before, deviation_segment, geom_after] 
-                                   if g and not g.isEmpty()]
-                        final_geom = QgsGeometryUtils.mergeLines(combined)
-
-                        # Validate final geometry
-                        if not final_geom or final_geom.isEmpty() or not is_line_type(final_geom.wkbType()):
-                            log.error(f"Line {line_num}: Failed to merge geometries.")
-                            data['deviation_failed'] = True
-                            failed_count += 1
-                            continue
-                        
-                        # Verify that final path doesn't intersect nogo zones
-                        if final_geom.intersects(avoidance_geom):
-                            log.warning(f"Line {line_num}: Final path still intersects nogo zones!")
-                            data['deviation_failed'] = True
-                            failed_count += 1
-                            continue
-                        
-                        # Update line data with deviated path
-                        new_length = final_geom.length()
-                        data['line_geom'] = final_geom
-                        data['length'] = max(0.0, new_length)
-
-                        # Update start and end points
-                        if hasattr(final_geom, 'asPolyline'):
-                            new_vertices = final_geom.asPolyline()
-                            data['start_point_geom'] = QgsPoint(new_vertices[0])
-                            data['end_point_geom'] = QgsPoint(new_vertices[-1])
-                        else:
-                            log.warning(f"Line {line_num}: Could not extract vertices from deviated path.")
-
-                        # Mark as successfully deviated
-                        data['deviated'] = True
-                        deviated_count += 1
-                        log.info(f"Line {line_num}: Deviation applied (New Length: {data['length']:.1f}m).")
-
-                    except Exception as e:
-                        log.exception(f"Line {line_num}: Error during geometry assembly: {e}")
-                        data['deviation_failed'] = True
-                        failed_count += 1
-                        data['line_geom'] = original_geom  # Restore original geometry on error
-                else:
-                    log.warning(f"Line {line_num}: RRT planner failed to find a valid path.")
-                    data['deviation_failed'] = True
-                    failed_count += 1
-
-            except Exception as dev_err:
-                log.exception(f"Line {line_num}: Error during RRT deviation: {dev_err}")
-                data['deviation_failed'] = True
-                failed_count += 1
-                data['line_geom'] = original_geom  # Restore original geometry on error
-
-        # Cleanup and final reporting
-        progress.setValue(total_lines)
-        progress.deleteLater()
-
-        log.info(f"Deviation calculation complete. Processed: {processed_count}, "
-                f"Deviated: {deviated_count}, Failed: {failed_count}")
-
-        if failed_count > 0:
-            QMessageBox.warning(self, "Deviation Failures", 
-                              f"{failed_count} line(s) failed deviation and will be excluded from simulation.")
-
-        return line_data
-
     def _prepare_avoidance_geometry(self, nogo_layer, clearance_m, preserve_individual=False):
         """
         Prepares buffered geometry representing NoGo zones.
@@ -3420,7 +3167,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.info("All required deviation fields already exist.")
             return True
 
-    def _calculate_and_apply_deviations_v2(self, lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode=False):
+    def _calculate_and_apply_deviations(self, lines_layer, nogo_layer, clearance_m, turn_radius_m, debug_mode=False):
         """
         Core logic for calculating and applying deviations using the Peak/Tangent approach.
 
@@ -6721,27 +6468,10 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             self.last_required_layers = required_layers
             log.info(f"Initial line data preparation complete ({time.time() - start_prep_time:.2f}s). Found {len(line_data)} lines.")
 
-            # --- <<< START Deviation Calculation >>> ---
-            # start_dev_time = time.time()
-            # log.debug("Running Step 2: Calculating Deviations...")
-            # nogo_layer = sim_params.get('nogo_layer')
-            # clearance = sim_params.get('deviation_clearance_m', 100.0)
-            # turn_radius = sim_params.get('turn_radius_meters', 500.0)
-
-            # # line_data is modified IN PLACE
-            # # Convert vessel turn rate from degrees per second to degrees per minute
-            # vessel_turn_rate_dps = sim_params.get('vessel_turn_rate_dps', 3.0)
-            # vessel_turn_rate_dpm = vessel_turn_rate_dps * 60.0
-
-            # line_data = self._calculate_and_apply_deviations(
-            #     line_data, nogo_layer, clearance, turn_radius, vessel_turn_rate_dpm
-            # )
-            # # Store the potentially modified line_data for the editor/visualizer
-            # self.last_line_data = line_data
-            # log.info(f"Deviation calculation complete ({time.time() - start_dev_time:.2f}s).")
-            # --- <<< END Deviation Calculation >>> ---
-
-            # Store the unmodified line_data since we're not calculating deviations
+            # Deviation calculation is run separately via the "Calculate Deviations"
+            # button (see _calculate_and_apply_deviations). The
+            # simulation flow currently uses whatever deviation state was already
+            # applied to the lines layer.
             self.last_line_data = line_data
 
             selected_mode = sim_params.get('acquisition_mode', 'Racetrack')
