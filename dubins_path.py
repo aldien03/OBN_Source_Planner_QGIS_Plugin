@@ -2,15 +2,30 @@
 
 """
 Dubins functionality.
+
+Unit conventions for PUBLIC entry points:
+    dubins_path(start, end, radius)
+        start / end pose: (x, y, yaw_radians). Yaw is math convention
+        (0 rad = +x axis, CCW positive).
+
+    get_curve(s_x, s_y, s_head, e_x, e_y, e_head, radius, max_line_distance)
+        s_head / e_head: DEGREES (math convention). Converted to radians
+        internally before calling dubins_path().
+
+    get_projection(start, end, solution, max_line_distance, max_curve_angle)
+        start / end: (x, y, yaw_radians).
+        Returns list of [x, y, heading_degrees] waypoints. The returned
+        heading is in DEGREES because the arc geometry is computed in
+        degrees internally. Callers that need radians should convert.
+
+The split_arc / split_line / tangent_angle helpers operate on circle
+angles in DEGREES (standard convention for circle geometry).
 """
 
 import math
 
-# Define locally instead of importing from easydubins
+# DECIMAL_ROUND is a true constant (precision setting). Not a mutable knob.
 DECIMAL_ROUND = 7
-MAX_LINE_DISTANCE = 0.0
-MAX_CURVE_DISTANCE = 0.0
-MAX_CURVE_ANGLE = 0.0
 
 
 def mod2pi(theta):
@@ -217,17 +232,17 @@ def split_line(x_1, y_1, x_2, y_2, dividing_factor):
     return parts
 
 
-def get_projection(start, end, solution):
+def get_projection(start, end, solution, max_line_distance, max_curve_angle):
     """
-    Get projected path into multiple points and stored it in PROJECTIONS list variable.
-    :param start:start/first point
-    :type start:tuple
-    :param end:end/second point
-    :type end:tuple
-    :param solution:solution provided by dubins function
-    :type solution:tuple
+    Densify a Dubins solution into a list of waypoints.
+
+    :param start: start pose (x, y, yaw_radians)
+    :param end: end pose (x, y, yaw_radians)
+    :param solution: (modes, lengths, radii) tuple from dubins_path()
+    :param max_line_distance: max spacing (m) between waypoints on straight segments
+    :param max_curve_angle: max angular step (degrees) between waypoints on arc segments
+    :return: list of [x, y, heading_degrees] waypoints
     """
-    global PROJECTIONS
     projection_points = list()
     # print(start, end, solution)
     cur_pos = start
@@ -250,7 +265,7 @@ def get_projection(start, end, solution):
             theta1 = math.degrees(cur_pos[2]) - 90
             theta2 = theta1 + (180 * length / circumference)
 
-            parts = split_arc(center, theta1, theta2, radius, MAX_CURVE_ANGLE, 'L')
+            parts = split_arc(center, theta1, theta2, radius, max_curve_angle, 'L')
 
             new_pos = (
                 center[0] + math.cos(math.radians(theta2)) * radius,
@@ -269,7 +284,7 @@ def get_projection(start, end, solution):
             theta1 = math.degrees(cur_pos[2]) - 90
             theta2 = theta1 + (180 * length / circumference)
 
-            parts = split_arc(center, theta1, theta2, radius, MAX_CURVE_ANGLE, 'l')
+            parts = split_arc(center, theta1, theta2, radius, max_curve_angle, 'l')
 
             new_pos = (
                 center[0] + math.cos(math.radians(theta2)) * radius,
@@ -287,7 +302,7 @@ def get_projection(start, end, solution):
             theta2 = math.degrees(cur_pos[2]) + 90
             theta1 = theta2 - (180 * length / circumference)
 
-            parts = split_arc(center, theta1, theta2, radius, MAX_CURVE_ANGLE, 'R')
+            parts = split_arc(center, theta1, theta2, radius, max_curve_angle, 'R')
 
             new_pos = (
                 center[0] + math.cos(math.radians(theta1)) * radius,
@@ -305,7 +320,7 @@ def get_projection(start, end, solution):
             theta1 = math.degrees(cur_pos[2]) + 90
             theta2 = theta1 + (180 * length / circumference)
 
-            parts = split_arc(center, theta1, theta2, radius, MAX_CURVE_ANGLE, 'r')
+            parts = split_arc(center, theta1, theta2, radius, max_curve_angle, 'r')
 
             new_pos = (
                 center[0] + math.cos(math.radians(theta1)) * radius,
@@ -321,7 +336,7 @@ def get_projection(start, end, solution):
                 cur_pos[2],
             )
 
-            parts = split_line(cur_pos[0], cur_pos[1], new_pos[0], new_pos[1], MAX_LINE_DISTANCE)
+            parts = split_line(cur_pos[0], cur_pos[1], new_pos[0], new_pos[1], max_line_distance)
             # for part in parts:
             #     PROJECTIONS.append(part)
 
@@ -488,10 +503,12 @@ def get_curve(s_x, s_y, s_head, e_x, e_y, e_head, radius, max_line_distance):
     :type max_line_distance:float
     :return:None
     """
-    global MAX_LINE_DISTANCE, MAX_CURVE_DISTANCE, MAX_CURVE_ANGLE
-    MAX_LINE_DISTANCE = max_line_distance
-    MAX_CURVE_DISTANCE = MAX_LINE_DISTANCE
-    MAX_CURVE_ANGLE = (MAX_CURVE_DISTANCE * 360) / (2 * math.pi * (float(radius)))
+    # Compute arc-angle spacing from the linear spacing and the turn radius.
+    # Same formula as before, now local (no module globals).
+    if float(radius) > 1e-6:
+        max_curve_angle = (max_line_distance * 360.0) / (2.0 * math.pi * float(radius))
+    else:
+        max_curve_angle = 90.0  # Fallback for degenerate radius
 
     start = (s_x, s_y, math.radians(s_head))
     end = (e_x, e_y, math.radians(e_head))
@@ -500,5 +517,9 @@ def get_curve(s_x, s_y, s_head, e_x, e_y, e_head, radius, max_line_distance):
     solution = dubins_path(start=start, end=end, radius=radius)
 
     # Get the projected points of the calculated path.
-    projection = get_projection(start=start, end=end, solution=solution)
+    projection = get_projection(
+        start=start, end=end, solution=solution,
+        max_line_distance=max_line_distance,
+        max_curve_angle=max_curve_angle,
+    )
     return projection

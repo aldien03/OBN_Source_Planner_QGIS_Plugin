@@ -134,17 +134,16 @@ def get_dubins_path_segment(from_node: RRTNode, to_state: Tuple[float, float, fl
             # Default angle if turn radius is too small
             proj_max_curve_angle = 90.0
 
-        # Temporarily set global vars for get_projection (ugly, consider refactoring dubins_path later)
-        original_globals = dubins_path.MAX_LINE_DISTANCE, dubins_path.MAX_CURVE_ANGLE
-        dubins_path.MAX_LINE_DISTANCE = proj_max_line_dist
-        dubins_path.MAX_CURVE_ANGLE = proj_max_curve_angle
-        # Ensure get_projection has access to MAX_CURVE_DISTANCE if needed
-        dubins_path.MAX_CURVE_DISTANCE = proj_max_curve_dist
-
-        projected_points = dubins_path.get_projection(start=start_pose, end=end_pose_target, solution=solution)
-
-        # Restore original globals
-        dubins_path.MAX_LINE_DISTANCE, dubins_path.MAX_CURVE_ANGLE = original_globals
+        # Pass densification parameters explicitly — no more module globals.
+        # (proj_max_curve_dist is no longer needed: get_projection derives everything
+        #  it needs from max_line_distance and max_curve_angle.)
+        projected_points = dubins_path.get_projection(
+            start=start_pose,
+            end=end_pose_target,
+            solution=solution,
+            max_line_distance=proj_max_line_dist,
+            max_curve_angle=proj_max_curve_angle,
+        )
 
         if not projected_points:
             # print("WARN: Dubins projection returned no points.")
@@ -161,13 +160,12 @@ def get_dubins_path_segment(from_node: RRTNode, to_state: Tuple[float, float, fl
 
         for i, p_data in enumerate(projected_points):
             current_pt = QgsPointXY(p_data[0], p_data[1])
-            # Dubins get_projection seems to return heading in degrees, need radians
-            current_head_deg = p_data[2] # Assuming this is heading in degrees
-            current_head_rad = math.radians(current_head_deg)
-            # --- DEBUG ---
-            # Convert the angle based on tangent calculation in split_arc/split_line if needed
-            # The third element might need interpretation based on L/R/S modes
-            # Let's tryatan2 from previous point for heading estimation
+            # NOTE: p_data[2] is heading in DEGREES from get_projection. We do not
+            # use it directly — instead we derive the heading from consecutive point
+            # displacements via atan2 (radians). That is robust against the degree/radian
+            # mismatch between split_arc's output and what RRT needs downstream.
+            current_head_deg = p_data[2]  # kept for debugging / future use
+            current_head_rad = math.radians(current_head_deg)  # kept for debugging / future use
             dx = current_pt.x() - prev_pt.x()
             dy = current_pt.y() - prev_pt.y()
             segment_heading_rad = math.atan2(dy, dx) if (abs(dx)>1e-6 or abs(dy)>1e-6) else prev_head

@@ -87,8 +87,9 @@ from .obn_planner_dockwidget_base_ui import Ui_OBNPlannerDockWidgetBase
 try:
     from . import dubins_path as dubins_calc
     if not hasattr(dubins_calc, 'DECIMAL_ROUND'): dubins_calc.DECIMAL_ROUND = 7
-    if not hasattr(dubins_calc, 'MAX_LINE_DISTANCE'): dubins_calc.MAX_LINE_DISTANCE = 10.0
-    if not hasattr(dubins_calc, 'MAX_CURVE_ANGLE'): dubins_calc.MAX_CURVE_ANGLE = 10.0
+    # MAX_LINE_DISTANCE / MAX_CURVE_ANGLE used to be module-level globals in
+    # dubins_path that this block initialized defensively. Phase 1 removed
+    # them — densification parameters are now passed directly to get_curve().
     log.info("Successfully imported dubins_calc module.")
 except ImportError as ie_dubins:
     log.critical(f"Failed to import local 'dubins_path.py': {ie_dubins}. Dubins calculations WILL FAIL.")
@@ -8089,20 +8090,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Configure densification parameters for smoother curves
             densification_distance = radius / 3.0  # Much fewer points than the original radius/10
 
-            # Set dubins_calc module parameters safely
-            if hasattr(dubins_calc, 'MAX_LINE_DISTANCE'):
-                dubins_calc.MAX_LINE_DISTANCE = densification_distance
-
-            if hasattr(dubins_calc, 'MAX_CURVE_ANGLE'):
-                try:
-                    # Calculate max angle based on arc length but ensure it's reasonable
-                    max_angle = math.degrees(densification_distance / max(radius, 0.01))
-                    dubins_calc.MAX_CURVE_ANGLE = min(max(max_angle, 1.0), 15.0)  # Between 1° and 15°
-                except (ZeroDivisionError, ValueError):
-                    dubins_calc.MAX_CURVE_ANGLE = 5.0  # Default fallback
-
-            log.debug(f"  Dubins parameters: MAX_LINE_DISTANCE={getattr(dubins_calc, 'MAX_LINE_DISTANCE', 'N/A'):.2f}m, "
-                      f"MAX_CURVE_ANGLE={getattr(dubins_calc, 'MAX_CURVE_ANGLE', 'N/A'):.2f}°")
+            # Phase 1: Dubins densification parameters are passed directly to
+            # get_curve() below — no module globals to mutate. Previously this
+            # block clamped MAX_CURVE_ANGLE to [1°, 15°], but get_curve() always
+            # recomputed the value from radius and max_line_distance, so the
+            # clamp never took effect. The behavior is unchanged.
+            log.debug(f"  Dubins densification: max_line_distance={densification_distance:.2f}m "
+                      f"(curve angle derived from radius inside get_curve)")
 
             # Generate Dubins path points
             try:
