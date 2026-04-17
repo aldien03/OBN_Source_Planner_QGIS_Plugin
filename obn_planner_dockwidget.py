@@ -609,6 +609,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         fields.append(QgsField("Northing", QVariant.Double, "Double"))
         fields.append(QgsField("Status", QVariant.String, "String", 20))
         fields.append(QgsField("Heading", QVariant.Double, "Double"))
+        # NULL for SPS formats without a direction column; populated from the
+        # spec's direction slice when present (e.g. Martin Linge SPS 2.1 +
+        # direction). Used by the "Follow previous shooting direction" feature
+        # (Phase 6) for 4D monitor survey planning.
+        fields.append(QgsField("PrevDirection", QVariant.Double, "Double"))
         return fields
     
     def _write_features_to_layer(self, writer, parsed_data, fields):
@@ -631,15 +636,20 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             point_xy = QgsPointXY(point_data['e'], point_data['n'])
             geometry = QgsGeometry.fromPointXY(point_xy)
             feature.setGeometry(geometry)
-            
-            # Set attributes
+
+            # PrevDirection is present only when the SPS spec had a direction
+            # column (e.g. Martin Linge). Absent -> NULL in the layer.
+            prev_dir = point_data.get('prev_direction')
+            prev_dir_attr = NULL if prev_dir is None else prev_dir
+
             feature.setAttributes([
                 point_data['line'],
                 point_data['sp'],
                 point_data['e'],
                 point_data['n'],
                 "To Be Acquired",
-                NULL
+                NULL,           # Heading — filled later by handle_calculate_headings
+                prev_dir_attr,  # PrevDirection — from SPS direction column
             ])
             
             # Add to layer
@@ -1569,6 +1579,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             line_fields.append(QgsField("HighestSP", QVariant.Int))
             line_fields.append(QgsField("HighestSP_x", QVariant.Double, len=15, prec=3))
             line_fields.append(QgsField("HighestSP_y", QVariant.Double, len=15, prec=3))
+            # PrevDirection: per-line previous-survey shooting direction (degrees),
+            # aggregated from constituent SPS points' PrevDirection values.
+            # NULL if the source SPS file had no direction data. Used by Phase 6's
+            # "Follow previous shooting direction" feature for 4D monitor surveys.
+            line_fields.append(QgsField("PrevDirection", QVariant.Double, len=10, prec=1))
 
             # Create run-in feature fields
             runin_fields = QgsFields()
@@ -1626,6 +1641,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             line_num_field_idx = field_indices.get('LineNum')
             status_field_idx = field_indices.get('Status')
             heading_field_idx = field_indices.get('Heading')
+            # PrevDirection is OPTIONAL — only present when SPS was imported
+            # with a direction-bearing spec (e.g. Martin Linge). Older
+            # GeoPackages created before Phase 4 also won't have it.
+            prev_direction_field_idx = source_layer.fields().lookupField('PrevDirection')
+            if prev_direction_field_idx == -1:
+                prev_direction_field_idx = None
 
             for i, line_num in enumerate(lines_to_process):
                 # Check for user cancellation
@@ -1658,10 +1679,23 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         sp_int = int(sp_value)
                         sp_values.append(sp_int)
 
-                        # Store SP and feature ID for second pass
+                        # Read prev_direction for this point (may be absent on
+                        # layers without the field, or NULL on points from
+                        # SPS files without a direction column).
+                        pd_val = None
+                        if prev_direction_field_idx is not None:
+                            raw = feature.attribute(prev_direction_field_idx)
+                            if raw is not None and raw != NULL:
+                                try:
+                                    pd_val = float(raw)
+                                except (ValueError, TypeError):
+                                    pd_val = None
+
+                        # Store SP, feature ID, and prev_direction for second pass
                         points_data.append({
                             'sp': sp_int,
-                            'fid': feature.id()
+                            'fid': feature.id(),
+                            'prev_direction': pd_val,
                         })
 
                         # Get status and heading (only need to do once)
@@ -1710,6 +1744,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     line_geometry = QgsGeometry.fromPolylineXY(points_xy_list)
 
                     if line_geometry and not line_geometry.isNull():
+                        # Aggregate per-point prev_direction into one per-line value.
+                        # Returns (mean, None) if uniform, (mode, warning) if mixed,
+                        # (None, None) if all points lacked direction data.
+                        from .io_sps.line_aggregation import aggregate_line_direction
+                        per_point_dirs = [pd.get('prev_direction') for pd in points_data]
+                        line_prev_direction, dir_warning = aggregate_line_direction(per_point_dirs)
+                        if dir_warning:
+                            log.warning(f"LineNum {line_num}: {dir_warning}")
+                        prev_dir_attr = NULL if line_prev_direction is None else line_prev_direction
+
                         # Create line feature
                         line_feature = QgsFeature(line_fields)
                         line_feature.setGeometry(line_geometry)
@@ -1723,7 +1767,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             lowest_sp_point.y(),
                             highest_sp,
                             highest_sp_point.x(),
-                            highest_sp_point.y()
+                            highest_sp_point.y(),
+                            prev_dir_attr,
                         ])
 
                         line_features.append(line_feature)
