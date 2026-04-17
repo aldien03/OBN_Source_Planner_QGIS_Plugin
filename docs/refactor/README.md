@@ -19,7 +19,8 @@ The OBN Planner QGIS plugin works but has accumulated severe structural debt aft
 - **Primary goal:** maintainability refactor — break up god class, remove duplication, fix unit ambiguity, add tests.
 - **Added scope (2026-04-17):** multi-format SPS support (auto-detection, per-vendor specs) and "Follow previous shooting direction" feature (both Racetrack and Teardrop).
 - **UI policy:** minor improvements allowed (progress bars, error dialogs, two new controls for the new features). No layout redesign.
-- **Out of scope:** threading, new algorithms beyond direction-following, AIS (abandoned), general feature development.
+- **Out of scope for Phases 0-9:** threading, new algorithms beyond direction-following, AIS (abandoned), general feature development.
+- **Deferred to Phase 10 (post-refactor backlog):** performance improvements — spatial indexing, batch feature commits, geometry simplification for rendering, render caching, QThread for long ops, profile-driven Python wins. Added 2026-04-17 at user request. See [phase_10_performance.md](phase_10_performance.md).
 - **Deliverable:** this master plan plus one markdown file per phase in `docs/refactor/`.
 
 ## Resolved decisions (2026-04-17)
@@ -109,6 +110,7 @@ obn_planner/
       phase_7_services_qgis_heavy.md
       phase_8_ui_split.md
       phase_9_cleanup.md
+      phase_10_performance.md         # post-refactor backlog (not auto-advanced)
       SMOKE_TEST.md
 ```
 
@@ -132,6 +134,7 @@ obn_planner/
 | [7](phase_7_services_qgis_heavy.md) | Services extract — path_reconstructor, visualization, line_generator, deviation_service + packaging fix | large | med/high | Phase 6 |
 | [8](phase_8_ui_split.md) | UI split + SPS format selector + Follow-direction checkbox + light polish | medium | medium | Phases 5-7 |
 | [9](phase_9_cleanup.md) | Cleanup — no `print()`, dead code, import-linter, final docs | small | low | Phases 0-8 |
+| [10](phase_10_performance.md) | **Performance backlog** — spatial indexing, batch commits, geometry simplification, render caching, QThread, profile-driven optimization. **Explicitly requested only; not auto-advanced.** | TBD | medium | Phases 0-9 complete |
 
 Each phase is independently shippable: the plugin loads, buttons work, tests pass at the end of each. **No auto-advance — Claude stops and awaits user approval between every phase.**
 
