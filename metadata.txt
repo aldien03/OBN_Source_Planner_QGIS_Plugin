@@ -4,7 +4,7 @@
 
 [general]
 name=OBN Source Line Planner & Optimisation
-qgisMinimumVersion=3.0
+qgisMinimumVersion=3.40
 description=Automates, streamlines, and optimizes the planning process for Ocean Bottom Node (OBN) seismic survey source lines.
 version=1.0
 author=Muhammad Aldien Said
