@@ -44,13 +44,18 @@ PLUGINNAME = obn_planner
 
 PY_FILES = \
 	__init__.py \
-	obn_planner.py obn_planner_dockwidget.py
+	obn_planner.py obn_planner_dockwidget.py \
+	dubins_path.py rrt_planner.py sequence_edit_dialog.py \
+	obn_planner_dockwidget_base_ui.py obn_planner_dockwidget_ui.py \
+	resources.py
 
 UI_FILES = obn_planner_dockwidget_base.ui
 
 EXTRAS = metadata.txt icon.png
 
-EXTRA_DIRS =
+# Subdirectories to deploy. Phase 3 added io_sps; Phases 5-6 added services.
+# Phase 8 will append ui here.
+EXTRA_DIRS = io_sps services
 
 COMPILED_RESOURCE_FILES = resources.py
 
@@ -127,8 +132,9 @@ deploy: compile doc transcompile
 	cp -vf $(EXTRAS) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
 	cp -vfr i18n $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
 	cp -vfr $(HELP) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/help
-	# Copy extra directories if any
-	(foreach EXTRA_DIR,(EXTRA_DIRS), cp -R (EXTRA_DIR) (HOME)/(QGISDIR)/python/plugins/(PLUGINNAME)/;)
+	# Copy extra directories if any (Phase 7a fix: previous version was
+	# missing the $() expansions, so EXTRA_DIRS never deployed).
+	$(foreach EXTRA_DIR,$(EXTRA_DIRS), cp -R $(EXTRA_DIR) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/;)
 
 
 # The dclean target removes compiled python files from plugin directory
