@@ -70,3 +70,51 @@ class LineMetadata:
             )
         if self.fgsp == self.lgsp:
             raise ValueError(f"FGSP and LGSP must differ (got {self.fgsp})")
+
+
+def contiguous_runs(points, predicate):
+    """Phase 16d: split SP-sorted points into contiguous runs matching a predicate.
+
+    Input:
+      points: iterable of items in SP order (any item type). Callers are
+              responsible for sorting by SP first.
+      predicate: callable(item) -> bool. True items participate in runs.
+
+    Output:
+      list of lists — each inner list is a maximal run of predicate-True
+      items that were adjacent in the input order. Predicate-False items
+      end the current run.
+
+    Notes:
+      - Adjacency is in input order, not SP-number distance. If SP numbers
+        skip (3500 → 3503 with no 3501/3502 in the layer), the run does
+        NOT break — the chief cares about the sorted-list contiguity, not
+        integer neighbors. This matches the UI segment picker semantics.
+      - Empty input → empty list. All-False input → empty list.
+      - Single-point runs are emitted; call sites may choose to reject them.
+    """
+    runs = []
+    current = []
+    for item in points:
+        if predicate(item):
+            current.append(item)
+        elif current:
+            runs.append(current)
+            current = []
+    if current:
+        runs.append(current)
+    return runs
+
+
+def format_sub_line_label(line_num, fgsp, lgsp, full_min, full_max):
+    """Phase 16d: human-readable label for a generated (sub-)line.
+
+    - Full-range sub-line on a single-run parent line → "2146"
+    - Partial-range OR multi-run parent line → "2146 (1101-1500)"
+
+    Arguments are ints. Returns the string for the Label attribute and
+    the Sequence Editor's Line column.
+    """
+    if full_min is not None and full_max is not None and fgsp == full_min and lgsp == full_max:
+        return str(line_num)
+    return f"{line_num} ({fgsp}-{lgsp})"

@@ -400,8 +400,10 @@ class SequenceEditDialog(QDialog):
             self.tableWidget.setItem(i, COL_SEQ_NUM, seq_item)
             # ---
 
-            # Line Number
-            line_item = QTableWidgetItem(str(line_num))
+            # Line Number (Phase 16d: prefer Label — "2146" or "2146 (1101-1500)")
+            meta_for_label = self.line_metadata_state.get(line_num, {}) or {}
+            line_label = meta_for_label.get('label') or str(line_num)
+            line_item = QTableWidgetItem(line_label)
             line_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             line_item.setFlags(line_item.flags() & ~Qt.ItemIsEditable)
             self.tableWidget.setItem(i, COL_LINE_NUM, line_item)

@@ -2173,6 +2173,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             line_fields.append(QgsField("Operation", QVariant.String, len=12))
             line_fields.append(QgsField("FGSP", QVariant.Int))
             line_fields.append(QgsField("LGSP", QVariant.Int))
+            # Phase 16d: sub-line identification. A parent line with multiple
+            # contiguous TBA runs emits one feature per run, each with its
+            # own SubLineId (1-based). Label is the human-readable form
+            # used by the sequence editor and Phase 17 PDF — "2146" for a
+            # full-range single-run line, "2146 (1101-1500)" otherwise.
+            line_fields.append(QgsField("SubLineId", QVariant.Int))
+            line_fields.append(QgsField("Label", QVariant.String, len=32))
 
             # Create run-in feature fields
             runin_fields = QgsFields()
@@ -2263,7 +2270,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     sp_value = feature.attribute(sp_field_idx)
                     if sp_value is None or sp_value == NULL:
                         continue
-                    
+
                     try:
                         sp_int = int(sp_value)
                         sp_values.append(sp_int)
@@ -2280,16 +2287,21 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                 except (ValueError, TypeError):
                                     pd_val = None
 
-                        # Store SP, feature ID, and prev_direction for second pass
+                        # Phase 16d: per-point Status drives sub-line splitting.
+                        point_status = feature.attribute(status_field_idx)
+
+                        # Store SP, feature ID, prev_direction, and status for second pass
                         points_data.append({
                             'sp': sp_int,
                             'fid': feature.id(),
                             'prev_direction': pd_val,
+                            'status': point_status,
                         })
 
-                        # Get status and heading (only need to do once)
+                        # Get line-level status/heading (first point only; used
+                        # as a fallback if we can't otherwise find one).
                         if line_status is None:
-                            line_status = feature.attribute(status_field_idx)
+                            line_status = point_status
                         if line_heading is None:
                             line_heading = feature.attribute(heading_field_idx)
                     except (ValueError, TypeError):
@@ -2320,75 +2332,108 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
                 # Create line geometries if we have points
                 if len(point_geometries) >= 2:
-                    # Get points in SP order
-                    points_xy_list = [point_geometries[sp] for sp in sorted(point_geometries.keys()) if sp in point_geometries]
+                    # Parent line's full extent — drives Label's "(lo-hi)"
+                    # decision and is stable regardless of TBA partitioning.
+                    parent_lowest_sp = min(point_geometries.keys())
+                    parent_highest_sp = max(point_geometries.keys())
 
-                    # Determine lowest and highest SP values and their coordinates
-                    lowest_sp = min(point_geometries.keys())
-                    highest_sp = max(point_geometries.keys())
-                    lowest_sp_point = point_geometries[lowest_sp]
-                    highest_sp_point = point_geometries[highest_sp]
+                    # Phase 16d: split TBA points into contiguous runs. Each
+                    # run becomes one sub-line feature. The chief's per-SP
+                    # Status mark (from the dock SP-range buttons) is the
+                    # source of truth.
+                    from .services.line_metadata import (
+                        contiguous_runs,
+                        format_sub_line_label,
+                    )
+                    tba_points = [
+                        p for p in points_data
+                        if p['sp'] in point_geometries
+                    ]
+                    runs = contiguous_runs(
+                        tba_points,
+                        lambda p: p.get('status') == 'To Be Acquired',
+                    )
+                    if not runs:
+                        log.info(
+                            f"LineNum {line_num}: no 'To Be Acquired' points, "
+                            f"skipping line (mark SPs as TBA to include)."
+                        )
+                        continue
 
-                    # Create line geometry
-                    line_geometry = QgsGeometry.fromPolylineXY(points_xy_list)
+                    # Aggregate per-point prev_direction into one per-line
+                    # value (one aggregation per parent — all sub-lines share).
+                    from .io_sps.line_aggregation import aggregate_line_direction
+                    per_point_dirs = [pd.get('prev_direction') for pd in points_data]
+                    line_prev_direction, dir_warning = aggregate_line_direction(per_point_dirs)
+                    if dir_warning:
+                        log.warning(f"LineNum {line_num}: {dir_warning}")
+                    prev_dir_attr = NULL if line_prev_direction is None else line_prev_direction
 
-                    if line_geometry and not line_geometry.isNull():
-                        # Aggregate per-point prev_direction into one per-line value.
-                        # Returns (mean, None) if uniform, (mode, warning) if mixed,
-                        # (None, None) if all points lacked direction data.
-                        from .io_sps.line_aggregation import aggregate_line_direction
-                        per_point_dirs = [pd.get('prev_direction') for pd in points_data]
-                        line_prev_direction, dir_warning = aggregate_line_direction(per_point_dirs)
-                        if dir_warning:
-                            log.warning(f"LineNum {line_num}: {dir_warning}")
-                        prev_dir_attr = NULL if line_prev_direction is None else line_prev_direction
+                    heading_value = None
+                    if line_heading is not None and line_heading != NULL:
+                        try:
+                            heading_value = float(line_heading)
+                        except (ValueError, TypeError):
+                            log.warning(f"Invalid heading value for LineNum {line_num}: {line_heading}")
 
-                        # Phase 16b: defaults assume nominal forward traversal
-                        # (FGSP=lowest, LGSP=highest). Operation defaults come from
-                        # the dock's Default Operation combo (see default_operation
-                        # resolved once at the top of handle_generate_lines).
-                        # Per-line overrides happen in the sequence editor.
+                    for sub_idx, run in enumerate(runs, start=1):
+                        if len(run) < 2:
+                            log.warning(
+                                f"LineNum {line_num} sub-line {sub_idx}: single-point "
+                                f"TBA run at SP {run[0]['sp']} cannot form a line geometry; skipping."
+                            )
+                            continue
 
-                        # Create line feature
+                        sub_points_xy = [point_geometries[p['sp']] for p in run]
+                        sub_fgsp = run[0]['sp']
+                        sub_lgsp = run[-1]['sp']
+                        sub_fgsp_point = point_geometries[sub_fgsp]
+                        sub_lgsp_point = point_geometries[sub_lgsp]
+
+                        sub_geometry = QgsGeometry.fromPolylineXY(sub_points_xy)
+                        if not sub_geometry or sub_geometry.isNull():
+                            log.warning(
+                                f"LineNum {line_num} sub-line {sub_idx}: failed to create geometry; skipping."
+                            )
+                            continue
+
+                        sub_label = format_sub_line_label(
+                            line_num, sub_fgsp, sub_lgsp,
+                            parent_lowest_sp, parent_highest_sp,
+                        )
+
                         line_feature = QgsFeature(line_fields)
-                        line_feature.setGeometry(line_geometry)
+                        line_feature.setGeometry(sub_geometry)
                         line_feature.setAttributes([
                             line_num,
-                            line_status if line_status is not None else "Unknown",
-                            line_geometry.length(),
+                            "To Be Acquired",
+                            sub_geometry.length(),
                             line_heading,
-                            lowest_sp,
-                            lowest_sp_point.x(),
-                            lowest_sp_point.y(),
-                            highest_sp,
-                            highest_sp_point.x(),
-                            highest_sp_point.y(),
+                            sub_fgsp,
+                            sub_fgsp_point.x(),
+                            sub_fgsp_point.y(),
+                            sub_lgsp,
+                            sub_lgsp_point.x(),
+                            sub_lgsp_point.y(),
                             prev_dir_attr,
                             default_operation_value,
-                            lowest_sp,
-                            highest_sp,
+                            sub_fgsp,
+                            sub_lgsp,
+                            sub_idx,
+                            sub_label,
                         ])
-
                         line_features.append(line_feature)
                         lines_generated += 1
 
-                        # Generate run-ins if we have a valid heading and run-in length > 0
-                        heading_value = None
-                        if line_heading is not None and line_heading != NULL:
-                            try:
-                                heading_value = float(line_heading)
-                            except (ValueError, TypeError):
-                                log.warning(f"Invalid heading value for LineNum {line_num}: {line_heading}")
-
+                        # Phase 16d: run-ins anchor to the sub-line's own
+                        # first/last point (not the parent line's extent).
                         if heading_value is not None and max_run_in_length > 0:
                             try:
-                                # Calculate vector for run-in direction based on heading
                                 rad = math.radians(heading_value)
                                 vx = math.sin(rad)
                                 vy = math.cos(rad)
 
-                                # Create start run-in (before first point)
-                                start_point = points_xy_list[0]
+                                start_point = sub_points_xy[0]
                                 runin_start_x = start_point.x() - vx * max_run_in_length
                                 runin_start_y = start_point.y() - vy * max_run_in_length
                                 runin_start_point = QgsPointXY(runin_start_x, runin_start_y)
@@ -2405,14 +2450,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                         runin_start_point.x(),
                                         runin_start_point.y(),
                                         start_point.x(),
-                                        start_point.y()
+                                        start_point.y(),
                                     ])
-
                                     runin_features.append(start_runin_feature)
                                     runins_generated += 1
 
-                                # Create end run-in (after last point)
-                                end_point = points_xy_list[-1]
+                                end_point = sub_points_xy[-1]
                                 runin_end_x = end_point.x() + vx * max_run_in_length
                                 runin_end_y = end_point.y() + vy * max_run_in_length
                                 runin_end_point = QgsPointXY(runin_end_x, runin_end_y)
@@ -2429,17 +2472,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                         end_point.x(),
                                         end_point.y(),
                                         runin_end_point.x(),
-                                        runin_end_point.y()
+                                        runin_end_point.y(),
                                     ])
-
                                     runin_features.append(end_runin_feature)
                                     runins_generated += 1
                             except Exception as runin_e:
-                                log.warning(f"Error calculating run-ins for LineNum {line_num}: {runin_e}")
+                                log.warning(
+                                    f"LineNum {line_num} sub-line {sub_idx}: error calculating run-ins: {runin_e}"
+                                )
                         elif heading_value is None:
                             log.warning(f"Skipping run-ins for LineNum {line_num}: Heading is NULL")
-                    else:
-                        log.warning(f"Failed to create valid line geometry for LineNum {line_num}")
 
                 # Add features in batches for better performance
                 if len(line_features) >= batch_size:
@@ -2507,6 +2549,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 message = (f"Successfully generated {lines_generated} lines and {runins_generated} run-ins "
                           f"in {elapsed_time:.1f} seconds")
                 log.info(message)
+                # Phase 16d: lookahead is now fresh; clear the stale warning.
+                self._set_lookahead_stale(False)
                 QMessageBox.information(self, "Success", message)
             else:
                 self._remove_layer_by_name(LINE_LAYER_NAME)
@@ -6878,6 +6922,33 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             start_pt = vertices[0]  # QgsPoint
             end_pt = vertices[-1]   # QgsPoint
 
+            # Phase 16d preflight: the simulation pipeline keys line_data by
+            # LineNum (integer). If handle_generate_lines emitted multiple
+            # sub-lines for the same parent (gap scenario), the later sub-
+            # lines would silently overwrite earlier ones here — hiding
+            # TBA work from the simulation and producing a partial plan.
+            # Show a clean actionable dialog and abort; sub-line-aware
+            # simulation is tracked as Phase 16d-2 (follow-up work).
+            if line_num in line_data:
+                log.error(
+                    f"LineNum {line_num} appears on multiple sub-line features; "
+                    f"aborting _prepare_line_data (Phase 16d-2 needed)."
+                )
+                QMessageBox.warning(
+                    self,
+                    "Multi-Segment Line Not Yet Supported",
+                    f"Line {line_num} has been split into multiple acquisition "
+                    f"segments because some shotpoints in the middle were marked "
+                    f"Acquired, leaving gaps.\n\n"
+                    f"Simulation does not yet plan across multi-segment parent "
+                    f"lines — this is Phase 16d-2 work.\n\n"
+                    f"Workaround: mark the intermediate acquired SPs back to "
+                    f"'To Be Acquired' so line {line_num} has a single contiguous "
+                    f"range, then click Generate Lookahead Lines and Run Simulation "
+                    f"again."
+                )
+                return None, None
+
             # Store line data
             line_data[line_num] = {
                 'line_geom': line_geom,
@@ -8596,6 +8667,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         idx_lgsp = fields.lookupField("LGSP")
         idx_low = fields.lookupField("LowestSP")
         idx_high = fields.lookupField("HighestSP")
+        idx_label = fields.lookupField("Label")  # Phase 16d
         if idx_line < 0:
             log.warning("_read_line_metadata_map: LineNum field missing")
             return result
@@ -8613,12 +8685,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 except (TypeError, ValueError):
                     return None
             op_val = feat.attribute(idx_op) if idx_op >= 0 else None
+            label_val = feat.attribute(idx_label) if idx_label >= 0 else None
             result[line_num] = {
                 'operation': op_val if op_val not in (None, NULL) else None,
                 'fgsp': _int_or_none(idx_fgsp),
                 'lgsp': _int_or_none(idx_lgsp),
                 'lowest_sp': _int_or_none(idx_low),
                 'highest_sp': _int_or_none(idx_high),
+                'label': label_val if label_val not in (None, NULL) else None,
             }
         return result
 
