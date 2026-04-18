@@ -361,6 +361,57 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error removing layers named '{layer_name}': {e}")
             return 0
 
+    # --- Phase 12: Output layer grouping --------------------------------
+
+    OUTPUT_GROUP_NAME = "OBN Planner Output"
+
+    def _get_or_create_output_group(self):
+        """Return the QgsLayerTreeGroup that collects plugin-generated
+        layers under a single tree node.
+
+        Looks up the group by name at the project root. If absent
+        (first call in a project, or user deleted it), creates it
+        fresh at the root.
+
+        Used by _add_layer_to_output_group. All plugin-generated
+        layers (SPS import, Generated_Survey_Lines, Generated_RunIns,
+        Optimized_Path, Turn_Segments) flow through this helper.
+
+        Returns:
+            QgsLayerTreeGroup: the group, guaranteed non-None
+        """
+        root = QgsProject.instance().layerTreeRoot()
+        group = root.findGroup(self.OUTPUT_GROUP_NAME)
+        if group is None:
+            group = root.addGroup(self.OUTPUT_GROUP_NAME)
+            log.info(f"Created layer-tree group '{self.OUTPUT_GROUP_NAME}'")
+        return group
+
+    def _add_layer_to_output_group(self, layer):
+        """Register `layer` with the project and place its tree node
+        inside the 'OBN Planner Output' group.
+
+        Replaces bare `QgsProject.instance().addMapLayer(layer)` at
+        sites that produce plugin-owned layers. The second arg
+        `addToLegend=False` prevents QGIS from creating a duplicate
+        tree node at the project root — we want the node ONLY inside
+        the group.
+
+        Safe to call multiple times in the same session; re-adding a
+        layer object that's already registered is a QGIS no-op.
+        Layer removal (via _remove_layer_by_name) automatically drops
+        the corresponding tree node, so the group shrinks on re-runs.
+
+        Args:
+            layer: QgsVectorLayer (or any QgsMapLayer) to register
+                and display inside the output group.
+        """
+        if layer is None or not layer.isValid():
+            log.warning("Skipping _add_layer_to_output_group: invalid layer")
+            return
+        QgsProject.instance().addMapLayer(layer, False)   # False = don't add to legend root
+        self._get_or_create_output_group().addLayer(layer)
+
     # --- General Helpers ---
 
     def log_message(self, message, level=logging.INFO):
@@ -817,8 +868,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             QtWidgets.QMessageBox.critical(self, "Layer Load Error", error_msg)
             return False
         
-        QgsProject.instance().addMapLayer(layer)
-        log.info(f"Layer '{layer_name}' added to project")
+        # Phase 12: SPS import layer lives inside the plugin's output group
+        self._add_layer_to_output_group(layer)
+        log.info(f"Layer '{layer_name}' added to project (group: {self.OUTPUT_GROUP_NAME})")
         return True
 
     # --- 2. Line Headings Calculator ---
@@ -2025,13 +2077,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
             if lines_generated > 0 and self.generated_lines_layer and self.generated_lines_layer.isValid():
                 self.generated_lines_layer.updateExtents()
-                project.addMapLayer(self.generated_lines_layer)
+                # Phase 12: generated lines join the output group
+                self._add_layer_to_output_group(self.generated_lines_layer)
                 self._apply_basic_style(self.generated_lines_layer, 'blue')
                 layers_added += 1
 
             if runins_generated > 0 and self.generated_runins_layer and self.generated_runins_layer.isValid():
                 self.generated_runins_layer.updateExtents()
-                project.addMapLayer(self.generated_runins_layer)
+                # Phase 12: generated run-ins join the output group
+                self._add_layer_to_output_group(self.generated_runins_layer)
                 self._apply_basic_style(self.generated_runins_layer, 'red', line_style='dash')
                 layers_added += 1
 
@@ -9262,8 +9316,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             if turn_layer:
                 self._apply_turn_labeling(turn_layer)
 
-            # Add layer to project
-            QgsProject.instance().addMapLayer(layer)
+            # Phase 12: Optimized_Path joins the output group
+            self._add_layer_to_output_group(layer)
             self.optimized_path_layer = layer
 
             log.info(f"Added visualization layer '{layer_name}' to project")
@@ -9750,8 +9804,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             })
             layer.renderer().setSymbol(symbol)
 
-            # Add to project
-            QgsProject.instance().addMapLayer(layer)
+            # Phase 12: Turn_Segments joins the output group
+            self._add_layer_to_output_group(layer)
             log.info(f"Created specialized turn layer with {turn_count} segments")
 
             return layer
