@@ -6615,13 +6615,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Phase 6c-3: also extract follow_previous_direction here (the only
             # field the racetrack/teardrop branches below need from the new
             # dataclass). Defaults False if shadow build fails — fail-safe.
+            # Phase 11b: also extract optimization_level for the 2-opt wrapper
+            # applied after sequence generation.
             follow_previous_direction = False
+            optimization_level = "none"
             try:
                 from .services.simulation_service import (
                     SimulationParams, diff_legacy_dict,
                 )
                 _shadow_params = SimulationParams.from_ui(self)
                 follow_previous_direction = _shadow_params.follow_previous_direction
+                optimization_level = _shadow_params.optimization_level
                 _diffs = diff_legacy_dict(sim_params, _shadow_params.to_legacy_dict())
                 if _diffs:
                     log.warning(f"Phase 6c-1 cross-check: {len(_diffs)} difference(s) "
@@ -6877,6 +6881,36 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # ================================================
             # --- END OF MODE-SPECIFIC BRANCH ---
             # ================================================
+
+            # Phase 11b: 2-opt local search optimization.
+            # Applied AFTER mode-specific sequence generation (racetrack or
+            # teardrop) and BEFORE post-simulation processing, so the
+            # downstream editor/visualizer sees the optimized sequence.
+            #
+            # Gated by optimization_level field on SimulationParams (default
+            # "none"). UI combobox wired in Phase 11c. Until then, toggle via
+            # Python console by monkey-patching SimulationParams.from_ui.
+            #
+            # Each 2-opt cost evaluation uses a DISPOSABLE turn cache to
+            # avoid pollution from the latent cache-key bug in _get_cached_turn
+            # (cache key doesn't include the "from line direction", so stale
+            # entries could corrupt re-evaluation of the same line pair under
+            # different alternation patterns). Disposable cache guarantees
+            # correctness; cache-key widening is a future Phase 11d work item.
+            if optimization_level == "2opt" and best_final_sequence_info:
+                try:
+                    self._apply_2opt_optimization(
+                        best_final_sequence_info,
+                        sim_params, line_data, required_layers,
+                        follow_previous_direction=follow_previous_direction,
+                    )
+                except Exception as _opt_err:
+                    # 2-opt failures MUST NOT break the simulation. Fall back
+                    # to the un-optimized sequence with a warning.
+                    log.exception(
+                        f"2-opt optimization failed: {_opt_err}. "
+                        f"Falling back to pre-optimization sequence."
+                    )
 
             # --- Post-Simulation Processing ---
             if best_final_sequence_info:
@@ -7412,6 +7446,136 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except Exception as e:
             log.exception(f"Error calculating sequence time: {e}")
             return None, None
+
+    def _apply_2opt_optimization(
+        self, best_final_sequence_info,
+        sim_params, line_data, required_layers,
+        follow_previous_direction: bool = False,
+    ):
+        """Phase 11b: apply 2-opt local search to the generated sequence.
+
+        Mutates `best_final_sequence_info` in place:
+            - 'seq' is replaced by the optimized permutation
+            - 'cost' is replaced by the recomputed total time
+            - 'state'.'line_directions' is replaced by the recomputed
+              direction map
+
+        If 2-opt produces no improvement, the original dict is left
+        unchanged (no side effect).
+
+        The cost oracle (closure over _calculate_sequence_time) uses a
+        DISPOSABLE turn cache per evaluation — a brand-new empty dict is
+        passed each time, so a cache entry built for candidate A cannot
+        corrupt the evaluation of candidate B. This is safe but slow.
+
+        When follow_previous_direction is True, the per-line direction
+        override is computed once up-front (directions are pinned by
+        PREV_DIRECTION and don't depend on sequence order). That same
+        override is reused for every 2-opt evaluation AND the final
+        cost/direction recomputation.
+        """
+        from .services.sequence_service import (
+            optimize_sequence_2opt,
+            build_direction_override_for_sequence,
+        )
+
+        original_sequence = list(best_final_sequence_info.get('seq', []))
+        if len(original_sequence) < 4:
+            log.info(
+                f"2-opt skipped: sequence too short for optimization "
+                f"(n={len(original_sequence)} < 4)"
+            )
+            return
+
+        # Build a stable direction override if direction-following is on.
+        # Directions are pinned per-line by PREV_DIRECTION, independent of
+        # the line's position in the sequence — so the override doesn't
+        # need to be rebuilt per 2-opt candidate.
+        if follow_previous_direction:
+            direction_override, dir_warnings = build_direction_override_for_sequence(
+                original_sequence, line_data, follow_previous=True,
+            )
+            for _w in dir_warnings:
+                log.warning(f"[2-opt direction-following] {_w}")
+        else:
+            direction_override = None
+
+        # Starting direction for the non-direction-following case.
+        user_prefers_reciprocal = (
+            sim_params.get('first_heading_option') == "High to Low SP (Reciprocal)"
+        )
+        start_reciprocal = user_prefers_reciprocal and not follow_previous_direction
+
+        def _cost_fn(candidate_seq):
+            """2-opt cost oracle. Returns total cost seconds, or +inf for
+            an infeasible candidate (so 2-opt rejects it)."""
+            disposable_cache = {}
+            cost, _ = self._calculate_sequence_time(
+                candidate_seq,
+                start_reciprocal,
+                sim_params,
+                line_data,
+                required_layers,
+                disposable_cache,
+                direction_override=direction_override,
+            )
+            if cost is None:
+                return float('inf')
+            return cost
+
+        log.info(
+            f"2-opt starting: {len(original_sequence)} lines, "
+            f"follow_previous_direction={follow_previous_direction}"
+        )
+        opt_start = time.time()
+        opt_result = optimize_sequence_2opt(
+            original_sequence, _cost_fn, max_iterations=200,
+        )
+        opt_elapsed = time.time() - opt_start
+
+        log.info(
+            f"2-opt done in {opt_elapsed:.1f}s: {opt_result.stopped_reason}, "
+            f"passes={opt_result.total_passes}, "
+            f"improvements={opt_result.total_improvements}, "
+            f"evaluations={opt_result.cost_evaluations}, "
+            f"cost {opt_result.original_cost:.2f} -> {opt_result.final_cost:.2f} "
+            f"({opt_result.improvement_pct:+.2f}%)"
+        )
+
+        if opt_result.total_improvements == 0:
+            log.info("2-opt produced no improvement; keeping original sequence.")
+            return
+
+        # Recompute final cost + directions using the REAL turn cache so the
+        # editor/visualizer see the optimized sequence consistently.
+        final_seq = opt_result.optimized_sequence
+        final_cost_seconds, final_directions = self._calculate_sequence_time(
+            final_seq,
+            start_reciprocal,
+            sim_params,
+            line_data,
+            required_layers,
+            self.last_turn_cache,
+            direction_override=direction_override,
+        )
+
+        if final_cost_seconds is None or final_directions is None:
+            log.warning(
+                "2-opt optimized sequence failed final cost recomputation "
+                "(possible infeasibility introduced by pinning). Keeping "
+                "original sequence."
+            )
+            return
+
+        # Mutate the sequence-info dict in place
+        best_final_sequence_info['seq'] = final_seq
+        best_final_sequence_info['cost'] = final_cost_seconds
+        best_final_sequence_info.setdefault('state', {})['line_directions'] = final_directions
+        log.info(
+            f"2-opt applied: sequence replaced, "
+            f"new cost = {final_cost_seconds:.2f}s "
+            f"({final_cost_seconds/3600.0:.2f}h)"
+        )
 
     # --- 8. Sequence Editing & Finalization ---
 

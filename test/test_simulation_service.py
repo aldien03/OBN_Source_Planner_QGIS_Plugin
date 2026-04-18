@@ -271,6 +271,34 @@ class FromUiHappyPathTests(unittest.TestCase):
         p = SimulationParams.from_ui(_make_fake_dockwidget())
         self.assertFalse(p.follow_previous_direction)
 
+    def test_optimization_level_defaults_none(self):
+        """Phase 11b: default must be 'none' so existing users see no
+        behavior change. Phase 11c adds the UI dropdown."""
+        p = SimulationParams(
+            acquisition_mode="Racetrack", first_line_num=1000,
+            first_heading_option="Low to High SP", start_sequence_number=1000,
+            start_datetime=datetime(2026, 4, 18),
+            avg_shooting_speed_knots=4.5, avg_turn_speed_knots=4.0,
+            turn_radius_meters=500.0, vessel_turn_rate_dps=3.0,
+            run_in_length_meters=1000.0, deviation_clearance_m=100.0,
+        )
+        self.assertEqual(p.optimization_level, "none")
+
+    def test_optimization_level_propagates_to_legacy_dict(self):
+        """to_legacy_dict must include optimization_level so the dockwidget's
+        handle_run_simulation can read it alongside other params."""
+        p = SimulationParams(
+            acquisition_mode="Racetrack", first_line_num=1000,
+            first_heading_option="Low to High SP", start_sequence_number=1000,
+            start_datetime=datetime(2026, 4, 18),
+            avg_shooting_speed_knots=4.5, avg_turn_speed_knots=4.0,
+            turn_radius_meters=500.0, vessel_turn_rate_dps=3.0,
+            run_in_length_meters=1000.0, deviation_clearance_m=100.0,
+            optimization_level="2opt",
+        )
+        d = p.to_legacy_dict()
+        self.assertEqual(d.get("optimization_level"), "2opt")
+
 
 class FromUiMissingWidgetTests(unittest.TestCase):
     """from_ui mirrors the legacy method's defaults when widgets are absent."""

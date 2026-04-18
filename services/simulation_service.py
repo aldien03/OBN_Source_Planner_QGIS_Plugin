@@ -77,6 +77,16 @@ class SimulationParams:
     # survey use case). Default False preserves existing behavior.
     follow_previous_direction: bool = False
 
+    # NEW in Phase 11 — wired to UI dropdown in Phase 11c.
+    # "none"  -> current behavior (fixed geometric racetrack, greedy teardrop)
+    # "2opt"  -> apply classic best-improvement 2-opt local search on the
+    #            generated sequence, using _calculate_sequence_time as the
+    #            cost oracle. Each 2-opt evaluation uses a DISPOSABLE turn
+    #            cache to avoid cross-evaluation pollution from the latent
+    #            cache-key bug in _get_cached_turn. Default "none" preserves
+    #            existing behavior exactly.
+    optimization_level: str = "none"
+
     # --- Derived properties --------------------------------------------------
 
     @property
@@ -110,6 +120,7 @@ class SimulationParams:
             "deviation_clearance_m": self.deviation_clearance_m,
             "nogo_layer": self.nogo_layer,
             "follow_previous_direction": self.follow_previous_direction,
+            "optimization_level": self.optimization_level,
         }
         # Optional RRT keys: only include when set, matching legacy behavior
         # where the dockwidget's loop only added the key when the SpinBox
