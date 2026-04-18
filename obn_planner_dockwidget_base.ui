@@ -168,6 +168,99 @@
      </layout>
     </item>
     <item>
+     <widget class="QWidget" name="spRangeContainer" native="true">
+      <property name="visible">
+       <bool>false</bool>
+      </property>
+      <property name="toolTip">
+       <string>Shown only when a single line is selected. Set a shotpoint range before clicking Mark as Acquired / TBA / Pending to apply the status to that range only.</string>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_sp_range">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <property name="spacing">
+        <number>2</number>
+       </property>
+       <item>
+        <widget class="QWidget" name="rangeSelectRow" native="true">
+         <property name="visible">
+          <bool>false</bool>
+         </property>
+         <property name="toolTip">
+          <string>Multiple disjoint segments exist for this line and status filter. Pick one to operate on; From SP / To SP auto-fill to that segment.</string>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_range_select">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="rangeSelectLabel">
+            <property name="text">
+             <string>Segment</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="rangeSelectComboBox"/>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_sp_range">
+         <item>
+          <widget class="QLabel" name="fromSpLabel">
+           <property name="text">
+            <string>From SP</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="fromSpSpinBox">
+           <property name="maximum">
+            <number>999999</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="toSpLabel">
+           <property name="text">
+            <string>To SP</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="toSpSpinBox">
+           <property name="maximum">
+            <number>999999</number>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="horizontalLayout_7">
       <item>
        <widget class="QPushButton" name="markAcquiredButton">
@@ -209,6 +302,22 @@
        </widget>
       </item>
      </layout>
+    </item>
+    <item>
+     <widget class="QLabel" name="lookaheadStaleLabel">
+      <property name="visible">
+       <bool>false</bool>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">QLabel { background-color: #FFF3CD; color: #664D03; border: 1px solid #FFECB5; padding: 4px; }</string>
+      </property>
+      <property name="text">
+       <string>Lookahead plan is out of date. Click &quot;Generate Lookahead Lines&quot; to refresh.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
     </item>
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout_18">

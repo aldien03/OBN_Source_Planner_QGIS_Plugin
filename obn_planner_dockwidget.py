@@ -313,8 +313,26 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         else: log.warning("UI Warning: generateLinesButton not found.")
         if hasattr(self, 'calculateDeviationsButton'): self.calculateDeviationsButton.clicked.connect(self.handle_calculate_deviations)
         else: log.warning("UI Warning: calculateDeviationsButton not found.")
-        if hasattr(self, 'lineListWidget'): self.lineListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        if hasattr(self, 'lineListWidget'):
+            self.lineListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            # Phase 16c: show SP-range editor only when exactly 1 line selected.
+            self.lineListWidget.itemSelectionChanged.connect(self._refresh_sp_range_visibility)
         else: log.warning("UI Warning: lineListWidget not found.")
+        # Phase 16c: SP-range container starts hidden; _refresh_sp_range_visibility
+        # flips it on when a single line is selected.
+        if hasattr(self, 'spRangeContainer'):
+            self.spRangeContainer.setVisible(False)
+        # Phase 16c: segment dropdown — selecting a segment auto-fills
+        # From/To. Row is shown only when 2+ segments exist (see refresh).
+        if hasattr(self, 'rangeSelectComboBox'):
+            self.rangeSelectComboBox.currentIndexChanged.connect(self._on_segment_selected)
+        # Phase 16c: changing the Status filter should re-seed the spinbox
+        # defaults so the chief edits the range of the status they're
+        # reviewing (e.g., switch to Acquired to fix a mis-mark).
+        if hasattr(self, 'statusFilterComboBox'):
+            self.statusFilterComboBox.currentTextChanged.connect(
+                lambda _txt: self._refresh_sp_range_visibility()
+            )
         if hasattr(self, 'runSimulationButton'): self.runSimulationButton.clicked.connect(self.handle_run_simulation)
         else: log.warning("UI Warning: runSimulationButton not found.")
         if hasattr(self, 'editFinalizeButton'):
@@ -1409,6 +1427,153 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
     # --- 4. Line Markers (Status Updates) ---
 
+    def _get_line_sp_runs(self, line_num):
+        """Phase 16c: single-scan per-status contiguous-run analysis.
+
+        Returns (full_min, full_max, runs_by_status) where runs_by_status
+        maps each observed Status -> ordered list of (sp_min, sp_max)
+        tuples, one per contiguous run in SP order. A run is a maximal
+        subsequence of adjacent-in-SP-order points sharing the same status
+        (SP-number gaps are tolerated — chief cares about contiguity in
+        the sorted list, not about every integer being present).
+        """
+        layer = self.sps_layer_combo.currentLayer() if hasattr(self, 'sps_layer_combo') else None
+        if layer is None:
+            return (None, None, {})
+        fields = layer.fields()
+        sp_idx = fields.lookupField("SP")
+        line_idx = fields.lookupField("LineNum")
+        status_idx = fields.lookupField("Status")
+        if sp_idx < 0 or line_idx < 0:
+            return (None, None, {})
+        req = QgsFeatureRequest().setFilterExpression(f'"LineNum" = {int(line_num)}')
+        req.setFlags(QgsFeatureRequest.NoGeometry)
+        pairs = []  # (sp, status) ordered by SP
+        for feat in layer.getFeatures(req):
+            try:
+                sp = int(feat.attribute(sp_idx))
+            except (TypeError, ValueError):
+                continue
+            status = feat.attribute(status_idx) if status_idx >= 0 else None
+            pairs.append((sp, status))
+        if not pairs:
+            return (None, None, {})
+        pairs.sort(key=lambda p: p[0])
+        full_min = pairs[0][0]
+        full_max = pairs[-1][0]
+        runs_by_status = {}
+        run_start_sp = pairs[0][0]
+        run_status = pairs[0][1]
+        run_last_sp = run_start_sp
+        def _close_run(status, lo, hi):
+            if status is None:
+                return
+            runs_by_status.setdefault(status, []).append((lo, hi))
+        for sp, status in pairs[1:]:
+            if status == run_status:
+                run_last_sp = sp
+            else:
+                _close_run(run_status, run_start_sp, run_last_sp)
+                run_start_sp = sp
+                run_status = status
+                run_last_sp = sp
+        _close_run(run_status, run_start_sp, run_last_sp)
+        return (full_min, full_max, runs_by_status)
+
+    def _get_line_sp_bounds(self, line_num):
+        """Phase 16c: return (lowest_sp, highest_sp) for a given line.
+        Shim for callers that only need full bounds (partial-range dialog).
+        """
+        full_min, full_max, _ = self._get_line_sp_runs(line_num)
+        return (full_min, full_max)
+
+    def _refresh_sp_range_visibility(self):
+        """Phase 16c: toggle visibility of the SP-range editor based on line
+        selection. Spinbox RANGE = full line bounds (chief may re-mark any
+        SP). Defaults track the active Status filter + the segment picked
+        in rangeSelectComboBox (auto-hidden when 0 or 1 segment exists).
+
+        The dropdown lists each contiguous run matching the filter status,
+        labeled "N of M: lo-hi". When the chief picks one, From/To snap to
+        that run's bounds.
+        """
+        if not hasattr(self, 'spRangeContainer') or not hasattr(self, 'lineListWidget'):
+            return
+        items = self.lineListWidget.selectedItems()
+        if len(items) != 1:
+            self.spRangeContainer.setVisible(False)
+            return
+        try:
+            line_num = int(items[0].text())
+        except (TypeError, ValueError):
+            self.spRangeContainer.setVisible(False)
+            return
+        full_min, full_max, runs_by_status = self._get_line_sp_runs(line_num)
+        if full_min is None or full_max is None:
+            self.spRangeContainer.setVisible(False)
+            return
+        filter_status = (
+            self.statusFilterComboBox.currentText()
+            if hasattr(self, 'statusFilterComboBox') else "To Be Acquired"
+        )
+        # Candidate runs for the currently-filtered status. "All" short-
+        # circuits to a single synthetic run spanning the full line.
+        if filter_status == "All":
+            runs = [(full_min, full_max)]
+        else:
+            runs = runs_by_status.get(filter_status, [])
+
+        # Populate the Segment dropdown. Hide the row unless 2+ runs exist.
+        if hasattr(self, 'rangeSelectComboBox') and hasattr(self, 'rangeSelectRow'):
+            self.rangeSelectComboBox.blockSignals(True)
+            self.rangeSelectComboBox.clear()
+            n = len(runs)
+            for i, (lo, hi) in enumerate(runs, start=1):
+                self.rangeSelectComboBox.addItem(f"{i} of {n}: {lo}\u2013{hi}", (lo, hi))
+            self.rangeSelectComboBox.blockSignals(False)
+            self.rangeSelectRow.setVisible(n >= 2)
+
+        # Default From/To = first run's bounds (or full line if no runs).
+        if runs:
+            default_from, default_to = runs[0]
+        else:
+            default_from, default_to = full_min, full_max
+        for spin, default_val in (
+            (self.fromSpSpinBox, default_from),
+            (self.toSpSpinBox, default_to),
+        ):
+            spin.blockSignals(True)
+            spin.setRange(full_min, full_max)
+            spin.setValue(default_val)
+            spin.blockSignals(False)
+        self.spRangeContainer.setVisible(True)
+
+    def _on_segment_selected(self, index):
+        """Phase 16c: user picked a segment from rangeSelectComboBox — snap
+        From/To spinboxes to its bounds.
+        """
+        if not hasattr(self, 'rangeSelectComboBox'):
+            return
+        if index < 0:
+            return
+        data = self.rangeSelectComboBox.itemData(index)
+        if not data or len(data) != 2:
+            return
+        lo, hi = data
+        for spin, val in ((self.fromSpSpinBox, lo), (self.toSpSpinBox, hi)):
+            spin.blockSignals(True)
+            spin.setValue(int(val))
+            spin.blockSignals(False)
+
+    def _set_lookahead_stale(self, stale):
+        """Phase 16c: show/hide the 'Lookahead plan is out of date' indicator.
+
+        Called from Mark handlers (set True) and from handle_generate_lines
+        (set False on success, wired in Phase 16d).
+        """
+        if hasattr(self, 'lookaheadStaleLabel'):
+            self.lookaheadStaleLabel.setVisible(bool(stale))
+
     def handle_mark_acquired(self):
         """
         Handles the 'Mark Selected as Acquired' button click.
@@ -1507,9 +1672,50 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     return
                 edit_started_here = True
 
+            # Phase 16c: single-line + visible SP-range → append SP filter
+            # + confirm with the chief before writing a partial range.
+            sp_range = None
+            if (len(selected_line_nums) == 1
+                    and hasattr(self, 'spRangeContainer')
+                    and self.spRangeContainer.isVisible()):
+                try:
+                    sp_from = int(self.fromSpSpinBox.value())
+                    sp_to = int(self.toSpSpinBox.value())
+                except (TypeError, ValueError):
+                    sp_from, sp_to = None, None
+                if sp_from is None or sp_to is None:
+                    pass
+                elif sp_from > sp_to:
+                    QMessageBox.warning(self, "Invalid SP Range",
+                        f"From SP ({sp_from}) must be less than or equal to To SP ({sp_to}).")
+                    return
+                else:
+                    sp_range = (sp_from, sp_to)
+
             # Set up filter expression based on number of lines
             if len(selected_line_nums) == 1:
                 line_filter_expr = f'"LineNum" = {selected_line_nums[0]}'
+                if sp_range is not None:
+                    # Confirm only when it's a partial range — full range is
+                    # the historical behavior and does not warrant a prompt.
+                    line_num = selected_line_nums[0]
+                    low, high = self._get_line_sp_bounds(line_num)
+                    is_partial = (low is not None and high is not None
+                                  and (sp_range[0] > low or sp_range[1] < high))
+                    if is_partial:
+                        reply = QMessageBox.question(
+                            self, "Confirm Partial Range",
+                            f"Mark SP {sp_range[0]}–{sp_range[1]} on line {line_num} "
+                            f"as '{new_status}'?\n\n"
+                            f"({sp_range[1] - sp_range[0] + 1} shotpoints; "
+                            f"full line range is {low}–{high})",
+                            QMessageBox.Ok | QMessageBox.Cancel,
+                            QMessageBox.Cancel,
+                        )
+                        if reply != QMessageBox.Ok:
+                            log.info("Partial-range status update cancelled by user")
+                            return
+                    line_filter_expr += f' AND "SP" >= {sp_range[0]} AND "SP" <= {sp_range[1]}'
             else:
                 # Handle large lists properly by chunking if needed
                 if len(selected_line_nums) > 1000:
@@ -1614,8 +1820,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             elapsed_time = time.time() - start_time
             log.info(f"Successfully updated {updated_feature_count} features to '{new_status}' in {elapsed_time:.1f} seconds")
 
+            # Phase 16c: status changed → any previously generated lookahead
+            # plan is now stale. Indicator clears on next Generate Lookahead
+            # Lines (wired fully in Phase 16d).
+            self._set_lookahead_stale(True)
+
+            # Phase 16c: re-read the selected line's TBA range so the From/To
+            # spinboxes reflect what's left to acquire after this mark.
+            self._refresh_sp_range_visibility()
+
             # Show success message
-            QMessageBox.information(self, "Success", 
+            QMessageBox.information(self, "Success",
                                    f"Status updated to '{new_status}' for {updated_feature_count:,} points " +
                                    f"across {len(selected_line_nums)} lines in {elapsed_time:.1f} seconds")
 
