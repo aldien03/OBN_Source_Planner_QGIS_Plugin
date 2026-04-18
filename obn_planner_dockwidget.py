@@ -70,7 +70,7 @@ from qgis.core import (QgsProject, QgsVectorLayer, QgsField, QgsFeature, QgsGeom
                    QgsPointLocator, QgsFeatureSink, QgsPalLayerSettings, QgsTextFormat, QgsProperty,
                    QgsRuleBasedLabeling, QgsRuleBasedRenderer, QgsVectorLayerSimpleLabeling, QgsMarkerLineSymbolLayer,
                    QgsGeometryUtils, QgsTextBufferSettings, QgsSimpleLineSymbolLayer, QgsExpression, QgsArrowSymbolLayer, QgsSingleSymbolRenderer,QgsRendererCategory, QgsVectorLayerSimpleLabeling, QgsMapLayer)
-from qgis.gui import QgsMapLayerComboBox
+from qgis.gui import QgsMapLayerComboBox, QgsProjectionSelectionDialog
 from qgis.PyQt import QtWidgets, uic, QtCore
 from qgis.PyQt.QtCore import pyqtSignal, QVariant, Qt, QDateTime
 from qgis.PyQt.QtWidgets import (
@@ -560,15 +560,24 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Create fields and prepare writer
             fields = self._create_sps_layer_fields()
             
-            # Get CRS
-            crs = QgsProject.instance().crs()
-            if not crs.isValid():
-                log.error("Project CRS is invalid. Cannot create layer")
-                QtWidgets.QMessageBox.critical(self, "Invalid CRS", 
-                    "The current QGIS project CRS is invalid. Please set a valid project CRS before importing")
+            # Phase 8b: CRS confirmation. SPS files don't reliably declare
+            # their coordinate system, so silently assuming the current
+            # project CRS can produce points in the wrong place when the
+            # user hasn't explicitly set it (e.g. UTM northings of 6.7M
+            # land "somewhere off Africa" if the project is in EPSG:4326).
+            # Ask the user to confirm or pick a different CRS before
+            # writing the GeoPackage. Logs the final choice.
+            crs = self._confirm_crs_for_sps_import(sample_point=parsed_data[0])
+            if crs is None:
+                log.info("SPS import cancelled by user at CRS confirmation step.")
                 return
-            
-            log.debug(f"Using CRS: {crs.authid()} for output layer")
+            if not crs.isValid():
+                log.error("Chosen CRS is invalid. Cannot create layer")
+                QtWidgets.QMessageBox.critical(self, "Invalid CRS",
+                    "The chosen CRS is invalid. Cannot proceed with import.")
+                return
+
+            log.info(f"Using CRS: {crs.authid()} ({crs.description()}) for SPS import")
             
             # Create vector writer
             writer = QgsVectorFileWriter(output_path, "UTF-8", fields, QgsWkbTypes.Point, crs, "GPKG")
@@ -590,7 +599,78 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except Exception as e:
             log.exception(f"SPS file processing error: {e}")
             QtWidgets.QMessageBox.critical(self, "SPS Parse Error", f"Error processing SPS file:\n{e}")
-    
+
+    def _confirm_crs_for_sps_import(self, sample_point=None):
+        """Phase 8b: ask the user to confirm (or change) the CRS before
+        writing the SPS GeoPackage.
+
+        Non-technical users often run with the default project CRS
+        (EPSG:4326 lat/lng) while SPS files contain UTM metres. Silently
+        using the project CRS produces layers with coordinates in the
+        wrong place and no error. This dialog makes the assumption
+        visible and editable.
+
+        Args:
+            sample_point: first parsed record (a dict with 'e'/'n' keys).
+                Used to show example coordinates in the dialog so the
+                user can visually sanity-check against the CRS choice.
+
+        Returns:
+            QgsCoordinateReferenceSystem chosen by the user, or None if
+            the user cancelled the import.
+        """
+        project_crs = QgsProject.instance().crs()
+        sample_e = sample_point.get('e') if sample_point else None
+        sample_n = sample_point.get('n') if sample_point else None
+
+        # Build the informative text
+        if project_crs.isValid():
+            project_crs_text = f"{project_crs.authid()} — {project_crs.description()}"
+        else:
+            project_crs_text = "(project CRS is invalid or not set)"
+
+        sample_text = ""
+        if sample_e is not None and sample_n is not None:
+            sample_text = (
+                f"\n\nFirst point in file:\n"
+                f"  Easting = {sample_e}\n"
+                f"  Northing = {sample_n}\n\n"
+                f"If these look like metres (e.g. 442792 / 6700226), the CRS "
+                f"should be a projected one (typically UTM). If they look "
+                f"like degrees (e.g. 4.5 / 60.2), a geographic CRS like "
+                f"EPSG:4326 is correct."
+            )
+
+        msg = QtWidgets.QMessageBox(self)
+        msg.setWindowTitle("Confirm SPS Coordinate System")
+        msg.setIcon(QtWidgets.QMessageBox.Question)
+        msg.setText("Which CRS should the imported SPS points use?")
+        msg.setInformativeText(
+            f"Current project CRS:\n  {project_crs_text}{sample_text}"
+        )
+        btn_use_project = msg.addButton("Use Project CRS", QtWidgets.QMessageBox.AcceptRole)
+        btn_choose = msg.addButton("Choose Different CRS…", QtWidgets.QMessageBox.ActionRole)
+        btn_cancel = msg.addButton("Cancel Import", QtWidgets.QMessageBox.RejectRole)
+        msg.setDefaultButton(btn_use_project)
+        msg.exec_()
+        clicked = msg.clickedButton()
+
+        if clicked is btn_cancel or clicked is None:
+            return None
+
+        if clicked is btn_use_project:
+            return project_crs
+
+        # Choose Different CRS — open the standard QGIS selector
+        dlg = QgsProjectionSelectionDialog(self)
+        dlg.setShowNoProjection(False)
+        if project_crs.isValid():
+            dlg.setCrs(project_crs)  # pre-select current project CRS
+        if not dlg.exec_():
+            # User cancelled the picker dialog
+            return None
+        return dlg.crs()
+
     def _parse_sps_file_content(self, sps_file_path, skip_headers=0):
         """Parse the content of an SPS file via the multi-format parser.
 
