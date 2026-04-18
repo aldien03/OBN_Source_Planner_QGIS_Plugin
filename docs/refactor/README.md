@@ -136,6 +136,28 @@ obn_planner/
 | [9](phase_9_cleanup.md) | Cleanup — no `print()`, dead code, import-linter, final docs | small | low | Phases 0-8 |
 | [10](phase_10_performance.md) | **Performance backlog** — spatial indexing, batch commits, geometry simplification, render caching, QThread, profile-driven optimization. **Explicitly requested only; not auto-advanced.** | TBD | medium | Phases 0-9 complete |
 
+### Post-refactor feature phases (shipped + planned)
+
+User-requested features, executed after Phases 0-9 completed. Each
+is a separate top-level phase with its own design doc.
+
+| # | Phase | Size | Status | Ship / plan doc |
+|---|---|---|---|---|
+| 11 | Sequence optimization: 2-opt local search | medium | **shipped 2026-04-18** (superseded by OR-tools in Phase 13) | — |
+| 12 | Output-layer grouping (`OBN Planner Output`) | small | **shipped 2026-04-18** | — |
+| 12a | Preflight Heading-NULL guard in `handle_generate_lines` | xs | **shipped 2026-04-18** | — |
+| 12b | Cache run-in geometries in `line_data` (hot-path refactor) | small | **shipped 2026-04-18** | — |
+| 12c | Optimized_Path + Turn_Segments at top of output group | xs | **shipped 2026-04-18** | — |
+| 13 | OR-tools sequence optimizer (replaces 2-opt) | large | **13a shipped 2026-04-18**; 13b (QThread) pending | [phase_13_ortools.md](phase_13_ortools.md) |
+| 13a-4/5/6 | Rotating log handler + gzip + GUI de-clutter | small | **shipped 2026-04-18** | — |
+| 16 | Line Management core — Operation + FGSP/LGSP per line | medium | **PLAN** | [phase_16_line_management.md](phase_16_line_management.md) |
+| 17 | 48-hour Lookahead PDF Export | medium | **PLAN** — blocked by Phase 16 | [phase_17_lookahead_pdf.md](phase_17_lookahead_pdf.md) |
+| 18 | Auto-mark acquired after Run Simulation | small | **future** — design in plan file | — |
+| 19 | Remove run-outs permanently (geometry change in `_get_next_exit_state`) | small | **future** — user-confirmed permanent default | — |
+| 20 | Smoother deviation geometry (Peak/Tangent v2 refinement) | medium | **future** | — |
+| — | SIMOPS blocker tracker | — | **dismissed 2026-04-18** per user decision | — |
+| 13b | OR-tools QThread worker for responsive UI during solve | medium | **pending** — user-deferred pending daily-ops pain report | [phase_13_ortools.md](phase_13_ortools.md) §13b |
+
 Each phase is independently shippable: the plugin loads, buttons work, tests pass at the end of each. **No auto-advance — Claude stops and awaits user approval between every phase.**
 
 ## Execution protocol (hard stops)
