@@ -299,6 +299,31 @@ class FromUiHappyPathTests(unittest.TestCase):
         d = p.to_legacy_dict()
         self.assertEqual(d.get("optimization_level"), "2opt")
 
+    def test_optimization_max_iterations_defaults_to_200(self):
+        """Phase 11d-2: default max_iterations matches the Phase 11a/11b
+        hard-coded value so existing runs behave identically."""
+        p = SimulationParams(
+            acquisition_mode="Racetrack", first_line_num=1000,
+            first_heading_option="Low to High SP", start_sequence_number=1000,
+            start_datetime=datetime(2026, 4, 18),
+            avg_shooting_speed_knots=4.5, avg_turn_speed_knots=4.0,
+            turn_radius_meters=500.0, vessel_turn_rate_dps=3.0,
+            run_in_length_meters=1000.0, deviation_clearance_m=100.0,
+        )
+        self.assertEqual(p.optimization_max_iterations, 200)
+
+    def test_optimization_max_iterations_propagates_to_legacy_dict(self):
+        p = SimulationParams(
+            acquisition_mode="Racetrack", first_line_num=1000,
+            first_heading_option="Low to High SP", start_sequence_number=1000,
+            start_datetime=datetime(2026, 4, 18),
+            avg_shooting_speed_knots=4.5, avg_turn_speed_knots=4.0,
+            turn_radius_meters=500.0, vessel_turn_rate_dps=3.0,
+            run_in_length_meters=1000.0, deviation_clearance_m=100.0,
+            optimization_max_iterations=50,
+        )
+        self.assertEqual(p.to_legacy_dict().get("optimization_max_iterations"), 50)
+
 
 class FromUiMissingWidgetTests(unittest.TestCase):
     """from_ui mirrors the legacy method's defaults when widgets are absent."""
@@ -418,6 +443,25 @@ class FromUiSequenceOptimizationTests(unittest.TestCase):
         p = SimulationParams.from_ui(dw)
         self.assertEqual(p.optimization_level, "none",
                          "unknown label must fall back to 'none', not raise")
+
+    def test_max_iter_spinbox_absent_defaults_200(self):
+        """Phase 11d-2: older compiled UI without the SpinBox → 200."""
+        dw = _make_fake_dockwidget()
+        p = SimulationParams.from_ui(dw)
+        self.assertEqual(p.optimization_max_iterations, 200)
+
+    def test_max_iter_spinbox_present_reads_value(self):
+        dw = _make_fake_dockwidget()
+        dw.optimizationMaxIterationsSpinBox = _FakeSpinBox(50)
+        p = SimulationParams.from_ui(dw)
+        self.assertEqual(p.optimization_max_iterations, 50)
+
+    def test_max_iter_spinbox_value_is_int(self):
+        """int() coercion — SpinBox returns int already but be defensive."""
+        dw = _make_fake_dockwidget()
+        dw.optimizationMaxIterationsSpinBox = _FakeSpinBox(75)
+        p = SimulationParams.from_ui(dw)
+        self.assertIsInstance(p.optimization_max_iterations, int)
 
 
 class FromUiOptionalRrtTests(unittest.TestCase):

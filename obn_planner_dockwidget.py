@@ -227,7 +227,27 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         if hasattr(self, 'startDateTimeEdit'):
             current_datetime = datetime.now(); qdt = QtCore.QDateTime(current_datetime)
             self.startDateTimeEdit.setDateTime(qdt); log.debug(f"Set Start DateTime to {current_datetime}")
+
+        # Phase 11d-2: enable/disable the max-passes SpinBox based on
+        # Sequence Optimization dropdown. SpinBox stays grey when the
+        # user hasn't enabled 2-opt — reduces visual noise, avoids
+        # giving the impression the value matters when it doesn't.
+        if (hasattr(self, 'sequenceOptimizationComboBox')
+                and hasattr(self, 'optimizationMaxIterationsSpinBox')):
+            self.sequenceOptimizationComboBox.currentTextChanged.connect(
+                self._on_optimization_level_changed
+            )
+            # Apply initial state to match the combo's default ("Off")
+            self._on_optimization_level_changed(
+                self.sequenceOptimizationComboBox.currentText()
+            )
+
         log.info("OBNPlannerDockWidget initialized.")
+
+    def _on_optimization_level_changed(self, text):
+        """Phase 11d-2: grey-out the max-passes SpinBox when 2-opt is Off."""
+        if hasattr(self, 'optimizationMaxIterationsSpinBox'):
+            self.optimizationMaxIterationsSpinBox.setEnabled(text == "2-opt")
 
     # --- Phase 6c-2: legacy self.last_* property shims ---
     # Each pair delegates to self._last_run (a _LastRunShim instance set
@@ -6673,6 +6693,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # applied after sequence generation.
             follow_previous_direction = False
             optimization_level = "none"
+            optimization_max_iterations = 200
             try:
                 from .services.simulation_service import (
                     SimulationParams, diff_legacy_dict,
@@ -6680,6 +6701,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 _shadow_params = SimulationParams.from_ui(self)
                 follow_previous_direction = _shadow_params.follow_previous_direction
                 optimization_level = _shadow_params.optimization_level
+                optimization_max_iterations = _shadow_params.optimization_max_iterations
                 _diffs = diff_legacy_dict(sim_params, _shadow_params.to_legacy_dict())
                 if _diffs:
                     log.warning(f"Phase 6c-1 cross-check: {len(_diffs)} difference(s) "
@@ -6957,6 +6979,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         best_final_sequence_info,
                         sim_params, line_data, required_layers,
                         follow_previous_direction=follow_previous_direction,
+                        max_iterations=optimization_max_iterations,
                     )
                 except Exception as _opt_err:
                     # 2-opt failures MUST NOT break the simulation. Fall back
@@ -7505,6 +7528,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         self, best_final_sequence_info,
         sim_params, line_data, required_layers,
         follow_previous_direction: bool = False,
+        max_iterations: int = 200,
     ):
         """Phase 11b: apply 2-opt local search to the generated sequence.
 
@@ -7588,7 +7612,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # sequence found so far with stopped_reason='cancelled'. Caller
         # sees a normal optimized_sequence in that case — just possibly
         # not fully converged.
-        max_iterations = 200
+        # Phase 11d-2: max_iterations now comes from the UI SpinBox via
+        # the method parameter (default 200 when absent).
         progress = QProgressDialog(
             "Starting 2-opt optimization...",
             "Cancel",

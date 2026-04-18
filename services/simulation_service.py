@@ -87,6 +87,14 @@ class SimulationParams:
     #            existing behavior exactly.
     optimization_level: str = "none"
 
+    # NEW in Phase 11d-2 — wired to UI SpinBox.
+    # Maximum 2-opt passes before giving up. Each pass scans every line-pair
+    # swap (O(N^2) cost evaluations). Higher = better convergence, longer
+    # runtime. Default 200 matches the Phase 11a/11b hard-coded value so
+    # existing runs behave identically unless the user explicitly changes it.
+    # Only consulted when optimization_level == "2opt".
+    optimization_max_iterations: int = 200
+
     # --- Derived properties --------------------------------------------------
 
     @property
@@ -121,6 +129,7 @@ class SimulationParams:
             "nogo_layer": self.nogo_layer,
             "follow_previous_direction": self.follow_previous_direction,
             "optimization_level": self.optimization_level,
+            "optimization_max_iterations": self.optimization_max_iterations,
         }
         # Optional RRT keys: only include when set, matching legacy behavior
         # where the dockwidget's loop only added the key when the SpinBox
@@ -255,6 +264,18 @@ class SimulationParams:
             )
             optimization_level = "none"
 
+        # Phase 11d-2: Max-iterations SpinBox. Controls the 2-opt stopping
+        # budget. Absent widget (older compiled UI) falls back to 200
+        # matching the hard-coded Phase 11a/11b default.
+        if hasattr(dw, "optimizationMaxIterationsSpinBox"):
+            optimization_max_iterations = int(dw.optimizationMaxIterationsSpinBox.value())
+        else:
+            log.warning(
+                "optimizationMaxIterationsSpinBox not found — recompile "
+                "resources to enable the max-passes knob. Defaulting to 200."
+            )
+            optimization_max_iterations = 200
+
         params = cls(
             acquisition_mode=acquisition_mode,
             first_line_num=first_line_num,
@@ -273,6 +294,7 @@ class SimulationParams:
             rrt_goal_bias=rrt_goal_bias,
             follow_previous_direction=follow_previous_direction,
             optimization_level=optimization_level,
+            optimization_max_iterations=optimization_max_iterations,
         )
         # Mirror the four post-gather ValueError checks in the legacy method
         params.validate()
