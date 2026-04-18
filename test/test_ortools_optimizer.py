@@ -234,6 +234,46 @@ class OrtoolsSolveTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             optimize_with_ortools(cost, meta, pairs, time_limit_s=0)
 
+    def test_accepts_empty_disjunction_pairs_for_pinned_directions(self):
+        """Phase 13a hotfix (commit after bdadad4): when every line's
+        direction is pre-pinned (follow_previous_direction=True / 4D
+        monitor surveys), the caller creates ONE node per line and
+        disjunction_pairs is empty. Must not raise — the problem is
+        simply a plain asymmetric TSP.
+        """
+        # Node layout: depot + N pinned-direction nodes.
+        num_lines = 4
+        num_nodes = 1 + num_lines
+        meta = [NodeMeta(line_num=None, is_reciprocal=False, is_depot=True)]
+        for k in range(1, num_lines + 1):
+            # All pinned to forward; is_reciprocal doesn't matter here
+            # because the cost matrix is the single source of truth.
+            meta.append(NodeMeta(line_num=k, is_reciprocal=False))
+
+        cost = {}
+        for i in range(num_nodes):
+            for j in range(num_nodes):
+                if i == j:
+                    continue
+                if i == 0 or j == 0:
+                    cost[(i, j)] = 1.0 if j != 0 else 0.0
+                else:
+                    cost[(i, j)] = 10.0  # uniform — any ordering is optimal
+
+        result = optimize_with_ortools(
+            cost_matrix=cost,
+            node_meta=meta,
+            disjunction_pairs=[],   # the case under test
+            time_limit_s=2,
+        )
+        self.assertEqual(
+            len(result.optimized_sequence), num_lines,
+            "expected all lines visited exactly once",
+        )
+        # Every line must appear exactly once in the returned tour
+        visited = sorted(meta[n].line_num for n in result.optimized_sequence)
+        self.assertEqual(visited, list(range(1, num_lines + 1)))
+
 
 if __name__ == "__main__":
     unittest.main()

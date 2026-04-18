@@ -144,8 +144,12 @@ def optimize_with_ortools(
         node_meta: list indexed by node number. Length = number of
             nodes in the model. Entry 0 must have is_depot=True.
         disjunction_pairs: list of (node_a, node_b) tuples, one per
-            survey line. Each pair is wrapped in an AddDisjunction so
-            the solver picks exactly one direction per line.
+            survey line whose direction is NOT pre-pinned. Each pair is
+            wrapped in an AddDisjunction so the solver picks exactly one
+            direction per line. May be empty — happens in 4D-monitor-
+            survey mode where every line's direction is pre-pinned by
+            its PREV_DIRECTION attribute, making the problem a plain
+            asymmetric TSP with no direction choice.
         time_limit_s: hard wall-clock cap in seconds. OR-tools honors
             this via its internal clock; the returned solution is the
             best found by the deadline.
@@ -206,8 +210,11 @@ def optimize_with_ortools(
     if time_limit_s <= 0:
         raise ValueError(f"time_limit_s must be positive, got {time_limit_s}")
 
-    if not disjunction_pairs:
-        raise ValueError("disjunction_pairs must be non-empty")
+    # Phase 13a hotfix: disjunction_pairs is allowed to be empty. That
+    # happens in 4D-monitor-survey mode (follow_previous_direction=True):
+    # each line's direction is pinned by its PREV_DIRECTION attribute, so
+    # the caller creates ONE node per line — no pair to bind. OR-tools'
+    # RoutingModel handles a plain asymmetric TSP (no disjunctions) fine.
 
     # --- Model construction ---------------------------------------------
 
