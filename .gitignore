@@ -38,3 +38,7 @@ qgis_real_test.py
 simple_test.py
 env_test.py
 plugin_test.py
+
+# Plugin runtime logs (rotated by RotatingFileHandler in obn_planner_dockwidget.py)
+obn_planner_debug.log
+obn_planner_debug.log.*
