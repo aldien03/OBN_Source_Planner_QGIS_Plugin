@@ -6454,6 +6454,26 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             if not sim_params: raise ValueError("Failed to gather parameters")
             self.last_sim_params = sim_params
 
+            # Phase 6c-1: shadow-build SimulationParams and cross-check against
+            # the legacy dict. Discrepancies log as WARNING; absence of warnings
+            # is the precondition for Phase 6c-3 deleting the legacy path.
+            try:
+                from .services.simulation_service import (
+                    SimulationParams, diff_legacy_dict,
+                )
+                _shadow_params = SimulationParams.from_ui(self)
+                _diffs = diff_legacy_dict(sim_params, _shadow_params.to_legacy_dict())
+                if _diffs:
+                    log.warning(f"Phase 6c-1 cross-check: {len(_diffs)} difference(s) "
+                                f"between legacy dict and SimulationParams.from_ui:")
+                    for _d in _diffs:
+                        log.warning(f"  {_d}")
+                else:
+                    log.debug("Phase 6c-1 cross-check: legacy dict and SimulationParams agree.")
+            except Exception as _e:
+                # Shadow mode must never break the simulation. Just log.
+                log.error(f"Phase 6c-1 shadow construction failed: {_e}", exc_info=True)
+
             line_data, required_layers = self._prepare_line_data(sim_params)
 
             # --- <<< ELEGANT HANDLING for NO VALID LINES >>> ---

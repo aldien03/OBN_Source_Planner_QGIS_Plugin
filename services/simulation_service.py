@@ -134,6 +134,139 @@ class SimulationParams:
         if self.deviation_clearance_m <= 0:
             raise ValueError("Deviation Clearance must be positive.")
 
+    # --- UI builder (Phase 6c-1) ---------------------------------------------
+
+    @classmethod
+    def from_ui(cls, dockwidget: Any) -> "SimulationParams":
+        """Build a SimulationParams by reading the dockwidget's UI widgets.
+
+        Mirrors _gather_simulation_parameters one-to-one: same widget
+        names, same defaults when widgets are absent, same ValueError /
+        AttributeError on bad input. Used in shadow mode in Phase 6c-1
+        to cross-check; replaces the legacy dict path in Phase 6c-3.
+
+        Note: follow_previous_direction defaults to False here. The UI
+        checkbox that drives it lands in Phase 8.
+        """
+        dw = dockwidget
+
+        # Acquisition mode
+        if hasattr(dw, "acquisitionModeComboBox"):
+            acquisition_mode = dw.acquisitionModeComboBox.currentText()
+        else:
+            log.warning("Acquisition Mode ComboBox not found, defaulting to Racetrack")
+            acquisition_mode = "Racetrack"
+
+        # No-go layer (None is acceptable)
+        nogo_layer = dw.nogo_zone_combo.currentLayer()
+
+        # Deviation clearance — inline validation matches legacy
+        if hasattr(dw, "deviationClearanceDoubleSpinBox"):
+            deviation_clearance_m = dw.deviationClearanceDoubleSpinBox.value()
+            if deviation_clearance_m <= 0:
+                raise ValueError("Deviation Clearance must be positive.")
+        else:
+            log.warning("Deviation Clearance SpinBox not found, defaulting to 100.0m")
+            deviation_clearance_m = 100.0
+
+        # Optional RRT tunables — only set if SpinBox exists, matching
+        # the legacy "loop and check hasattr" pattern
+        rrt_step_size = None
+        rrt_max_iterations = None
+        rrt_goal_bias = None
+        if hasattr(dw, "rrt_step_sizeSpinBox"):
+            rrt_step_size = dw.rrt_step_sizeSpinBox.value()
+        if hasattr(dw, "rrt_max_iterationsSpinBox"):
+            rrt_max_iterations = dw.rrt_max_iterationsSpinBox.value()
+        if hasattr(dw, "rrt_goal_biasSpinBox"):
+            rrt_goal_bias = dw.rrt_goal_biasSpinBox.value()
+
+        # Sequence
+        first_line_num = dw.firstLineSpinBox.value()
+        first_heading_option = dw.firstHeadingComboBox.currentText()
+        start_sequence_number = dw.firstSeqComboBox.value()
+
+        # Acquisition speed — try primary widget first, then fallback,
+        # mirroring legacy. AttributeError if neither exists.
+        if hasattr(dw, "avgShootingSpeedDoubleSpinBox"):
+            avg_shooting_speed_knots = dw.avgShootingSpeedDoubleSpinBox.value()
+        elif hasattr(dw, "acqSpeedPrimaryDoubleSpinBox"):
+            avg_shooting_speed_knots = dw.acqSpeedPrimaryDoubleSpinBox.value()
+            log.info("Using 'acqSpeedPrimaryDoubleSpinBox' for acquisition speed.")
+        else:
+            raise AttributeError("Suitable acquisition speed input widget(s) not found.")
+
+        # Turn parameters
+        avg_turn_speed_knots = dw.turnSpeedDoubleSpinBox.value()
+        turn_radius_meters = dw.turnRadiusDoubleSpinBox.value()
+
+        # Vessel turn rate — default 3.0 if widget absent
+        if hasattr(dw, "vesselTurnRateDoubleSpinBox"):
+            vessel_turn_rate_dps = dw.vesselTurnRateDoubleSpinBox.value()
+        else:
+            log.warning("Vessel turn rate UI not found. Using default: 3.0 deg/sec")
+            vessel_turn_rate_dps = 3.0
+
+        run_in_length_meters = dw.maxRunInDoubleSpinBox.value()
+        start_datetime = dw.startDateTimeEdit.dateTime().toPyDateTime()
+
+        params = cls(
+            acquisition_mode=acquisition_mode,
+            first_line_num=first_line_num,
+            first_heading_option=first_heading_option,
+            start_sequence_number=start_sequence_number,
+            start_datetime=start_datetime,
+            avg_shooting_speed_knots=avg_shooting_speed_knots,
+            avg_turn_speed_knots=avg_turn_speed_knots,
+            turn_radius_meters=turn_radius_meters,
+            vessel_turn_rate_dps=vessel_turn_rate_dps,
+            run_in_length_meters=run_in_length_meters,
+            deviation_clearance_m=deviation_clearance_m,
+            nogo_layer=nogo_layer,
+            rrt_step_size=rrt_step_size,
+            rrt_max_iterations=rrt_max_iterations,
+            rrt_goal_bias=rrt_goal_bias,
+            follow_previous_direction=False,  # Phase 8 wires UI checkbox
+        )
+        # Mirror the four post-gather ValueError checks in the legacy method
+        params.validate()
+        return params
+
+
+# --- Shadow-mode cross-check helper (Phase 6c-1) ----------------------------
+
+def diff_legacy_dict(legacy: Dict[str, Any], new: Dict[str, Any],
+                     float_tol: float = 1e-6) -> List[str]:
+    """Compare two legacy-shape params dicts. Return human-readable
+    difference strings — empty list means identical (within float_tol).
+
+    Used in Phase 6c-1 to verify SimulationParams.from_ui produces the
+    same data as the legacy _gather_simulation_parameters dict. Phase 6c-3
+    deletes the legacy path entirely; until then this is the safety net.
+
+    Only checks keys present in `legacy`. Keys present only in `new`
+    (e.g. follow_previous_direction added in Phase 6) are ignored.
+    """
+    diffs: List[str] = []
+    for key in legacy:
+        if key not in new:
+            diffs.append(f"{key!r}: missing in new dict")
+            continue
+        v1 = legacy[key]
+        v2 = new[key]
+        # Numeric fields: compare with tolerance
+        if isinstance(v1, (int, float)) and isinstance(v2, (int, float)) \
+                and not isinstance(v1, bool) and not isinstance(v2, bool):
+            if abs(v1 - v2) > float_tol:
+                diffs.append(f"{key!r}: legacy={v1!r} new={v2!r} (Δ={v1-v2:.6g})")
+            continue
+        # Object identity (e.g. QgsVectorLayer) before equality
+        if v1 is v2:
+            continue
+        if v1 != v2:
+            diffs.append(f"{key!r}: legacy={v1!r} new={v2!r}")
+    return diffs
+
 
 @dataclass
 class SimulationResult:
