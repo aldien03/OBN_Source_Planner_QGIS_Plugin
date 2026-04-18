@@ -95,6 +95,21 @@ class SimulationParams:
     # Only consulted when optimization_level == "2opt".
     optimization_max_iterations: int = 200
 
+    # NEW in Phase 13a — OR-tools optimization knobs.
+    # Time budget in seconds for OR-tools' local-search. 30 s is a good
+    # default for daily ops on Martin-Linge-scale surveys (~136 lines);
+    # PM job-completion estimates may want 120-300 s. Only consulted when
+    # optimization_level == "ortools".
+    ortools_time_limit_s: int = 30
+
+    # Local-search meta-heuristic name. Forwarded verbatim to
+    # services.ortools_optimizer — valid values are documented there
+    # (GUIDED_LOCAL_SEARCH / SIMULATED_ANNEALING / TABU_SEARCH /
+    # GENERIC_TABU_SEARCH / AUTOMATIC). GLS is strongest for asymmetric
+    # TSP with direction disjunctions; we intentionally do NOT expose
+    # this in the UI yet (see Phase 13 plan doc open question 2).
+    ortools_metaheuristic: str = "GUIDED_LOCAL_SEARCH"
+
     # --- Derived properties --------------------------------------------------
 
     @property
@@ -130,6 +145,8 @@ class SimulationParams:
             "follow_previous_direction": self.follow_previous_direction,
             "optimization_level": self.optimization_level,
             "optimization_max_iterations": self.optimization_max_iterations,
+            "ortools_time_limit_s": self.ortools_time_limit_s,
+            "ortools_metaheuristic": self.ortools_metaheuristic,
         }
         # Optional RRT keys: only include when set, matching legacy behavior
         # where the dockwidget's loop only added the key when the SpinBox
@@ -243,12 +260,17 @@ class SimulationParams:
             )
             follow_previous_direction = False
 
-        # Phase 11c: "Sequence Optimization" dropdown. Maps the visible label
-        # ("Off" / "2-opt") to the internal optimization_level string.
-        # Unknown / absent widget -> "none" (safe default). An unknown value
-        # in the combo also maps to "none" rather than raising, in case a
-        # future version adds new labels we don't recognize.
-        _OPT_LABEL_TO_LEVEL = {"Off": "none", "2-opt": "2opt"}
+        # Phase 11c / 13a: "Sequence Optimization" dropdown. Maps the visible
+        # label to the internal optimization_level string. Unknown / absent
+        # widget -> "none" (safe default). An unknown value in the combo
+        # also maps to "none" rather than raising, so an older compiled UI
+        # never crashes the plugin init.
+        _OPT_LABEL_TO_LEVEL = {
+            "Off": "none",
+            "2-opt": "2opt",
+            "2-opt (legacy)": "2opt",   # Phase 13a rename-ready alias
+            "OR-tools": "ortools",
+        }
         if hasattr(dw, "sequenceOptimizationComboBox"):
             _opt_label = dw.sequenceOptimizationComboBox.currentText()
             optimization_level = _OPT_LABEL_TO_LEVEL.get(_opt_label, "none")
@@ -276,6 +298,18 @@ class SimulationParams:
             )
             optimization_max_iterations = 200
 
+        # Phase 13a: OR-tools time-limit SpinBox. Absent widget (older
+        # compiled UI) falls back to the dataclass default of 30 s so the
+        # plugin continues to function even without a recompile.
+        if hasattr(dw, "ortoolsTimeLimitSpinBox"):
+            ortools_time_limit_s = int(dw.ortoolsTimeLimitSpinBox.value())
+        else:
+            log.warning(
+                "ortoolsTimeLimitSpinBox not found — recompile resources "
+                "to enable the OR-tools time-budget knob. Defaulting to 30."
+            )
+            ortools_time_limit_s = 30
+
         params = cls(
             acquisition_mode=acquisition_mode,
             first_line_num=first_line_num,
@@ -295,6 +329,9 @@ class SimulationParams:
             follow_previous_direction=follow_previous_direction,
             optimization_level=optimization_level,
             optimization_max_iterations=optimization_max_iterations,
+            ortools_time_limit_s=ortools_time_limit_s,
+            # ortools_metaheuristic stays at its dataclass default —
+            # intentionally not exposed in the UI in Phase 13a.
         )
         # Mirror the four post-gather ValueError checks in the legacy method
         params.validate()
