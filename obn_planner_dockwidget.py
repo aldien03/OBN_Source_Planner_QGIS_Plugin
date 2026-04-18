@@ -537,7 +537,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.info(f"Created layer-tree group '{self.OUTPUT_GROUP_NAME}'")
         return group
 
-    def _add_layer_to_output_group(self, layer):
+    def _add_layer_to_output_group(self, layer, to_top: bool = False):
         """Register `layer` with the project and place its tree node
         inside the 'OBN Planner Output' group.
 
@@ -555,12 +555,22 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         Args:
             layer: QgsVectorLayer (or any QgsMapLayer) to register
                 and display inside the output group.
+            to_top: Phase 12c — when True, insert the layer at index 0
+                of the group (visually at the top). When False (default),
+                append to the bottom of the group. Used for
+                Optimized_Path and Turn_Segments so the vessel route
+                is the most prominent child and doesn't get buried
+                below the raw generated / run-in layers across re-runs.
         """
         if layer is None or not layer.isValid():
             log.warning("Skipping _add_layer_to_output_group: invalid layer")
             return
         QgsProject.instance().addMapLayer(layer, False)   # False = don't add to legend root
-        self._get_or_create_output_group().addLayer(layer)
+        group = self._get_or_create_output_group()
+        if to_top:
+            group.insertLayer(0, layer)
+        else:
+            group.addLayer(layer)
 
     # --- General Helpers ---
 
@@ -10014,8 +10024,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             if turn_layer:
                 self._apply_turn_labeling(turn_layer)
 
-            # Phase 12: Optimized_Path joins the output group
-            self._add_layer_to_output_group(layer)
+            # Phase 12 / 12c: Optimized_Path joins the output group AT THE TOP
+            # so the vessel route is the most prominent child regardless of
+            # how many times the user re-runs Generate Lines + Run Simulation.
+            # Turn_Segments was also inserted-at-top just above (inside
+            # _create_turns_layer), so the final order is:
+            #   Optimized_Path (topmost)
+            #   Turn_Segments
+            #   [any other output layers]
+            self._add_layer_to_output_group(layer, to_top=True)
             self.optimized_path_layer = layer
 
             log.info(f"Added visualization layer '{layer_name}' to project")
@@ -10502,8 +10519,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             })
             layer.renderer().setSymbol(symbol)
 
-            # Phase 12: Turn_Segments joins the output group
-            self._add_layer_to_output_group(layer)
+            # Phase 12 / 12c: Turn_Segments joins the output group at the
+            # top. Optimized_Path is added just after this (in
+            # _visualize_optimized_path) also at the top, pushing
+            # Turn_Segments down to position 1 — exactly the order we want.
+            self._add_layer_to_output_group(layer, to_top=True)
             log.info(f"Created specialized turn layer with {turn_count} segments")
 
             return layer
