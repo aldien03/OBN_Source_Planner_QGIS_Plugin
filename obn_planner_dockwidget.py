@@ -7582,9 +7582,59 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             f"follow_previous_direction={follow_previous_direction}"
         )
         opt_start = time.time()
-        opt_result = optimize_sequence_2opt(
-            original_sequence, _cost_fn, max_iterations=200,
+
+        # Phase 11d-1: progress dialog + Cancel. Shows pass number, best
+        # cost so far, improvements count; Cancel button returns the best
+        # sequence found so far with stopped_reason='cancelled'. Caller
+        # sees a normal optimized_sequence in that case — just possibly
+        # not fully converged.
+        max_iterations = 200
+        progress = QProgressDialog(
+            "Starting 2-opt optimization...",
+            "Cancel",
+            0, max_iterations,
+            self,
         )
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)  # show immediately — 2-opt is always slow
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+        progress.show()
+        QApplication.processEvents()
+
+        def _on_progress(info):
+            if progress.wasCanceled():
+                return  # cancel_fn below will catch this
+            if info.original_cost > 0:
+                pct = (info.original_cost - info.best_cost) / info.original_cost * 100.0
+            else:
+                pct = 0.0
+            progress.setLabelText(
+                f"2-opt pass {info.pass_num}/{info.max_iterations}\n"
+                f"Improvements: {info.total_improvements}   "
+                f"Evaluations: {info.cost_evaluations}\n"
+                f"Cost: {info.original_cost/3600.0:.2f}h → "
+                f"{info.best_cost/3600.0:.2f}h  ({pct:+.2f}%)"
+            )
+            progress.setValue(info.pass_num)
+            QApplication.processEvents()
+
+        def _cancel_check():
+            # QProgressDialog sets wasCanceled() when the Cancel button is
+            # clicked. Called BEFORE each pass by the optimizer.
+            return progress.wasCanceled()
+
+        try:
+            opt_result = optimize_sequence_2opt(
+                original_sequence, _cost_fn,
+                max_iterations=max_iterations,
+                progress_callback=_on_progress,
+                cancel_fn=_cancel_check,
+            )
+        finally:
+            progress.close()
+
         opt_elapsed = time.time() - opt_start
 
         log.info(
@@ -7595,6 +7645,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             f"cost {opt_result.original_cost:.2f} -> {opt_result.final_cost:.2f} "
             f"({opt_result.improvement_pct:+.2f}%)"
         )
+
+        if opt_result.stopped_reason == "cancelled":
+            log.warning(
+                f"2-opt cancelled by user after {opt_result.total_passes} "
+                f"pass(es); using best-so-far sequence."
+            )
 
         if opt_result.total_improvements == 0:
             log.info("2-opt produced no improvement; keeping original sequence.")

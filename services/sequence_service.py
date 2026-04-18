@@ -411,6 +411,25 @@ _TWO_OPT_COST_EPSILON = 1e-9  # strict-improvement threshold, no jitter
 
 
 @dataclass(frozen=True)
+class TwoOptProgress:
+    """Phase 11d-1: progress report emitted after each 2-opt pass.
+
+    Passed to the progress_callback param of optimize_sequence_2opt
+    so GUI callers can update a progress dialog and keep the event
+    loop alive without the optimizer itself knowing about Qt.
+
+    Fields mirror a subset of OptimizationResult so the callback
+    can compute improvement_pct on the fly for display.
+    """
+    pass_num: int               # 1-indexed current pass
+    max_iterations: int         # the cap the caller configured
+    total_improvements: int     # swaps accepted so far
+    cost_evaluations: int       # cost_fn calls so far (approximate)
+    original_cost: float
+    best_cost: float            # best cost seen so far
+
+
+@dataclass(frozen=True)
 class OptimizationResult:
     """Outcome of a sequence-optimization pass.
 
@@ -426,8 +445,9 @@ class OptimizationResult:
         cost_evaluations: total calls to cost_fn (excluding the initial
             baseline evaluation of the input sequence).
         stopped_reason: 'converged' (full pass with no improvement),
-            'max_iterations' (cap hit), or 'trivial' (input too short
-            to admit any 2-opt move — length < 4).
+            'max_iterations' (cap hit), 'trivial' (input too short
+            to admit any 2-opt move — length < 4), or 'cancelled'
+            (Phase 11d-1: caller requested abort via cancel_fn).
     """
     optimized_sequence: List[int]
     original_cost: float
@@ -443,6 +463,8 @@ def optimize_sequence_2opt(
     sequence: List[int],
     cost_fn: Callable[[List[int]], float],
     max_iterations: int = 200,
+    progress_callback: Optional[Callable[["TwoOptProgress"], None]] = None,
+    cancel_fn: Optional[Callable[[], bool]] = None,
 ) -> OptimizationResult:
     """Classic 2-opt local search on an open-path sequence.
 
@@ -461,6 +483,15 @@ def optimize_sequence_2opt(
             "worse" score.
         max_iterations: maximum outer passes before giving up. Each
             pass examines every candidate swap. Default 200.
+        progress_callback: Phase 11d-1. If provided, called AFTER each
+            full pass with a TwoOptProgress snapshot. The optimizer
+            never raises from a callback invocation — if the callback
+            raises, the exception propagates to the caller (which is
+            expected to handle GUI errors gracefully).
+        cancel_fn: Phase 11d-1. If provided, called BEFORE each full
+            pass. Returning True aborts the loop; the optimizer
+            returns with stopped_reason='cancelled' and the best
+            sequence found so far.
 
     Returns:
         OptimizationResult. optimized_sequence is guaranteed to be
@@ -498,6 +529,12 @@ def optimize_sequence_2opt(
     )
 
     while total_passes < max_iterations:
+        # Phase 11d-1: honor caller cancellation BEFORE starting a new
+        # pass. Abort cleanly; best-so-far has already been captured.
+        if cancel_fn is not None and cancel_fn():
+            stopped_reason = "cancelled"
+            break
+
         total_passes += 1
         # "Best-improvement" 2-opt: scan every (i, j) pair in the current
         # sequence, compute the cost of each candidate reversal, and apply
@@ -521,13 +558,27 @@ def optimize_sequence_2opt(
                     if best_swap is None or candidate_cost < best_swap[1]:
                         best_swap = (candidate, candidate_cost)
 
+        if best_swap is not None:
+            best, best_cost = best_swap
+            total_improvements += 1
+
+        # Phase 11d-1: notify caller of progress after each pass (whether
+        # improvement found or not). Caller can update a progress dialog
+        # and pump events to keep the GUI responsive.
+        if progress_callback is not None:
+            progress_callback(TwoOptProgress(
+                pass_num=total_passes,
+                max_iterations=max_iterations,
+                total_improvements=total_improvements,
+                cost_evaluations=cost_evaluations,
+                original_cost=original_cost,
+                best_cost=best_cost,
+            ))
+
         if best_swap is None:
             # Full pass with no improvement — we're at a local minimum.
             stopped_reason = "converged"
             break
-
-        best, best_cost = best_swap
-        total_improvements += 1
     else:
         # while-loop fell through — hit max_iterations without converging
         stopped_reason = "max_iterations"

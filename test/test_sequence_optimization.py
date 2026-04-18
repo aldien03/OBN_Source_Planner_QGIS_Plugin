@@ -21,6 +21,7 @@ if _plugin_root not in sys.path:
 from services.sequence_service import (  # noqa: E402
     optimize_sequence_2opt,
     OptimizationResult,
+    TwoOptProgress,
 )
 
 
@@ -355,6 +356,159 @@ class RealisticShapeTests(unittest.TestCase):
         self.assertLessEqual(res.total_passes, 50)
         # Output is a permutation of input
         self.assertEqual(sorted(res.optimized_sequence), sorted(seq))
+
+
+class ProgressCallbackTests(unittest.TestCase):
+    """Phase 11d-1: optimize_sequence_2opt must call progress_callback
+    once after each pass with a TwoOptProgress snapshot."""
+
+    def _make_known_improvement_problem(self):
+        """Sequence where 2-opt needs at least one pass to improve, then
+        another to confirm convergence."""
+        edges = {(a, b): (1.0 if (a, b) == (1, 2) or (a, b) == (2, 3)
+                                or (a, b) == (3, 4) else 100.0)
+                 for a in range(1, 6) for b in range(1, 6) if a != b}
+        return [1, 4, 3, 2, 5], _edge_sum_cost(edges)
+
+    def test_progress_callback_invoked_each_pass(self):
+        seq, cost_fn = self._make_known_improvement_problem()
+        reports = []
+        optimize_sequence_2opt(seq, cost_fn, progress_callback=reports.append)
+        # One report per pass. Must be at least one pass (problem has
+        # improvement available). Convergence pass also reports.
+        self.assertGreaterEqual(len(reports), 1)
+        for r in reports:
+            self.assertIsInstance(r, TwoOptProgress)
+
+    def test_progress_report_shape(self):
+        seq, cost_fn = self._make_known_improvement_problem()
+        reports = []
+        optimize_sequence_2opt(seq, cost_fn, progress_callback=reports.append)
+        r0 = reports[0]
+        self.assertEqual(r0.pass_num, 1)
+        self.assertEqual(r0.max_iterations, 200)  # default
+        self.assertGreaterEqual(r0.total_improvements, 0)
+        self.assertGreaterEqual(r0.cost_evaluations, 1)
+        self.assertGreater(r0.original_cost, 0.0)
+        self.assertGreater(r0.best_cost, 0.0)
+        self.assertLessEqual(r0.best_cost, r0.original_cost)
+
+    def test_progress_reports_monotonic_pass_nums(self):
+        """pass_num must be 1, 2, 3, ... across reports."""
+        seq, cost_fn = self._make_known_improvement_problem()
+        reports = []
+        optimize_sequence_2opt(seq, cost_fn, progress_callback=reports.append)
+        pass_nums = [r.pass_num for r in reports]
+        self.assertEqual(pass_nums, list(range(1, len(reports) + 1)))
+
+    def test_progress_reports_best_cost_non_increasing(self):
+        """best_cost must monotonically decrease (or stay equal) across
+        successive pass reports."""
+        seq, cost_fn = self._make_known_improvement_problem()
+        reports = []
+        optimize_sequence_2opt(seq, cost_fn, progress_callback=reports.append)
+        costs = [r.best_cost for r in reports]
+        for i in range(1, len(costs)):
+            self.assertLessEqual(costs[i], costs[i - 1],
+                                 "best_cost must never increase across passes")
+
+    def test_no_callback_works_fine(self):
+        """progress_callback=None (default) doesn't raise."""
+        seq, cost_fn = self._make_known_improvement_problem()
+        res = optimize_sequence_2opt(seq, cost_fn)
+        self.assertGreater(res.original_cost, 0)
+
+    def test_trivial_input_no_callback_invocations(self):
+        """Input too short for 2-opt returns trivial; callback should not fire."""
+        reports = []
+        optimize_sequence_2opt([1, 2], lambda s: 10.0, progress_callback=reports.append)
+        self.assertEqual(reports, [])
+
+
+class CancelFnTests(unittest.TestCase):
+    """Phase 11d-1: cancel_fn returning True aborts the loop cleanly."""
+
+    def _make_long_problem(self):
+        """Large enough sequence that 2-opt takes many passes."""
+        edges = {(a, b): abs(a - b) * 1.0
+                 for a in range(20) for b in range(20) if a != b}
+        cost_fn = _edge_sum_cost(edges)
+        # Reversed-ish input has lots of room to improve
+        seq = list(reversed(range(20)))
+        return seq, cost_fn
+
+    def test_cancel_before_any_pass_returns_original(self):
+        """cancel_fn returning True immediately should abort before any
+        work is done. stopped_reason='cancelled'."""
+        seq, cost_fn = self._make_long_problem()
+        res = optimize_sequence_2opt(seq, cost_fn, cancel_fn=lambda: True)
+        self.assertEqual(res.stopped_reason, "cancelled")
+        self.assertEqual(res.total_passes, 0)
+        self.assertEqual(res.total_improvements, 0)
+        # best-so-far is the original input, cost was evaluated once
+        self.assertEqual(res.optimized_sequence, seq)
+        self.assertEqual(res.final_cost, res.original_cost)
+
+    def test_cancel_mid_run_returns_best_so_far(self):
+        """cancel_fn True mid-run → abort with stopped_reason='cancelled'.
+
+        Uses a monotonically-decreasing cost function so 2-opt never
+        converges on its own (every swap is a strict improvement), so
+        cancel_fn is the only thing that can halt the loop."""
+        call_n = {"n": 0}
+
+        def cost_fn(seq):
+            call_n["n"] += 1
+            # Each call returns a slightly lower cost → every swap improves
+            return 1000.0 - call_n["n"] * 1e-6
+
+        cancel_n = {"n": 0}
+
+        def cancel():
+            cancel_n["n"] += 1
+            return cancel_n["n"] >= 3  # abort on 3rd check
+
+        seq = list(range(10))
+        res = optimize_sequence_2opt(seq, cost_fn, cancel_fn=cancel, max_iterations=200)
+        self.assertEqual(res.stopped_reason, "cancelled")
+        # At least 2 passes ran (cancel fires on 3rd pre-pass check)
+        self.assertGreaterEqual(res.total_passes, 2)
+
+    def test_cancel_fn_false_lets_algorithm_run(self):
+        """cancel_fn always returning False should let 2-opt converge normally."""
+        seq, cost_fn = self._make_long_problem()
+        res = optimize_sequence_2opt(seq, cost_fn, cancel_fn=lambda: False,
+                                     max_iterations=50)
+        # Must NOT be cancelled
+        self.assertNotEqual(res.stopped_reason, "cancelled")
+        self.assertIn(res.stopped_reason, ("converged", "max_iterations"))
+
+    def test_progress_and_cancel_compose(self):
+        """Both callbacks can be used together without interference."""
+        reports = []
+        call_n = {"n": 0}
+
+        def cost_fn(seq):
+            call_n["n"] += 1
+            return 1000.0 - call_n["n"] * 1e-6
+
+        cancel_n = {"n": 0}
+
+        def cancel():
+            cancel_n["n"] += 1
+            return cancel_n["n"] >= 2  # abort after 1 pass
+
+        seq = list(range(10))
+        res = optimize_sequence_2opt(
+            seq, cost_fn,
+            progress_callback=reports.append,
+            cancel_fn=cancel,
+            max_iterations=200,
+        )
+        self.assertEqual(res.stopped_reason, "cancelled")
+        # One pass ran → one progress report
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0].pass_num, 1)
 
 
 if __name__ == "__main__":
