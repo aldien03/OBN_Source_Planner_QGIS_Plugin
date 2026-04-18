@@ -1766,6 +1766,22 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             lines_to_process = sorted(list(matching_line_nums))
             log.debug(f"Found {len(lines_to_process)} lines to process: {lines_to_process}")
 
+            # Preflight: verify Heading is populated for at least one point on the
+            # filtered lines. SPS import writes Heading=NULL by design (see
+            # _write_features_to_layer line 857); handle_calculate_headings must be
+            # run afterward to fill it. Without this check, line generation silently
+            # skips run-ins (line 2049) and simulation later fails with the generic
+            # "No valid lines with run-in points found" — which masks the real cause.
+            line_num_list = ",".join(str(n) for n in lines_to_process)
+            heading_probe = QgsFeatureRequest().setFilterExpression(
+                f'"LineNum" IN ({line_num_list}) AND "Heading" IS NOT NULL'
+            ).setLimit(1).setFlags(QgsFeatureRequest.NoGeometry)
+            if not any(True for _ in source_layer.getFeatures(heading_probe)):
+                raise ValueError(
+                    "Heading field is NULL for all selected lines. "
+                    "Click 'Calculate Headings' first to populate headings, then retry."
+                )
+
             # --- 2. PREPARE OUTPUT LAYERS ---
             log.debug("Step 2: Preparing output memory layers")
 
