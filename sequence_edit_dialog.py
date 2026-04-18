@@ -457,12 +457,18 @@ class SequenceEditDialog(QDialog):
             if sp_min > sp_max:
                 sp_min, sp_max = sp_max, sp_min
 
+            # Phase 16b-fix: FGSP/LGSP are derived from per-SP Status on the
+            # SPS layer (set by the chief via Mark as Acquired / TBA /
+            # Pending). The spinboxes display the values but are read-only
+            # here; edits happen at the SP-range level in the dock and are
+            # recomputed when "Generate Lookahead Lines" runs.
             fgsp_spin = QSpinBox()
             fgsp_spin.setRange(sp_min, sp_max)
             fgsp_spin.setValue(int(fgsp_val) if fgsp_val is not None else sp_min)
             fgsp_spin.setProperty("row", i)
             fgsp_spin.setKeyboardTracking(False)
-            fgsp_spin.valueChanged.connect(self.fgsp_changed)
+            fgsp_spin.setReadOnly(True)
+            fgsp_spin.setButtonSymbols(QSpinBox.NoButtons)
             self.tableWidget.setCellWidget(i, COL_FGSP, fgsp_spin)
 
             lgsp_spin = QSpinBox()
@@ -470,7 +476,8 @@ class SequenceEditDialog(QDialog):
             lgsp_spin.setValue(int(lgsp_val) if lgsp_val is not None else sp_max)
             lgsp_spin.setProperty("row", i)
             lgsp_spin.setKeyboardTracking(False)
-            lgsp_spin.valueChanged.connect(self.lgsp_changed)
+            lgsp_spin.setReadOnly(True)
+            lgsp_spin.setButtonSymbols(QSpinBox.NoButtons)
             self.tableWidget.setCellWidget(i, COL_LGSP, lgsp_spin)
             # ---
 
