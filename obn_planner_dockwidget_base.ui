@@ -249,6 +249,34 @@
      </widget>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_optimization">
+      <item>
+       <widget class="QLabel" name="label_optimization">
+        <property name="text">
+         <string>Sequence Optimization:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="sequenceOptimizationComboBox">
+        <property name="toolTip">
+         <string>2-opt local search reorders the generated sequence to minimize total cost (line acquisition time + turn time). Fixes the "dumb simulation" pattern where dense U-turns cluster at survey perimeters. Runtime scales as O(N^2) per pass with Dubins-heavy cost evaluation — expect 10-60 seconds on a 20-line survey. The first line in the sequence is not moved (fixed by the user's starting-line choice). Default: Off.</string>
+        </property>
+        <item>
+         <property name="text">
+          <string>Off</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>2-opt</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="horizontalLayout_10">
       <item>
        <widget class="QLabel" name="label_7">

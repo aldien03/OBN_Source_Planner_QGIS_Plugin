@@ -383,6 +383,43 @@ class FromUiFollowPreviousDirectionTests(unittest.TestCase):
                          "Missing checkbox must default to False, not raise")
 
 
+class FromUiSequenceOptimizationTests(unittest.TestCase):
+    """Phase 11c: SimulationParams.from_ui reads the
+    sequenceOptimizationComboBox when present. Default-if-absent keeps
+    existing users on 'none' so behavior is preserved after recompile-
+    less plugin updates."""
+
+    def test_combo_absent_defaults_none(self):
+        """Older compiled UI without the combobox: no crash, level='none'."""
+        dw = _make_fake_dockwidget()
+        # Do NOT set sequenceOptimizationComboBox on dw
+        p = SimulationParams.from_ui(dw)
+        self.assertEqual(p.optimization_level, "none")
+
+    def test_combo_off_maps_to_none(self):
+        dw = _make_fake_dockwidget()
+        dw.sequenceOptimizationComboBox = _FakeComboBox("Off")
+        p = SimulationParams.from_ui(dw)
+        self.assertEqual(p.optimization_level, "none")
+
+    def test_combo_2opt_maps_to_2opt(self):
+        """User picks '2-opt' -> internal value '2opt' (stripped of the hyphen)."""
+        dw = _make_fake_dockwidget()
+        dw.sequenceOptimizationComboBox = _FakeComboBox("2-opt")
+        p = SimulationParams.from_ui(dw)
+        self.assertEqual(p.optimization_level, "2opt")
+
+    def test_combo_unknown_label_safe_defaults_to_none(self):
+        """If someone adds an unknown label to the combo (future UI), don't
+        crash — default to 'none' and log a warning. Protects users from
+        a malformed UI producing a crash at Run Simulation time."""
+        dw = _make_fake_dockwidget()
+        dw.sequenceOptimizationComboBox = _FakeComboBox("Simulated Annealing")
+        p = SimulationParams.from_ui(dw)
+        self.assertEqual(p.optimization_level, "none",
+                         "unknown label must fall back to 'none', not raise")
+
+
 class FromUiOptionalRrtTests(unittest.TestCase):
     def test_rrt_widgets_absent_means_none(self):
         p = SimulationParams.from_ui(_make_fake_dockwidget())

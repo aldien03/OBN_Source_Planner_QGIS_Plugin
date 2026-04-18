@@ -234,6 +234,27 @@ class SimulationParams:
             )
             follow_previous_direction = False
 
+        # Phase 11c: "Sequence Optimization" dropdown. Maps the visible label
+        # ("Off" / "2-opt") to the internal optimization_level string.
+        # Unknown / absent widget -> "none" (safe default). An unknown value
+        # in the combo also maps to "none" rather than raising, in case a
+        # future version adds new labels we don't recognize.
+        _OPT_LABEL_TO_LEVEL = {"Off": "none", "2-opt": "2opt"}
+        if hasattr(dw, "sequenceOptimizationComboBox"):
+            _opt_label = dw.sequenceOptimizationComboBox.currentText()
+            optimization_level = _OPT_LABEL_TO_LEVEL.get(_opt_label, "none")
+            if _opt_label not in _OPT_LABEL_TO_LEVEL:
+                log.warning(
+                    f"Unknown sequenceOptimizationComboBox label "
+                    f"{_opt_label!r}; defaulting to 'none'."
+                )
+        else:
+            log.warning(
+                "sequenceOptimizationComboBox not found — recompile "
+                "resources to enable sequence optimization. Defaulting to 'none'."
+            )
+            optimization_level = "none"
+
         params = cls(
             acquisition_mode=acquisition_mode,
             first_line_num=first_line_num,
@@ -251,6 +272,7 @@ class SimulationParams:
             rrt_max_iterations=rrt_max_iterations,
             rrt_goal_bias=rrt_goal_bias,
             follow_previous_direction=follow_previous_direction,
+            optimization_level=optimization_level,
         )
         # Mirror the four post-gather ValueError checks in the legacy method
         params.validate()
