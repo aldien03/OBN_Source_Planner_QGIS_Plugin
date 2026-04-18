@@ -260,7 +260,7 @@
       <item>
        <widget class="QComboBox" name="sequenceOptimizationComboBox">
         <property name="toolTip">
-         <string>Reorders the generated sequence to minimize total cost. OR-tools (Guided Local Search) is the recommended choice — it finds near-optimal tours and avoids the long cross-survey transits that 2-opt gets stuck with. 2-opt (legacy) is kept for A/B comparison and will be removed in a future release. Default: Off.</string>
+         <string>Reorders the generated sequence to minimize total cost (line acquisition time + turn time). OR-tools (Guided Local Search) finds near-optimal tours with asymmetric Dubins turn costs and direction-choice disjunctions. Default: Off.</string>
         </property>
         <item>
          <property name="text">
@@ -272,40 +272,6 @@
           <string>OR-tools</string>
          </property>
         </item>
-        <item>
-         <property name="text">
-          <string>2-opt (legacy)</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_optimization_max_iter">
-        <property name="text">
-         <string>Max passes:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QSpinBox" name="optimizationMaxIterationsSpinBox">
-        <property name="toolTip">
-         <string>Maximum number of 2-opt passes before stopping. Only used when Optimization = 2-opt (legacy). Higher values = better result but longer runtime. Typical: 50 quick / 200 thorough / 500+ very demanding. Grey when not in 2-opt mode.</string>
-        </property>
-        <property name="minimum">
-         <number>10</number>
-        </property>
-        <property name="maximum">
-         <number>1000</number>
-        </property>
-        <property name="singleStep">
-         <number>10</number>
-        </property>
-        <property name="value">
-         <number>200</number>
-        </property>
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
        </widget>
       </item>
       <item>

@@ -325,14 +325,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         log.info("OBNPlannerDockWidget initialized.")
 
     def _on_optimization_level_changed(self, text):
-        """Phase 11d-2 / 13a: enable/disable the optimizer-specific
-        SpinBoxes based on the dropdown selection. Only one spinbox
-        is enabled at a time; the other stays grey.
+        """Phase 13a: enable the OR-tools time-limit SpinBox only when
+        the dropdown is set to "OR-tools". Stays grey for "Off".
+
+        Phase 13a-5 removed the "2-opt (legacy)" dropdown option and
+        the optimizationMaxIterationsSpinBox widget from the UI; the
+        underlying code path is kept defensively (so the dispatcher
+        still honors optimization_level="2opt" if someone sets it
+        programmatically) but the GUI no longer exposes it.
         """
-        is_2opt = (text == "2-opt (legacy)" or text == "2-opt")
         is_ortools = (text == "OR-tools")
-        if hasattr(self, 'optimizationMaxIterationsSpinBox'):
-            self.optimizationMaxIterationsSpinBox.setEnabled(is_2opt)
         if hasattr(self, 'ortoolsTimeLimitSpinBox'):
             self.ortoolsTimeLimitSpinBox.setEnabled(is_ortools)
 

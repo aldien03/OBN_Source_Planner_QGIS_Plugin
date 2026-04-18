@@ -265,10 +265,16 @@ class SimulationParams:
         # widget -> "none" (safe default). An unknown value in the combo
         # also maps to "none" rather than raising, so an older compiled UI
         # never crashes the plugin init.
+        #
+        # Phase 13a-5 removed the "2-opt (legacy)" dropdown item from the
+        # UI. The "2-opt" / "2-opt (legacy)" entries remain in this map
+        # defensively — the underlying _apply_2opt_optimization code path
+        # is kept so legacy .ini files or programmatic callers that set
+        # optimization_level="2opt" still work.
         _OPT_LABEL_TO_LEVEL = {
             "Off": "none",
-            "2-opt": "2opt",
-            "2-opt (legacy)": "2opt",   # Phase 13a rename-ready alias
+            "2-opt": "2opt",                # legacy label alias (no UI widget)
+            "2-opt (legacy)": "2opt",       # Phase 13a transitional label (no UI widget)
             "OR-tools": "ortools",
         }
         if hasattr(dw, "sequenceOptimizationComboBox"):
@@ -286,16 +292,13 @@ class SimulationParams:
             )
             optimization_level = "none"
 
-        # Phase 11d-2: Max-iterations SpinBox. Controls the 2-opt stopping
-        # budget. Absent widget (older compiled UI) falls back to 200
-        # matching the hard-coded Phase 11a/11b default.
+        # Phase 11d-2 (Phase 13a-5: widget removed from UI, dataclass
+        # default retained for defensive programmatic use of 2-opt).
+        # The widget is expected to be absent; fall back silently to
+        # the dataclass default 200. No warning — absence is the norm.
         if hasattr(dw, "optimizationMaxIterationsSpinBox"):
             optimization_max_iterations = int(dw.optimizationMaxIterationsSpinBox.value())
         else:
-            log.warning(
-                "optimizationMaxIterationsSpinBox not found — recompile "
-                "resources to enable the max-passes knob. Defaulting to 200."
-            )
             optimization_max_iterations = 200
 
         # Phase 13a: OR-tools time-limit SpinBox. Absent widget (older
