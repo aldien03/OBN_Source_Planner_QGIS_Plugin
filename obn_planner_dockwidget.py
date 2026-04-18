@@ -164,6 +164,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         super(OBNPlannerDockWidget, self).__init__(parent)
         self.setupUi(self)
         log.debug("Setting up UI components...")
+
+        # Phase 6c-2: backing storage for the five self.last_* fields.
+        # The 5 @property pairs below delegate reads/writes here. Existing
+        # callers (handle_run_simulation et al.) see no behavior change —
+        # their `self.last_X = Y` assignments still work, they just route
+        # through the shim now. Phase 6c-3 may replace this with a typed
+        # SimulationResult.
+        from .services.simulation_service import _LastRunShim
+        self._last_run = _LastRunShim()
         # Replace placeholders with QgsMapLayerComboBoxes
         self.sps_layer_combo = self._replace_combo_with_map_layer_combo(self.spsLayerComboBox, self.horizontalLayout, QgsMapLayerProxyModel.PointLayer)
         self.nogo_zone_combo = self._replace_combo_with_map_layer_combo(self.noGoZoneLayerComboBox, self.horizontalLayout_5, QgsMapLayerProxyModel.PolygonLayer)
@@ -219,7 +228,53 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             current_datetime = datetime.now(); qdt = QtCore.QDateTime(current_datetime)
             self.startDateTimeEdit.setDateTime(qdt); log.debug(f"Set Start DateTime to {current_datetime}")
         log.info("OBNPlannerDockWidget initialized.")
-    
+
+    # --- Phase 6c-2: legacy self.last_* property shims ---
+    # Each pair delegates to self._last_run (a _LastRunShim instance set
+    # in __init__). Existing call sites — 46 across this file — continue
+    # to read and write through these names without any code changes.
+    # Phase 6c-3 may swap _LastRunShim for a typed SimulationResult.
+
+    @property
+    def last_simulation_result(self):
+        return self._last_run.simulation_result
+
+    @last_simulation_result.setter
+    def last_simulation_result(self, value):
+        self._last_run.simulation_result = value
+
+    @property
+    def last_sim_params(self):
+        return self._last_run.sim_params
+
+    @last_sim_params.setter
+    def last_sim_params(self, value):
+        self._last_run.sim_params = value
+
+    @property
+    def last_line_data(self):
+        return self._last_run.line_data
+
+    @last_line_data.setter
+    def last_line_data(self, value):
+        self._last_run.line_data = value
+
+    @property
+    def last_required_layers(self):
+        return self._last_run.required_layers
+
+    @last_required_layers.setter
+    def last_required_layers(self, value):
+        self._last_run.required_layers = value
+
+    @property
+    def last_turn_cache(self):
+        return self._last_run.turn_cache
+
+    @last_turn_cache.setter
+    def last_turn_cache(self, value):
+        self._last_run.turn_cache = value
+
     def _replace_combo_with_map_layer_combo(self, placeholder_combo, layout, layer_filter):
         """ Replaces a placeholder QComboBox with a QgsMapLayerComboBox. """
         layout.removeWidget(placeholder_combo)

@@ -21,7 +21,7 @@ if _plugin_root not in sys.path:
 
 from services.simulation_service import (  # noqa: E402
     SimulationParams, SimulationResult, SimulationService,
-    KNOTS_TO_MPS, diff_legacy_dict,
+    KNOTS_TO_MPS, diff_legacy_dict, _LastRunShim,
 )
 from services.turn_cache import TurnCache  # noqa: E402
 
@@ -425,6 +425,173 @@ class FromUiToLegacyDictRoundTripTests(unittest.TestCase):
         diffs = diff_legacy_dict(legacy_dict, new_dict)
         self.assertEqual(diffs, [],
                          f"unexpected diffs in round-trip cross-check: {diffs}")
+
+
+class LastRunShimTests(unittest.TestCase):
+    """Phase 6c-2: _LastRunShim is the backing storage that the dockwidget's
+    legacy self.last_* @property pairs delegate to.
+
+    These tests verify the shim's defaults and field-level read/write
+    semantics. The actual property delegation is tested in
+    LastRunShimPropertyDelegationTests below using a stand-in mock class
+    (since the real dockwidget requires QGIS)."""
+
+    def test_default_state_matches_legacy_initial(self):
+        """Defaults must match what the dockwidget used to leave the 5
+        bare attributes at: None for four, {} for turn_cache."""
+        s = _LastRunShim()
+        self.assertIsNone(s.simulation_result)
+        self.assertIsNone(s.sim_params)
+        self.assertIsNone(s.line_data)
+        self.assertIsNone(s.required_layers)
+        self.assertEqual(s.turn_cache, {})
+
+    def test_each_default_turn_cache_is_independent(self):
+        """default_factory=dict — instance-level dict, not shared."""
+        a = _LastRunShim()
+        b = _LastRunShim()
+        a.turn_cache["k"] = "v"
+        self.assertNotIn("k", b.turn_cache,
+                         "turn_cache must NOT be shared across shim instances")
+
+    def test_field_writes_persist(self):
+        s = _LastRunShim()
+        s.simulation_result = {"sequence": [1000, 1006]}
+        s.sim_params = {"acquisition_mode": "Racetrack"}
+        s.line_data = {1000: {"foo": 1}}
+        s.required_layers = {"lines": object()}
+        s.turn_cache = {("a", "b"): "result"}
+        # Read back identical
+        self.assertEqual(s.simulation_result, {"sequence": [1000, 1006]})
+        self.assertEqual(s.sim_params, {"acquisition_mode": "Racetrack"})
+        self.assertEqual(s.line_data, {1000: {"foo": 1}})
+        self.assertIsNotNone(s.required_layers["lines"])
+        self.assertEqual(s.turn_cache, {("a", "b"): "result"})
+
+    def test_can_reset_to_defaults_via_assignment(self):
+        """The dockwidget's existing reset code does
+        `self.last_X = None` and `self.last_turn_cache = {}`. The shim
+        must accept those assignments."""
+        s = _LastRunShim()
+        s.simulation_result = "anything"
+        s.turn_cache = {"key": "val"}
+        # Reset
+        s.simulation_result = None
+        s.sim_params = None
+        s.line_data = None
+        s.required_layers = None
+        s.turn_cache = {}
+        self.assertIsNone(s.simulation_result)
+        self.assertEqual(s.turn_cache, {})
+
+
+class LastRunShimPropertyDelegationTests(unittest.TestCase):
+    """Verify the @property delegation pattern the dockwidget uses.
+
+    We can't import the real OBNPlannerDockWidget without QGIS, so this
+    test recreates the same pattern in a tiny stand-in class. If the
+    pattern works here, the dockwidget's properties work the same way."""
+
+    def _make_dockwidget_lookalike(self):
+        """Build a small class that uses the exact same shim pattern."""
+        class MiniDockwidget:
+            def __init__(self):
+                self._last_run = _LastRunShim()
+
+            # Properties — mirror the exact pattern in obn_planner_dockwidget.py
+            @property
+            def last_simulation_result(self): return self._last_run.simulation_result
+            @last_simulation_result.setter
+            def last_simulation_result(self, v): self._last_run.simulation_result = v
+
+            @property
+            def last_sim_params(self): return self._last_run.sim_params
+            @last_sim_params.setter
+            def last_sim_params(self, v): self._last_run.sim_params = v
+
+            @property
+            def last_line_data(self): return self._last_run.line_data
+            @last_line_data.setter
+            def last_line_data(self, v): self._last_run.line_data = v
+
+            @property
+            def last_required_layers(self): return self._last_run.required_layers
+            @last_required_layers.setter
+            def last_required_layers(self, v): self._last_run.required_layers = v
+
+            @property
+            def last_turn_cache(self): return self._last_run.turn_cache
+            @last_turn_cache.setter
+            def last_turn_cache(self, v): self._last_run.turn_cache = v
+
+        return MiniDockwidget()
+
+    def test_initial_state_matches_legacy(self):
+        dw = self._make_dockwidget_lookalike()
+        self.assertIsNone(dw.last_simulation_result)
+        self.assertIsNone(dw.last_sim_params)
+        self.assertIsNone(dw.last_line_data)
+        self.assertIsNone(dw.last_required_layers)
+        self.assertEqual(dw.last_turn_cache, {})
+
+    def test_writes_then_reads_round_trip(self):
+        """Mirror the real handle_run_simulation pattern: write each
+        field, read it back, verify identity."""
+        dw = self._make_dockwidget_lookalike()
+        sentinel = object()
+        dw.last_sim_params = sentinel
+        self.assertIs(dw.last_sim_params, sentinel,
+                      "writes via property setter must be readable via getter")
+
+    def test_reset_pattern_works(self):
+        """Mirror handle_run_simulation lines 6445-6447 via the properties."""
+        dw = self._make_dockwidget_lookalike()
+        # Populate
+        dw.last_simulation_result = "x"
+        dw.last_sim_params = {"a": 1}
+        dw.last_turn_cache = {"k": "v"}
+        # Reset (the way handle_run_simulation does)
+        dw.last_simulation_result = None
+        dw.last_sim_params = None
+        dw.last_line_data = None
+        dw.last_required_layers = None
+        dw.last_turn_cache = {}
+        # All back to defaults
+        self.assertIsNone(dw.last_simulation_result)
+        self.assertIsNone(dw.last_sim_params)
+        self.assertIsNone(dw.last_line_data)
+        self.assertIsNone(dw.last_required_layers)
+        self.assertEqual(dw.last_turn_cache, {})
+
+    def test_turn_cache_clear_in_place(self):
+        """Line 7289 in dockwidget: self.last_turn_cache.clear()
+        Must mutate the dict in place, not raise."""
+        dw = self._make_dockwidget_lookalike()
+        dw.last_turn_cache = {"a": 1, "b": 2}
+        dw.last_turn_cache.clear()
+        self.assertEqual(dw.last_turn_cache, {},
+                         ".clear() on the property must work the same as on a "
+                         "raw dict attribute (dockwidget line 7289 does this)")
+
+    def test_hasattr_returns_true_even_before_first_write(self):
+        """Line 7612 in dockwidget uses hasattr(self, 'last_simulation_result').
+        With @property, hasattr is always True (property exists at class level).
+        This is a behavioral DIFFERENCE from the legacy bare-attribute pattern
+        (where hasattr would be False before the first write) — but the only
+        existing call site treats None and 'doesn't exist' the same way."""
+        dw = self._make_dockwidget_lookalike()
+        self.assertTrue(hasattr(dw, "last_simulation_result"))
+        self.assertIsNone(dw.last_simulation_result,
+                          "hasattr=True but the value is None — equivalent to "
+                          "the old AttributeError check pattern")
+
+    def test_independent_instances_dont_share_shim(self):
+        """Two dockwidget instances must have independent shims."""
+        dw1 = self._make_dockwidget_lookalike()
+        dw2 = self._make_dockwidget_lookalike()
+        dw1.last_sim_params = "for dw1 only"
+        self.assertIsNone(dw2.last_sim_params,
+                          "writing to dw1 must NOT affect dw2")
 
 
 if __name__ == "__main__":

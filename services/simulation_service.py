@@ -269,6 +269,30 @@ def diff_legacy_dict(legacy: Dict[str, Any], new: Dict[str, Any],
 
 
 @dataclass
+class _LastRunShim:
+    """Phase 6c-2: backward-compat container for the 5 self.last_* fields
+    that used to live as bare instance attributes on the dockwidget.
+
+    The dockwidget now holds a single self._last_run = _LastRunShim()
+    instance. Five @property pairs on the dockwidget delegate
+    self.last_simulation_result, self.last_sim_params, self.last_line_data,
+    self.last_required_layers, self.last_turn_cache to the corresponding
+    fields here. All 46 existing call sites continue to work unchanged.
+
+    Field defaults match the legacy initial state: None for four,
+    empty dict for turn_cache. This dataclass is intentionally typed
+    Any — Phase 6c-3 may replace it with the typed SimulationResult,
+    or keep it as a permanent legacy-name adapter. Either is fine;
+    the abstraction is there.
+    """
+    simulation_result: Any = None
+    sim_params: Any = None
+    line_data: Any = None
+    required_layers: Any = None
+    turn_cache: Any = field(default_factory=dict)
+
+
+@dataclass
 class SimulationResult:
     """Everything one simulation run produced. Replaces the five
     self.last_* fields on the dockwidget (handed off to Phase 6c).
