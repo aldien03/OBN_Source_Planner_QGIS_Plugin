@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 log = logging.getLogger(__name__)
 
@@ -378,3 +378,178 @@ def determine_next_line(
         f"(Difference: {min_abs_diff})"
     )
     return closest_line
+
+
+# --- 2-opt local-search optimization (Phase 11a) ----------------------------
+#
+# Classic 2-opt for open-path sequences: iteratively picks two non-adjacent
+# "edges" in the sequence, reverses the subsequence between them, and keeps
+# the move if total cost drops. Stops when a full pass finds no improvement
+# or when max_iterations is exceeded.
+#
+# Usage:
+#
+#     from services.sequence_service import optimize_sequence_2opt
+#
+#     def cost_fn(seq):
+#         return my_simulator.compute_cost(seq)
+#
+#     result = optimize_sequence_2opt(
+#         sequence=[1000, 1006, 1012, 1018, 1024],
+#         cost_fn=cost_fn,
+#         max_iterations=200,
+#     )
+#     print(result.optimized_sequence, result.improvement_pct)
+#
+# The cost_fn is called many times. The caller is responsible for ensuring
+# cost_fn is deterministic given the sequence (no hidden state that depends
+# on call order) and isolated (no side effects that persist between calls
+# — e.g. if the caller uses a shared turn cache, it must either be safe to
+# reuse or be passed as a disposable cache per call).
+
+_TWO_OPT_COST_EPSILON = 1e-9  # strict-improvement threshold, no jitter
+
+
+@dataclass(frozen=True)
+class OptimizationResult:
+    """Outcome of a sequence-optimization pass.
+
+    Fields:
+        optimized_sequence: the best sequence found. Same length as input.
+        original_cost: cost_fn(input_sequence) at call time.
+        final_cost: cost_fn(optimized_sequence).
+        improvement_pct: (original - final) / original * 100, or 0.0 if
+            original was 0 or not computable.
+        total_passes: how many full passes the outer loop performed.
+            One pass runs through every (i, j) swap candidate.
+        total_improvements: number of strict-improvement swaps accepted.
+        cost_evaluations: total calls to cost_fn (excluding the initial
+            baseline evaluation of the input sequence).
+        stopped_reason: 'converged' (full pass with no improvement),
+            'max_iterations' (cap hit), or 'trivial' (input too short
+            to admit any 2-opt move — length < 4).
+    """
+    optimized_sequence: List[int]
+    original_cost: float
+    final_cost: float
+    improvement_pct: float
+    total_passes: int
+    total_improvements: int
+    cost_evaluations: int
+    stopped_reason: str
+
+
+def optimize_sequence_2opt(
+    sequence: List[int],
+    cost_fn: Callable[[List[int]], float],
+    max_iterations: int = 200,
+) -> OptimizationResult:
+    """Classic 2-opt local search on an open-path sequence.
+
+    Pure Python. Deterministic given the inputs — no randomness. Visits
+    every (i, j) pair in (row-major, i<j) order every pass.
+
+    Args:
+        sequence: ordered list of integers (line numbers). Must contain
+            at least 2 entries. Shorter inputs are returned unchanged
+            with stopped_reason='trivial' and zero improvement.
+        cost_fn: callable (sequence) -> float. Must be deterministic
+            per call and safe to invoke many times.
+            If cost_fn raises, the exception propagates — the caller
+            is responsible for handling bad inputs (e.g. infeasible
+            sequences). The optimizer never treats an exception as a
+            "worse" score.
+        max_iterations: maximum outer passes before giving up. Each
+            pass examines every candidate swap. Default 200.
+
+    Returns:
+        OptimizationResult. optimized_sequence is guaranteed to be
+        a new list (not the caller's), length equal to input.
+    """
+    # Sequences of length 3 or fewer admit no non-trivial 2-opt moves
+    # (i < j with the reversed subsequence between them changing the
+    # sequence requires j >= i+2 and at least one element between them).
+    n = len(sequence)
+    best = list(sequence)
+    if n < 4:
+        original_cost = cost_fn(best) if n > 0 else 0.0
+        return OptimizationResult(
+            optimized_sequence=best,
+            original_cost=original_cost,
+            final_cost=original_cost,
+            improvement_pct=0.0,
+            total_passes=0,
+            total_improvements=0,
+            cost_evaluations=1 if n > 0 else 0,
+            stopped_reason="trivial",
+        )
+
+    original_cost = cost_fn(best)
+    best_cost = original_cost
+    cost_evaluations = 1
+
+    total_passes = 0
+    total_improvements = 0
+    stopped_reason = "converged"
+
+    log.debug(
+        f"2-opt start: n={n} max_iterations={max_iterations} "
+        f"original_cost={original_cost:.3f}"
+    )
+
+    while total_passes < max_iterations:
+        total_passes += 1
+        # "Best-improvement" 2-opt: scan every (i, j) pair in the current
+        # sequence, compute the cost of each candidate reversal, and apply
+        # the SINGLE best improving swap (if any) at the end of the pass.
+        # This is the canonical 2-opt formulation — it avoids the "stuck
+        # in a mediocre local minimum" failure mode of first-improvement,
+        # at the cost of always scanning every pair per pass.
+        best_swap = None  # (new_candidate, new_cost)
+
+        for i in range(n - 1):
+            # j must be at least i+2 for the reversal to actually change
+            # the sequence. j=i+1 would reverse a single element (no-op).
+            for j in range(i + 2, n):
+                # Reverse the subsequence from index i+1 to j inclusive.
+                # Before: best[0..i] + best[i+1..j] + best[j+1..n-1]
+                # After:  best[0..i] + reversed(best[i+1..j]) + best[j+1..n-1]
+                candidate = best[: i + 1] + best[i + 1 : j + 1][::-1] + best[j + 1 :]
+                candidate_cost = cost_fn(candidate)
+                cost_evaluations += 1
+                if candidate_cost < best_cost - _TWO_OPT_COST_EPSILON:
+                    if best_swap is None or candidate_cost < best_swap[1]:
+                        best_swap = (candidate, candidate_cost)
+
+        if best_swap is None:
+            # Full pass with no improvement — we're at a local minimum.
+            stopped_reason = "converged"
+            break
+
+        best, best_cost = best_swap
+        total_improvements += 1
+    else:
+        # while-loop fell through — hit max_iterations without converging
+        stopped_reason = "max_iterations"
+
+    if original_cost > 0:
+        improvement_pct = (original_cost - best_cost) / original_cost * 100.0
+    else:
+        improvement_pct = 0.0
+
+    log.info(
+        f"2-opt done: passes={total_passes} improvements={total_improvements} "
+        f"evals={cost_evaluations} cost {original_cost:.3f} -> {best_cost:.3f} "
+        f"({improvement_pct:+.2f}%) stop={stopped_reason}"
+    )
+
+    return OptimizationResult(
+        optimized_sequence=best,
+        original_cost=original_cost,
+        final_cost=best_cost,
+        improvement_pct=improvement_pct,
+        total_passes=total_passes,
+        total_improvements=total_improvements,
+        cost_evaluations=cost_evaluations,
+        stopped_reason=stopped_reason,
+    )
