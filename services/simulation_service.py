@@ -210,6 +210,19 @@ class SimulationParams:
         run_in_length_meters = dw.maxRunInDoubleSpinBox.value()
         start_datetime = dw.startDateTimeEdit.dateTime().toPyDateTime()
 
+        # Phase 8a: "Follow previous shooting direction" checkbox. Wired for
+        # 4D monitor surveys where each line must be shot in the direction
+        # stored in its PREV_DIRECTION attribute. hasattr fallback tolerates
+        # older compiled UIs that predate the checkbox.
+        if hasattr(dw, "followPreviousDirectionCheckBox"):
+            follow_previous_direction = dw.followPreviousDirectionCheckBox.isChecked()
+        else:
+            log.warning(
+                "followPreviousDirectionCheckBox not found — recompile resources "
+                "to enable the 4D direction-following feature. Defaulting to False."
+            )
+            follow_previous_direction = False
+
         params = cls(
             acquisition_mode=acquisition_mode,
             first_line_num=first_line_num,
@@ -226,7 +239,7 @@ class SimulationParams:
             rrt_step_size=rrt_step_size,
             rrt_max_iterations=rrt_max_iterations,
             rrt_goal_bias=rrt_goal_bias,
-            follow_previous_direction=False,  # Phase 8 wires UI checkbox
+            follow_previous_direction=follow_previous_direction,
         )
         # Mirror the four post-gather ValueError checks in the legacy method
         params.validate()

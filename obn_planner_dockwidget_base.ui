@@ -236,6 +236,19 @@
      </layout>
     </item>
     <item>
+     <widget class="QCheckBox" name="followPreviousDirectionCheckBox">
+      <property name="toolTip">
+       <string>When checked, each line is shot in the direction stored in its PREV_DIRECTION field (from the SPS file). Required for 4D monitor surveys where the acquisition geometry must match a prior vintage. Falls back to alternation with a warning for any line that lacks direction data.</string>
+      </property>
+      <property name="text">
+       <string>Follow previous shooting direction</string>
+      </property>
+      <property name="checked">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="horizontalLayout_10">
       <item>
        <widget class="QLabel" name="label_7">

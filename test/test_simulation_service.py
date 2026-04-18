@@ -41,6 +41,12 @@ class _FakeComboBox:
     def currentLayer(self): return self._v
 
 
+class _FakeCheckBox:
+    """Stand-in for QCheckBox."""
+    def __init__(self, checked=False): self._checked = checked
+    def isChecked(self): return self._checked
+
+
 class _FakeQDateTime:
     def __init__(self, py_dt): self._dt = py_dt
     def toPyDateTime(self): return self._dt
@@ -317,6 +323,36 @@ class FromUiValidationTests(unittest.TestCase):
         dw = _make_fake_dockwidget(turnRadiusDoubleSpinBox=_FakeSpinBox(0.0))
         with self.assertRaisesRegex(ValueError, "Turn Radius"):
             SimulationParams.from_ui(dw)
+
+
+class FromUiFollowPreviousDirectionTests(unittest.TestCase):
+    """Phase 8a: SimulationParams.from_ui reads the
+    followPreviousDirectionCheckBox when present. When absent (older
+    compiled UI), defaults to False with a log warning — the simulation
+    must never break because the checkbox hasn't been compiled in yet."""
+
+    def test_checkbox_unchecked_default(self):
+        """Default state: checkbox exists, unchecked. follow_previous_direction=False."""
+        dw = _make_fake_dockwidget()
+        dw.followPreviousDirectionCheckBox = _FakeCheckBox(checked=False)
+        p = SimulationParams.from_ui(dw)
+        self.assertFalse(p.follow_previous_direction)
+
+    def test_checkbox_checked_enables_feature(self):
+        """User ticked the checkbox (4D monitor use case): from_ui propagates True."""
+        dw = _make_fake_dockwidget()
+        dw.followPreviousDirectionCheckBox = _FakeCheckBox(checked=True)
+        p = SimulationParams.from_ui(dw)
+        self.assertTrue(p.follow_previous_direction,
+                        "Checkbox True must produce follow_previous_direction=True")
+
+    def test_checkbox_absent_falls_back_to_false(self):
+        """Older compiled UI without the checkbox: no crash, feature off."""
+        dw = _make_fake_dockwidget()
+        # Do NOT set followPreviousDirectionCheckBox on dw
+        p = SimulationParams.from_ui(dw)
+        self.assertFalse(p.follow_previous_direction,
+                         "Missing checkbox must default to False, not raise")
 
 
 class FromUiOptionalRrtTests(unittest.TestCase):
