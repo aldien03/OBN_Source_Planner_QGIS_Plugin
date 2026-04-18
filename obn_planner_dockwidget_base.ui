@@ -260,7 +260,7 @@
       <item>
        <widget class="QComboBox" name="sequenceOptimizationComboBox">
         <property name="toolTip">
-         <string>2-opt local search reorders the generated sequence to minimize total cost (line acquisition time + turn time). Fixes the "dumb simulation" pattern where dense U-turns cluster at survey perimeters. Runtime scales as O(N^2) per pass with Dubins-heavy cost evaluation — expect 10-60 seconds on a 20-line survey. The first line in the sequence is not moved (fixed by the user's starting-line choice). Default: Off.</string>
+         <string>Reorders the generated sequence to minimize total cost. OR-tools (Guided Local Search) is the recommended choice — it finds near-optimal tours and avoids the long cross-survey transits that 2-opt gets stuck with. 2-opt (legacy) is kept for A/B comparison and will be removed in a future release. Default: Off.</string>
         </property>
         <item>
          <property name="text">
@@ -269,7 +269,12 @@
         </item>
         <item>
          <property name="text">
-          <string>2-opt</string>
+          <string>OR-tools</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>2-opt (legacy)</string>
          </property>
         </item>
        </widget>
@@ -284,7 +289,7 @@
       <item>
        <widget class="QSpinBox" name="optimizationMaxIterationsSpinBox">
         <property name="toolTip">
-         <string>Maximum number of 2-opt passes before stopping. Each pass scans every line-pair swap. Higher values = better result but longer runtime. Typical: 50 for a quick rough pass; 200 (default) for a thorough search; 500+ for very demanding convergence. Grey when Optimization is "Off" or cancelled.</string>
+         <string>Maximum number of 2-opt passes before stopping. Only used when Optimization = 2-opt (legacy). Higher values = better result but longer runtime. Typical: 50 quick / 200 thorough / 500+ very demanding. Grey when not in 2-opt mode.</string>
         </property>
         <property name="minimum">
          <number>10</number>
@@ -297,6 +302,38 @@
         </property>
         <property name="value">
          <number>200</number>
+        </property>
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_ortools_time_limit">
+        <property name="text">
+         <string>Time limit:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="ortoolsTimeLimitSpinBox">
+        <property name="toolTip">
+         <string>Wall-clock time budget for OR-tools local search (seconds). Only used when Optimization = OR-tools. Daily operations: 30 s (default) is enough for good-quality tours on surveys up to ~150 lines. PM job-completion estimates: bump to 120-300 s for the best-possible answer. Grey when not in OR-tools mode.</string>
+        </property>
+        <property name="suffix">
+         <string> s</string>
+        </property>
+        <property name="minimum">
+         <number>5</number>
+        </property>
+        <property name="maximum">
+         <number>600</number>
+        </property>
+        <property name="singleStep">
+         <number>5</number>
+        </property>
+        <property name="value">
+         <number>30</number>
         </property>
         <property name="enabled">
          <bool>false</bool>
