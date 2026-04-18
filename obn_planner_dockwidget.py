@@ -6731,6 +6731,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         self.last_turn_cache = {}
         if hasattr(self, 'editFinalizeButton'): self.editFinalizeButton.setEnabled(False)
 
+        # Phase 13a-3: SIMULATION_SUMMARY accounting. Initialized pre-try so
+        # the finally block can always emit a summary, even if preparation
+        # fails before the try runs. Updated incrementally as the handler
+        # progresses; emitted once per run in finally for easy A/B grep.
+        _run_sim_wall_start = time.time()
+        _summary_algo = "none"
+        _summary_lines = 0
+        _summary_pre_cost = None
+        _summary_post_cost = None
+        _summary_outcome = "failed"
+
         try:
             start_prep_time = time.time()
             log.debug("Running Step 1: Data Gathering & Preparation...")
@@ -6761,6 +6772,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 optimization_max_iterations = _shadow_params.optimization_max_iterations
                 ortools_time_limit_s = _shadow_params.ortools_time_limit_s
                 ortools_metaheuristic = _shadow_params.ortools_metaheuristic
+                _summary_algo = optimization_level  # Phase 13a-3: A/B accounting
                 _diffs = diff_legacy_dict(sim_params, _shadow_params.to_legacy_dict())
                 if _diffs:
                     log.warning(f"Phase 6c-1 cross-check: {len(_diffs)} difference(s) "
@@ -7032,6 +7044,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # entries could corrupt re-evaluation of the same line pair under
             # different alternation patterns). Disposable cache guarantees
             # correctness; cache-key widening is a future Phase 11d work item.
+            # Phase 13a-3: snapshot pre-optimization cost for A/B comparison.
+            # None when the simulation failed to produce a sequence; same as
+            # post_cost when optimization_level == "none" (no mutation).
+            if best_final_sequence_info:
+                _summary_pre_cost = best_final_sequence_info.get('cost')
+
             if optimization_level == "2opt" and best_final_sequence_info:
                 try:
                     self._apply_2opt_optimization(
@@ -7130,9 +7148,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 log.info(f"Final Sequence: {final_sequence}")
                 log.info(f"Estimated Cost: {final_cost_hours:.2f} hours ({final_cost_seconds:.0f} seconds)")
 
+                # Phase 13a-3: capture A/B comparison numbers
+                _summary_lines = len(final_sequence)
+                _summary_post_cost = final_cost_seconds
+                _summary_outcome = "ok"
+
             else: # Simulation algorithm itself failed to produce a result
                 log.error(f"{selected_mode} simulation failed to produce a valid result (best_final_sequence_info is None).")
                 QMessageBox.critical(self, "Simulation Failed", f"{selected_mode} simulation did not complete successfully. Check logs.")
+                _summary_outcome = "no_sequence"  # Phase 13a-3
 
         except Exception as e:
             log.exception("Error during Run Simulation process (in main try block).")
@@ -7142,6 +7166,33 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 if not progress.wasCanceled(): progress.setValue(progress.maximum())
                 progress.deleteLater()
             QApplication.restoreOverrideCursor()
+
+            # Phase 13a-3: unified SIMULATION_SUMMARY line. Emitted exactly
+            # once per Run Simulation regardless of optimizer choice or
+            # outcome. Use a single grep-friendly format so daily-ops
+            # A/B comparison (2-opt vs OR-tools) is one `grep SIMULATION_SUMMARY`
+            # away. Units chosen to be directly comparable: hours for cost,
+            # seconds for wall clock, percent for improvement.
+            _wall = time.time() - _run_sim_wall_start
+            if (_summary_pre_cost is not None
+                    and _summary_post_cost is not None
+                    and _summary_pre_cost > 0):
+                _imp_pct = (_summary_pre_cost - _summary_post_cost) / _summary_pre_cost * 100.0
+                _imp_str = f"{_imp_pct:+.2f}%"
+            else:
+                _imp_str = "n/a"
+            _pre_str = (f"{_summary_pre_cost / 3600.0:.3f}h"
+                        if _summary_pre_cost is not None else "n/a")
+            _post_str = (f"{_summary_post_cost / 3600.0:.3f}h"
+                         if _summary_post_cost is not None else "n/a")
+            log.info(
+                f"SIMULATION_SUMMARY: algo={_summary_algo} "
+                f"lines={_summary_lines} "
+                f"pre_cost={_pre_str} post_cost={_post_str} "
+                f"improvement={_imp_str} "
+                f"wall_clock={_wall:.1f}s outcome={_summary_outcome}"
+            )
+
             log.info("--- handle_run_simulation finished ---")
 
     def _run_teardrop_algorithm(self, first_line_num, active_line_nums, all_remaining_lines, 
