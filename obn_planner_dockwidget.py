@@ -64,7 +64,35 @@ import csv # Needed for CSV export helper
 # operational feedback shows 50 MB is tight.
 
 LOG_MAX_BYTES = 50 * 1024 * 1024   # 50 MB per file
-LOG_BACKUP_COUNT = 2                # keep .1 and .2 alongside the active .log
+LOG_BACKUP_COUNT = 2                # keep .1.gz and .2.gz alongside the active .log
+
+
+def _gz_log_namer(name: str) -> str:
+    """Phase 13a-6: append .gz so rotated files are stored compressed.
+
+    RotatingFileHandler calls this with the default rotated name
+    (e.g. ".../obn_planner_debug.log.1"); we add ".gz" to match the
+    rotator's output so backupCount tracking still works correctly
+    across the .gz extension.
+    """
+    return name + '.gz'
+
+
+def _gz_log_rotator(source: str, dest: str) -> None:
+    """Phase 13a-6: gzip-compress 'source' into 'dest', then delete
+    'source'. Invoked by RotatingFileHandler when the active log
+    crosses maxBytes. Typical text-log compression ratio is ~10x
+    (50 MB uncompressed -> ~5 MB .gz on a simulation-heavy session).
+    """
+    import gzip
+    import shutil
+    with open(source, 'rb') as f_in, gzip.open(dest, 'wb') as f_out:
+        shutil.copyfileobj(f_in, f_out)
+    try:
+        os.remove(source)
+    except OSError:
+        pass   # best effort; rotator must not raise into the logging path
+
 
 log = logging.getLogger(__name__)
 root_logger = logging.getLogger("obn_planner")
@@ -73,27 +101,37 @@ if not root_logger.handlers:
     log_file = os.path.join(log_dir, 'obn_planner_debug.log')
     try:
         # Pre-handler cleanup: if the leftover file from the last session
-        # is larger than the rotation threshold, move it aside so the
-        # new session starts fresh without losing the old data. Best
-        # effort — filesystem errors are logged but never fatal.
+        # is larger than the rotation threshold, compress it into the .1.gz
+        # backup slot so the new session starts fresh without losing the
+        # old data AND without keeping an uncompressed giant file on disk.
+        # Best effort — filesystem errors print to stderr (logger is not
+        # set up yet) but never fatal.
         try:
             if (os.path.exists(log_file)
                     and os.path.getsize(log_file) > LOG_MAX_BYTES):
-                backup_file = log_file + '.1'
-                if os.path.exists(backup_file):
+                backup_gz = log_file + '.1.gz'
+                if os.path.exists(backup_gz):
                     try:
-                        os.remove(backup_file)
+                        os.remove(backup_gz)
                     except OSError:
-                        pass  # best effort; if we can't remove, rename will fail fine
-                os.rename(log_file, backup_file)
+                        pass   # best effort; gzip will overwrite via 'wb' anyway
+                import gzip as _gz
+                import shutil as _sh
+                with open(log_file, 'rb') as _fin, _gz.open(backup_gz, 'wb') as _fout:
+                    _sh.copyfileobj(_fin, _fout)
+                try:
+                    os.remove(log_file)
+                except OSError:
+                    pass   # best effort; RotatingFileHandler will truncate via mode='w' anyway
         except OSError as _rot_e:
-            # print, not log — logger isn't set up yet
             print(f"obn_planner: pre-session log rotation failed: {_rot_e}")
 
         # RotatingFileHandler handles mid-session growth. mode='w'
         # truncates on open (giving us the "fresh log per plugin load"
         # contract). maxBytes triggers rotation when the active file
-        # crosses the threshold during a long session.
+        # crosses the threshold during a long session. The namer +
+        # rotator hooks below make every rotated file a compressed .gz,
+        # so the on-disk footprint stays tiny even after many rotations.
         from logging.handlers import RotatingFileHandler
         file_handler = RotatingFileHandler(
             log_file,
@@ -101,6 +139,8 @@ if not root_logger.handlers:
             maxBytes=LOG_MAX_BYTES,
             backupCount=LOG_BACKUP_COUNT,
         )
+        file_handler.namer = _gz_log_namer
+        file_handler.rotator = _gz_log_rotator
         file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         file_handler.setFormatter(file_formatter); file_handler.setLevel(logging.DEBUG)
         console_handler = logging.StreamHandler()
@@ -110,7 +150,8 @@ if not root_logger.handlers:
         root_logger.setLevel(logging.DEBUG); log.setLevel(logging.DEBUG)
         log.info(
             f"Logger initialized. Debug log file: {log_file} "
-            f"(rotation: {LOG_MAX_BYTES // (1024*1024)}MB x {LOG_BACKUP_COUNT+1} files max)"
+            f"(rotation: {LOG_MAX_BYTES // (1024*1024)}MB per file, "
+            f"{LOG_BACKUP_COUNT} compressed backups .log.1.gz / .log.2.gz)"
         )
     except Exception as log_e:
         print(f"CRITICAL: Failed to initialize logging: {log_e}")
