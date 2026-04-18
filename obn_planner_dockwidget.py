@@ -6227,8 +6227,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             'highest_sp': line_fields.lookupField("HighestSP")
         }
 
-        # Check for missing fields
-        missing_fields = [name for name, idx in field_indices.items() if idx == -1]
+        # PrevDirection is OPTIONAL (Phase 4+). Absent on pre-Phase-4 layers
+        # and on layers imported from SPS files that had no direction column.
+        # None -> the line_data dict's 'prev_direction' key will be None and
+        # the follow-previous-direction feature falls back to alternation.
+        prev_direction_idx = line_fields.lookupField("PrevDirection")
+        if prev_direction_idx != -1:
+            field_indices['prev_direction'] = prev_direction_idx
+
+        # Check for missing fields (excluding optional ones)
+        _required = ('line_num', 'base_heading', 'status', 'length', 'lowest_sp', 'highest_sp')
+        missing_fields = [name for name in _required if field_indices.get(name, -1) == -1]
         if missing_fields:
             field_names = [name.replace('_', ' ').title() for name in missing_fields]
             err_msg = f"Lines layer '{lines_layer.name()}' missing fields: {', '.join(field_names)}"
@@ -6281,6 +6290,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             lowest_sp_val = feature.attribute(field_indices['lowest_sp'])
             highest_sp_val = feature.attribute(field_indices['highest_sp'])
 
+            # Optional PrevDirection (Phase 4). Coerce NULL/None to None.
+            prev_direction_val = None
+            if 'prev_direction' in field_indices:
+                _raw_pd = feature.attribute(field_indices['prev_direction'])
+                if _raw_pd is not None and _raw_pd != NULL:
+                    try:
+                        prev_direction_val = float(_raw_pd)
+                    except (ValueError, TypeError):
+                        prev_direction_val = None
+
             # Check line status
             status_str = str(status_val).strip().upper() if status_val is not None and status_val != NULL else ""
             if status_str != "TO BE ACQUIRED":
@@ -6324,7 +6343,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 'start_point_geom': start_pt,
                 'end_point_geom': end_pt,
                 'start_runin_point': None,  # Will be populated later
-                'end_runin_point': None     # Will be populated later
+                'end_runin_point': None,    # Will be populated later
+                'prev_direction': prev_direction_val,  # Phase 6c-3: degrees or None
             }
             processed_lines += 1
 
@@ -6512,11 +6532,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Phase 6c-1: shadow-build SimulationParams and cross-check against
             # the legacy dict. Discrepancies log as WARNING; absence of warnings
             # is the precondition for Phase 6c-3 deleting the legacy path.
+            # Phase 6c-3: also extract follow_previous_direction here (the only
+            # field the racetrack/teardrop branches below need from the new
+            # dataclass). Defaults False if shadow build fails — fail-safe.
+            follow_previous_direction = False
             try:
                 from .services.simulation_service import (
                     SimulationParams, diff_legacy_dict,
                 )
                 _shadow_params = SimulationParams.from_ui(self)
+                follow_previous_direction = _shadow_params.follow_previous_direction
                 _diffs = diff_legacy_dict(sim_params, _shadow_params.to_legacy_dict())
                 if _diffs:
                     log.warning(f"Phase 6c-1 cross-check: {len(_diffs)} difference(s) "
@@ -6638,10 +6663,34 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         next_line_num = self._determine_next_line(last_line_num, remaining_lines, line_data)
                         if next_line_num is None: break # No more lines
 
-                        next_is_reciprocal = not current_state['is_reciprocal']
                         next_line_info = line_data.get(next_line_num)
                         if not next_line_info: raise ValueError(f"Line data missing for next line {next_line_num}")
-                        chosen_direction_str = 'high_to_low' if next_is_reciprocal else 'low_to_high'
+
+                        # Phase 6c-3: when 'follow_previous_direction' is on,
+                        # pin the next line's direction to its PREV_DIRECTION
+                        # via assign_direction_for_line. Otherwise alternate
+                        # (legacy behavior).
+                        if follow_previous_direction:
+                            from .services.sequence_service import (
+                                LineDirection, assign_direction_for_line,
+                            )
+                            _base = next_line_info.get('base_heading')
+                            _pd = next_line_info.get('prev_direction')
+                            _line_info = LineDirection(
+                                forward_heading_deg=float(_base) if _base is not None else 0.0,
+                                reciprocal_heading_deg=((float(_base) + 180.0) % 360.0) if _base is not None else 180.0,
+                                prev_direction_deg=(float(_pd) if _pd is not None else None),
+                            )
+                            _prior = 'high_to_low' if current_state['is_reciprocal'] else 'low_to_high'
+                            chosen_direction_str, _w = assign_direction_for_line(
+                                _line_info, prior_direction=_prior, follow_previous=True,
+                            )
+                            if _w:
+                                log.warning(f"[Teardrop direction-following] line {next_line_num}: {_w}")
+                            next_is_reciprocal = (chosen_direction_str == 'high_to_low')
+                        else:
+                            next_is_reciprocal = not current_state['is_reciprocal']
+                            chosen_direction_str = 'high_to_low' if next_is_reciprocal else 'low_to_high'
                         current_state['line_directions'][next_line_num] = chosen_direction_str
 
                         p_entry, h_entry = self._get_entry_details(next_line_info, next_is_reciprocal)
@@ -6693,26 +6742,51 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 if not generated_racetrack_sequence: raise ValueError("Failed to generate interleaved racetrack sequence.")
                 log.debug(f"Generated Interleaved Racetrack Sequence: {generated_racetrack_sequence}")
 
-                log.debug("Evaluating Interleaved Sequence - Start Normal (Low->High)")
-                cost_normal, directions_normal = self._calculate_sequence_time( generated_racetrack_sequence, False, sim_params, line_data, required_layers, self.last_turn_cache )
-                log.debug("Evaluating Interleaved Sequence - Start Reciprocal (High->Low)")
-                cost_recip, directions_recip = self._calculate_sequence_time( generated_racetrack_sequence, True, sim_params, line_data, required_layers, self.last_turn_cache )
+                # Phase 6c-3: when 'follow_previous_direction' is on (4D
+                # monitor survey), the per-line direction is determined by
+                # PREV_DIRECTION, not by the user's normal/reciprocal start
+                # choice. Compute the override and run a single timing pass.
+                if follow_previous_direction:
+                    from .services.sequence_service import build_direction_override_for_sequence
+                    _direction_override, _direction_warnings = build_direction_override_for_sequence(
+                        generated_racetrack_sequence, line_data, follow_previous=True,
+                    )
+                    for _w in _direction_warnings:
+                        log.warning(f"[Racetrack direction-following] {_w}")
+                    log.info(f"Racetrack direction-following ON: pinning {len(_direction_override)} "
+                             f"lines to PREV_DIRECTION (first 5: "
+                             f"{dict(list(_direction_override.items())[:5])})")
+                    final_cost_seconds, final_directions = self._calculate_sequence_time(
+                        generated_racetrack_sequence, False, sim_params, line_data,
+                        required_layers, self.last_turn_cache,
+                        direction_override=_direction_override,
+                    )
+                    if final_cost_seconds is None:
+                        raise ValueError("Racetrack timing failed under direction-following.")
+                    final_sequence = generated_racetrack_sequence
+                else:
+                    # Legacy behavior: try both normal and reciprocal starts,
+                    # pick by user preference.
+                    log.debug("Evaluating Interleaved Sequence - Start Normal (Low->High)")
+                    cost_normal, directions_normal = self._calculate_sequence_time( generated_racetrack_sequence, False, sim_params, line_data, required_layers, self.last_turn_cache )
+                    log.debug("Evaluating Interleaved Sequence - Start Reciprocal (High->Low)")
+                    cost_recip, directions_recip = self._calculate_sequence_time( generated_racetrack_sequence, True, sim_params, line_data, required_layers, self.last_turn_cache )
 
-                normal_ok = cost_normal is not None; recip_ok = cost_recip is not None
-                if not normal_ok and not recip_ok: raise ValueError("Both Racetrack sequence timing calculations failed.")
+                    normal_ok = cost_normal is not None; recip_ok = cost_recip is not None
+                    if not normal_ok and not recip_ok: raise ValueError("Both Racetrack sequence timing calculations failed.")
 
-                user_prefers_reciprocal = (sim_params['first_heading_option'] == "High to Low SP (Reciprocal)")
-                final_sequence = generated_racetrack_sequence
-                final_cost_seconds = 0; final_directions = {}
+                    user_prefers_reciprocal = (sim_params['first_heading_option'] == "High to Low SP (Reciprocal)")
+                    final_sequence = generated_racetrack_sequence
+                    final_cost_seconds = 0; final_directions = {}
 
-                if user_prefers_reciprocal:
-                    if recip_ok: log.info("Selecting Reciprocal start (User Pref)."); final_cost_seconds = cost_recip; final_directions = directions_recip
-                    elif normal_ok: log.warning("User pref Recip failed. Falling back to Normal."); final_cost_seconds = cost_normal; final_directions = directions_normal
-                    else: raise ValueError("Calculation failed for preferred and alternative.")
-                else: # User prefers Normal
-                    if normal_ok: log.info("Selecting Normal start (User Pref)."); final_cost_seconds = cost_normal; final_directions = directions_normal
-                    elif recip_ok: log.warning("User pref Normal failed. Falling back to Reciprocal."); final_cost_seconds = cost_recip; final_directions = directions_recip
-                    else: raise ValueError("Calculation failed for preferred and alternative.")
+                    if user_prefers_reciprocal:
+                        if recip_ok: log.info("Selecting Reciprocal start (User Pref)."); final_cost_seconds = cost_recip; final_directions = directions_recip
+                        elif normal_ok: log.warning("User pref Recip failed. Falling back to Normal."); final_cost_seconds = cost_normal; final_directions = directions_normal
+                        else: raise ValueError("Calculation failed for preferred and alternative.")
+                    else: # User prefers Normal
+                        if normal_ok: log.info("Selecting Normal start (User Pref)."); final_cost_seconds = cost_normal; final_directions = directions_normal
+                        elif recip_ok: log.warning("User pref Normal failed. Falling back to Reciprocal."); final_cost_seconds = cost_recip; final_directions = directions_recip
+                        else: raise ValueError("Calculation failed for preferred and alternative.")
                 # --- ADD DEBUG LOG ---
                 log.debug(f"[handle_run_simulation - Racetrack] Final directions selected: {final_directions}")
                 # --- END DEBUG LOG ---
@@ -7091,8 +7165,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error in Racetrack algorithm: {e}")
             return None
 
-    def _calculate_sequence_time(self, sequence_list, start_reciprocal, sim_params, 
-                                line_data, required_layers, turn_cache):
+    def _calculate_sequence_time(self, sequence_list, start_reciprocal, sim_params,
+                                line_data, required_layers, turn_cache,
+                                direction_override=None):
         """
         Calculates the total time required to execute a given sequence.
 
@@ -7104,11 +7179,19 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         Args:
             sequence_list (list): Ordered list of line numbers to process
-            start_reciprocal (bool): Whether to start in reciprocal direction
+            start_reciprocal (bool): Whether to start in reciprocal direction.
+                Ignored when direction_override is provided.
             sim_params (dict): Simulation parameters
             line_data (dict): Dictionary containing line information
             required_layers (dict): Required QGIS layers
             turn_cache (dict): Cache for turn calculations
+            direction_override (dict|None): Phase 6c-3 direction-following hook.
+                When provided, maps each line_num in sequence_list to
+                'low_to_high' or 'high_to_low', overriding the alternation
+                logic. Used by the "Follow previous shooting direction"
+                feature (4D monitor surveys) so that each line is shot in
+                the direction recorded in its PREV_DIRECTION attribute.
+                When None (default), the legacy alternation behavior runs.
 
         Returns:
             tuple: (total_time, direction_map) where:
@@ -7134,9 +7217,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             if not first_line_info:
                 raise ValueError(f"Missing line data for first line {first_line_num}")
 
-            # Set direction for first line
-            current_is_reciprocal = start_reciprocal
-            first_direction = 'high_to_low' if current_is_reciprocal else 'low_to_high'
+            # Set direction for first line. direction_override (Phase 6c-3)
+            # takes precedence: when populated, it defines each line's
+            # direction explicitly and start_reciprocal is ignored.
+            if direction_override is not None and first_line_num in direction_override:
+                first_direction = direction_override[first_line_num]
+                current_is_reciprocal = (first_direction == 'high_to_low')
+            else:
+                current_is_reciprocal = start_reciprocal
+                first_direction = 'high_to_low' if current_is_reciprocal else 'low_to_high'
             line_directions[first_line_num] = first_direction
 
             # Calculate time for first line
@@ -7181,9 +7270,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 from_line = sequence_list[i]
                 to_line = sequence_list[i + 1]
 
-                # Alternate direction for each consecutive line
-                next_is_reciprocal = not current_state['is_reciprocal']
-                next_direction = 'high_to_low' if next_is_reciprocal else 'low_to_high'
+                # Direction for each consecutive line: legacy alternation,
+                # OR direction_override (Phase 6c-3 follow-previous feature).
+                if direction_override is not None and to_line in direction_override:
+                    next_direction = direction_override[to_line]
+                    next_is_reciprocal = (next_direction == 'high_to_low')
+                else:
+                    next_is_reciprocal = not current_state['is_reciprocal']
+                    next_direction = 'high_to_low' if next_is_reciprocal else 'low_to_high'
                 line_directions[to_line] = next_direction
 
                 # Get line data for next line

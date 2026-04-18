@@ -117,6 +117,71 @@ def assign_direction_for_line(
     return chosen, warning
 
 
+def build_direction_override_for_sequence(
+    sequence: List[int],
+    line_data: dict,
+    follow_previous: bool = True,
+    tolerance_deg: float = 1.0,
+) -> Tuple[dict, List[str]]:
+    """For each line in `sequence`, compute the chosen direction based on
+    its prev_direction (from line_data) and return a {line_num: direction}
+    dict suitable for passing to _calculate_sequence_time(direction_override=...).
+
+    Args:
+        sequence: ordered list of line numbers
+        line_data: dict {line_num: {'base_heading': float, 'prev_direction': float|None, ...}}
+        follow_previous: if False, returns an empty override dict (callers
+            should then pass None to _calculate_sequence_time, which keeps
+            legacy alternation)
+        tolerance_deg: passed to assign_direction_for_line for warning emission
+
+    Returns:
+        (override_dict, warnings_list).
+        - override_dict maps each line_num to 'low_to_high' or 'high_to_low'
+          when follow_previous is True. The PRIOR direction passed to
+          assign_direction_for_line is each line's previous line's chosen
+          direction (so even fallback-to-alternation cascades correctly).
+        - warnings_list collects the per-line warning strings (caller logs).
+
+    When follow_previous is False, returns ({}, []).
+    """
+    if not follow_previous or not sequence:
+        return {}, []
+
+    override: dict = {}
+    warnings: List[str] = []
+    # Seed prior direction with 'high_to_low' so that for the first line the
+    # alternation fallback (if no prev_direction available) produces
+    # 'low_to_high' — matching the legacy default start direction.
+    prior = "high_to_low"
+
+    for line_num in sequence:
+        info_dict = line_data.get(line_num)
+        if not info_dict:
+            warnings.append(f"line {line_num}: no line_data entry, skipping direction override")
+            continue
+        base = info_dict.get("base_heading")
+        if base is None:
+            warnings.append(f"line {line_num}: no base_heading, skipping direction override")
+            continue
+        prev_dir = info_dict.get("prev_direction")
+        line_info = LineDirection(
+            forward_heading_deg=float(base),
+            reciprocal_heading_deg=(float(base) + 180.0) % 360.0,
+            prev_direction_deg=(float(prev_dir) if prev_dir is not None else None),
+        )
+        chosen, warning = assign_direction_for_line(
+            line_info, prior_direction=prior, follow_previous=True,
+            tolerance_deg=tolerance_deg,
+        )
+        override[line_num] = chosen
+        if warning:
+            warnings.append(f"line {line_num}: {warning}")
+        prior = chosen
+
+    return override, warnings
+
+
 # --- Sequence generation (Phase 5) ------------------------------------------
 
 

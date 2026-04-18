@@ -22,6 +22,7 @@ from services.sequence_service import (  # noqa: E402
     determine_next_line,
     LineDirection,
     assign_direction_for_line,
+    build_direction_override_for_sequence,
     _angular_diff_deg,
     _flip_direction,
 )
@@ -257,6 +258,99 @@ class AssignDirectionFeatureOnTests(unittest.TestCase):
                                                      tolerance_deg=5.0)
         self.assertEqual(chosen, "low_to_high")
         self.assertIsNone(warning, "2° spread is within 5° tolerance")
+
+
+class BuildDirectionOverrideTests(unittest.TestCase):
+    """Phase 6c-3: build_direction_override_for_sequence is the bridge
+    between line_data (which the dockwidget assembles) and the
+    direction_override dict consumed by _calculate_sequence_time."""
+
+    def _martin_linge_line_data(self):
+        """Mimic line_data for the Martin Linge 4D scenario:
+        - Lines 2431, 2433, 2435 shot at 76.8° (forward; matches base_heading)
+        - Lines 2439, 2441 shot at 256.8° (reciprocal of 76.8°)"""
+        return {
+            2431: {"base_heading": 76.8, "prev_direction": 76.8},
+            2433: {"base_heading": 76.8, "prev_direction": 76.8},
+            2435: {"base_heading": 76.8, "prev_direction": 76.8},
+            2439: {"base_heading": 76.8, "prev_direction": 256.8},
+            2441: {"base_heading": 76.8, "prev_direction": 256.8},
+        }
+
+    def test_follow_off_returns_empty_override(self):
+        """When the feature is off, the dockwidget should pass None to
+        _calculate_sequence_time (not an empty dict). Verify the helper
+        produces empty override + empty warnings to make that explicit."""
+        out, warns = build_direction_override_for_sequence(
+            [2431, 2433], self._martin_linge_line_data(), follow_previous=False,
+        )
+        self.assertEqual(out, {})
+        self.assertEqual(warns, [])
+
+    def test_martin_linge_pattern_pins_each_line(self):
+        seq = [2431, 2433, 2435, 2439, 2441]
+        out, warns = build_direction_override_for_sequence(
+            seq, self._martin_linge_line_data(), follow_previous=True,
+        )
+        # 76.8° matches forward (base_heading 76.8°) -> low_to_high
+        self.assertEqual(out[2431], "low_to_high")
+        self.assertEqual(out[2433], "low_to_high")
+        self.assertEqual(out[2435], "low_to_high")
+        # 256.8° matches reciprocal (76.8 + 180) -> high_to_low
+        self.assertEqual(out[2439], "high_to_low")
+        self.assertEqual(out[2441], "high_to_low")
+        # All exact matches → no warnings
+        self.assertEqual(warns, [])
+
+    def test_missing_line_data_skips_with_warning(self):
+        """A line in the sequence that has no entry in line_data is skipped
+        with a warning, not silently ignored."""
+        seq = [2431, 9999, 2433]  # 9999 not in line_data
+        out, warns = build_direction_override_for_sequence(
+            seq, self._martin_linge_line_data(), follow_previous=True,
+        )
+        self.assertIn(2431, out)
+        self.assertNotIn(9999, out)
+        self.assertIn(2433, out)
+        self.assertTrue(any("9999" in w for w in warns),
+                        f"expected a warning mentioning line 9999, got: {warns}")
+
+    def test_no_prev_direction_falls_back_to_alternation(self):
+        """When prev_direction is None for a line and follow_previous=True,
+        assign_direction_for_line falls back to alternating the prior
+        direction. The override still includes the line."""
+        line_data = {
+            2431: {"base_heading": 76.8, "prev_direction": 76.8},  # explicit
+            2433: {"base_heading": 76.8, "prev_direction": None},   # missing -> alternate
+        }
+        out, warns = build_direction_override_for_sequence(
+            [2431, 2433], line_data, follow_previous=True,
+        )
+        self.assertEqual(out[2431], "low_to_high")
+        # 2433 has no prev_direction -> alternate from 2431's chosen
+        self.assertEqual(out[2433], "high_to_low")
+        # warning must be emitted to surface the fallback
+        self.assertTrue(any("2433" in w and "PREV_DIRECTION" in w for w in warns),
+                        f"expected fallback warning for line 2433, got: {warns}")
+
+    def test_missing_base_heading_skips_line(self):
+        """Lines without base_heading can't be assigned a direction —
+        skip with warning."""
+        line_data = {
+            2431: {"base_heading": None, "prev_direction": 76.8},
+        }
+        out, warns = build_direction_override_for_sequence(
+            [2431], line_data, follow_previous=True,
+        )
+        self.assertNotIn(2431, out)
+        self.assertTrue(any("2431" in w and "base_heading" in w for w in warns))
+
+    def test_empty_sequence_returns_empty(self):
+        out, warns = build_direction_override_for_sequence(
+            [], self._martin_linge_line_data(), follow_previous=True,
+        )
+        self.assertEqual(out, {})
+        self.assertEqual(warns, [])
 
 
 if __name__ == "__main__":
