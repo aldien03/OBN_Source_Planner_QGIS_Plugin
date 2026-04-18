@@ -6514,6 +6514,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 'end_point_geom': end_pt,
                 'start_runin_point': None,  # Will be populated later
                 'end_runin_point': None,    # Will be populated later
+                # Phase 12b: full run-in linestring geometry, cached here so
+                # _calculate_sequence_time and _simulate_add_line never scan the
+                # run-ins layer per cost evaluation. Hot path for 2-opt / ortools.
+                'start_runin_geom': None,
+                'end_runin_geom': None,
                 'prev_direction': prev_direction_val,  # Phase 6c-3: degrees or None
             }
             processed_lines += 1
@@ -6563,7 +6568,18 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 if line_num not in line_data:
                     continue
 
-                # Try to get coordinates from attributes first
+                # Phase 12b: always fetch the full run-in geometry (used both
+                # for outer-point identification below AND cached into line_data
+                # so the simulation cost function never scans the run-ins layer
+                # per evaluation — critical for 2-opt / OR-tools performance).
+                runin_geom = feature.geometry()
+                if (not runin_geom or runin_geom.isEmpty() or
+                        runin_geom.type() != QgsWkbTypes.LineGeometry):
+                    log.warning(f"Skipping run-in FID {feature.id()} ({line_num}, {position}) invalid geometry.")
+                    runins_skipped_geom += 1
+                    continue
+
+                # Try to get outer coordinates from attributes first (fast path)
                 runin_start_pt_xy = None
                 runin_end_pt_xy = None
 
@@ -6574,7 +6590,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         ex = feature.attribute(runin_indices['end_x'])
                         ey = feature.attribute(runin_indices['end_y'])
 
-                        if (sx is None or sx == NULL or sy is None or sy == NULL or 
+                        if (sx is None or sx == NULL or sy is None or sy == NULL or
                             ex is None or ex == NULL or ey is None or ey == NULL):
                             raise ValueError("NULL coordinate value")
 
@@ -6584,15 +6600,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         runin_start_pt_xy = None
                         runin_end_pt_xy = None
 
-                # Fallback to geometry if attributes are not available
+                # Fallback: derive outer coordinates from the already-fetched geometry
                 if runin_start_pt_xy is None or runin_end_pt_xy is None:
-                    runin_geom = feature.geometry()
-
-                    if not runin_geom or runin_geom.isEmpty() or runin_geom.type() != QgsWkbTypes.LineGeometry:
-                        log.warning(f"Skipping run-in FID {feature.id()} ({line_num}, {position}) invalid geometry.")
-                        runins_skipped_geom += 1
-                        continue
-
                     vertices = list(runin_geom.vertices())
                     if len(vertices) >= 2:
                         runin_start_pt_xy = QgsPointXY(vertices[0].x(), vertices[0].y())
@@ -6639,12 +6648,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             log.warning(f"Run-in FID {feature.id()} ({line_num}, {position}) start vertex not close to "
                                        f"line {position} point (DistSq: {dist_runin_start_to_expected_sq:.2f}).")
 
-                    # Store the outer point if connection is valid
+                    # Store the outer point AND the full geometry if connection is valid.
+                    # Phase 12b caches the geometry so later cost evaluations
+                    # (2-opt, OR-tools) never have to rescan the run-ins layer.
                     if is_connected and runin_outer_pt:
                         if position == "Start":
                             line_data[line_num]['start_runin_point'] = runin_outer_pt
+                            line_data[line_num]['start_runin_geom'] = runin_geom
                         elif position == "End":
                             line_data[line_num]['end_runin_point'] = runin_outer_pt
+                            line_data[line_num]['end_runin_geom'] = runin_geom
                         runins_matched += 1
                     elif is_connected:
                         log.error(f"Internal error: Run-in FID {feature.id()} connected but failed to identify outer point.")
@@ -7443,15 +7456,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
             line_time = first_line_info['length'] / shooting_speed
 
-            # Add run-in time if available
+            # Add run-in time if available.
+            # Phase 12b: read the cached run-in geometry from line_data rather
+            # than scanning required_layers['runins'] on every cost evaluation.
             runin_time = 0.0
-            runin_geom = self._find_runin_geom(
-                required_layers['runins'],
-                first_line_num,
-                "End" if current_is_reciprocal else "Start"
-            )
+            runin_geom_key = 'end_runin_geom' if current_is_reciprocal else 'start_runin_geom'
+            runin_geom = first_line_info.get(runin_geom_key)
 
-            if runin_geom:
+            if runin_geom and not runin_geom.isEmpty():
                 runin_time = self._calculate_runin_time(runin_geom, sim_params)
 
             total_cost_seconds += runin_time + line_time
@@ -8670,13 +8682,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         else:
             log.warning(f"Line {line_num} has invalid length: {line_length}")
 
-        # Find appropriate run-in geometry based on direction
+        # Find appropriate run-in geometry based on direction.
+        # Phase 12b: read the cached geometry from line_info rather than
+        # scanning required_layers['runins'] on every cost evaluation.
         runin_location = "End" if direction_is_reciprocal else "Start"
-        runin_geom = self._find_runin_geom(
-            required_layers.get('runins'),
-            line_num,
-            runin_location
-        )
+        runin_geom_key = 'end_runin_geom' if direction_is_reciprocal else 'start_runin_geom'
+        runin_geom = line_info.get(runin_geom_key)
 
         # Calculate run-in time if run-in geometry exists
         if runin_geom and not runin_geom.isEmpty():
