@@ -8447,211 +8447,29 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             return None
 
     def _generate_interleaved_racetrack_sequence(self, sorted_active_lines, first_line_num, ideal_jump_count):
+        """Thin wrapper — delegates to services.sequence_service.generate_racetrack_sequence.
+
+        Kept as a method for backward compatibility with existing callers
+        (handle_run_simulation). Phase 6 will replace those callers with
+        direct service calls and this wrapper can then be removed.
         """
-        Generates an optimized interleaved racetrack sequence for survey line acquisition.
-
-        This function creates a pattern where lines are visited in an interleaved pattern
-        to minimize vessel turns. The pattern follows a structure like:
-        1022 -> 1118 (1022 + 16*6)
-        1028 (1022+6) -> 1124 (1028 + 16*6)
-        1034 (1028+6) -> 1130 (1034 + 16*6)
-
-        Args:
-            sorted_active_lines (list): List of active line numbers, sorted numerically
-            first_line_num (int): The user-specified starting line number
-            ideal_jump_count (int): The number of line intervals to jump for the racetrack turn
-
-        Returns:
-            list: Line numbers in the calculated sequence, or None if generation fails
-        """
-        # Validate inputs
-        if not sorted_active_lines:
-            log.error("Cannot generate sequence: No active lines provided.")
-            return None
-
-        if ideal_jump_count < 1:
-            log.warning(f"Ideal jump count ({ideal_jump_count}) is less than 1. Using default of 1.")
-            ideal_jump_count = 1
-
-        n_lines = len(sorted_active_lines)
-
-        # Create a lookup for faster index retrieval
-        line_to_index = {line: idx for idx, line in enumerate(sorted_active_lines)}
-
-        # Verify first line is in active lines, fallback if not
-        try:
-            start_index = line_to_index[first_line_num]
-        except KeyError:
-            log.warning(f"Start line {first_line_num} not in active line list. Using first available line.")
-            start_index = 0
-            first_line_num = sorted_active_lines[0]  # Ensure first line is valid
-
-        log.info(f"Generating Interleaved Sequence: Start={first_line_num} (idx={start_index}), "
-                 f"Jump Count={ideal_jump_count}, Total Lines={n_lines}")
-
-        # Estimate the typical step between consecutive lines
-        line_step = self._calculate_most_common_step(sorted_active_lines)
-        if line_step <= 0:
-            line_step = 6  # Default step if detection fails
-            log.warning(f"Could not detect valid line step. Using default: {line_step}")
-        else:
-            log.debug(f"Detected common line number step: {line_step}")
-
-        # Generate the sequence using paired structure
-        sequence = []
-        visited_indices = set()
-
-        # Calculate the target jump line based on ideal_jump_count and detected step
-        current_line = first_line_num
-        current_idx = start_index
-        target_jump_line = current_line + ideal_jump_count * line_step
-
-        # Find the closest available line to the target jump line
-        target_jump_idx = self._find_closest_line_index(
-            sorted_active_lines, target_jump_line, current_idx, ideal_jump_count
-        )
-
-        if target_jump_idx == -1:
-            # Fallback if search failed
-            target_jump_idx = min(current_idx + ideal_jump_count, n_lines - 1)
-            log.warning(f"Could not find suitable jump line. Using index {target_jump_idx} as fallback.")
-
-        # Setup for interleaved pattern generation
-        outward_idx = current_idx
-        return_idx = target_jump_idx
-
-        log.debug(f"Starting pair generation: Line1={current_line}(idx={current_idx}), "
-                  f"TargetJumpLine={target_jump_line}, JumpIdx={target_jump_idx}")
-
-        # Generate the interleaved sequence
-        while len(visited_indices) < n_lines:
-            # Add outward line if valid and not visited
-            if 0 <= outward_idx < n_lines and outward_idx not in visited_indices:
-                sequence.append(sorted_active_lines[outward_idx])
-                visited_indices.add(outward_idx)
-
-            # Add return line if valid, not visited, and different from outward
-            if 0 <= return_idx < n_lines and return_idx not in visited_indices:
-                sequence.append(sorted_active_lines[return_idx])
-                visited_indices.add(return_idx)
-
-            # Move pointers for next iteration
-            outward_idx += 1
-            return_idx += 1
-
-            # Safety break condition
-            if outward_idx >= n_lines and return_idx >= n_lines:
-                break
-            
-        # Ensure all lines are included (check for missed lines)
-        if len(sequence) != n_lines:
-            log.warning(f"Sequence generation incomplete. Expected {n_lines} lines, got {len(sequence)}. Adding missing lines.")
-            missed_lines = set(sorted_active_lines) - set(sequence)
-            sequence.extend(sorted(missed_lines))
-
-        # Final check: ensure the user's specified first line is first
-        if sequence and sequence[0] != first_line_num:
-            try:
-                sequence.remove(first_line_num)
-            except ValueError:
-                pass  # Should not happen at this point
-            sequence.insert(0, first_line_num)
-
-        log.info(f"Generated Racetrack Sequence (Length: {len(sequence)}): {sequence}")
-        return sequence
+        from .services.sequence_service import generate_racetrack_sequence
+        return generate_racetrack_sequence(sorted_active_lines, first_line_num, ideal_jump_count)
 
     def _calculate_most_common_step(self, sorted_lines):
-        """
-        Calculates the most common interval between consecutive line numbers.
-
-        Args:
-            sorted_lines (list): Sorted list of line numbers
-
-        Returns:
-            int: Most common interval between lines, or 0 if no common interval found
-        """
-        if len(sorted_lines) < 2:
-            return 0
-
-        # Calculate differences between consecutive lines
-        diffs = [sorted_lines[i+1] - sorted_lines[i] for i in range(len(sorted_lines) - 1)]
-
-        # Find the most common difference
-        counter = Counter(diffs)
-        most_common = counter.most_common(1)
-
-        if most_common and most_common[0][1] > 1:  # Ensure it appears multiple times
-            return most_common[0][0]
-
-        # If no clear common difference, return the average difference
-        return int(sum(diffs) / len(diffs)) if diffs else 0
+        """Thin wrapper — delegates to services.sequence_service.calculate_most_common_step."""
+        from .services.sequence_service import calculate_most_common_step
+        return calculate_most_common_step(sorted_lines)
 
     def _find_closest_line_index(self, sorted_lines, target_line, current_idx, ideal_jump):
-        """
-        Finds the index of the closest line to the target line number.
-
-        Args:
-            sorted_lines (list): Sorted list of line numbers
-            target_line (int): Target line number to find
-            current_idx (int): Current position in the list
-            ideal_jump (int): Ideal jump count for search window
-
-        Returns:
-            int: Index of the closest line to target, or -1 if not found
-        """
-        # Define search window around the ideal jump position
-        search_range = 5  # Search range on each side of ideal position
-        min_idx = max(0, current_idx + ideal_jump - search_range)
-        max_idx = min(len(sorted_lines) - 1, current_idx + ideal_jump + search_range)
-
-        # Find closest match within window
-        closest_idx = -1
-        min_diff = float('inf')
-
-        for idx in range(min_idx, max_idx + 1):
-            diff = abs(sorted_lines[idx] - target_line)
-            if diff < min_diff:
-                min_diff = diff
-                closest_idx = idx
-
-        return closest_idx
+        """Thin wrapper — delegates to services.sequence_service.find_closest_line_index."""
+        from .services.sequence_service import find_closest_line_index
+        return find_closest_line_index(sorted_lines, target_line, current_idx, ideal_jump)
 
     def _determine_next_line(self, current_line_num, remaining_lines, line_data):
-        """
-        Determines the next line to process in Teardrop mode.
-
-        This function finds the numerically closest line to the current line
-        from the set of remaining lines. For lines with equal distance,
-        preference is given to lines with lower line numbers for predictability.
-
-        Args:
-            current_line_num (int): Current line being processed
-            remaining_lines (set): Set of line numbers that haven't been processed
-            line_data (dict): Dictionary of line information
-
-        Returns:
-            int: The next line number to process, or None if no lines remain
-        """
-        if not remaining_lines:
-            return None
-
-        # Convert to list for better performance in case of large sets
-        remaining_list = list(remaining_lines)
-
-        # Find closest line by numerical difference
-        closest_line = None
-        min_abs_diff = float('inf')
-
-        for line_num in remaining_list:
-            abs_diff = abs(line_num - current_line_num)
-
-            # Update if closer or same distance but lower line number
-            if abs_diff < min_abs_diff or (abs_diff == min_abs_diff and line_num < closest_line):
-                min_abs_diff = abs_diff
-                closest_line = line_num
-
-        log.debug(f"Next line after {current_line_num}: {closest_line} (Difference: {min_abs_diff})")
-        return closest_line
+        """Thin wrapper — delegates to services.sequence_service.determine_next_line."""
+        from .services.sequence_service import determine_next_line
+        return determine_next_line(current_line_num, remaining_lines, line_data)
 
     # --- 11. Visualization ---
 
