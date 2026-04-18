@@ -228,12 +228,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             current_datetime = datetime.now(); qdt = QtCore.QDateTime(current_datetime)
             self.startDateTimeEdit.setDateTime(qdt); log.debug(f"Set Start DateTime to {current_datetime}")
 
-        # Phase 11d-2: enable/disable the max-passes SpinBox based on
-        # Sequence Optimization dropdown. SpinBox stays grey when the
-        # user hasn't enabled 2-opt — reduces visual noise, avoids
-        # giving the impression the value matters when it doesn't.
-        if (hasattr(self, 'sequenceOptimizationComboBox')
-                and hasattr(self, 'optimizationMaxIterationsSpinBox')):
+        # Phase 11d-2 / 13a: enable/disable the max-passes and time-limit
+        # SpinBoxes based on Sequence Optimization dropdown. Only the
+        # SpinBox relevant to the selected optimizer is enabled — the
+        # others stay grey to avoid the impression that their values
+        # matter when they don't.
+        if hasattr(self, 'sequenceOptimizationComboBox'):
             self.sequenceOptimizationComboBox.currentTextChanged.connect(
                 self._on_optimization_level_changed
             )
@@ -242,12 +242,38 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 self.sequenceOptimizationComboBox.currentText()
             )
 
+        # Phase 13a: detect ortools at plugin init so the dispatch in
+        # handle_run_simulation can refuse to run OR-tools with a clear
+        # user-facing error instead of a cryptic ImportError. Probe is
+        # no-raise — just a bool for the UI.
+        try:
+            from .services.ortools_optimizer import is_ortools_available
+            self._ortools_available = is_ortools_available()
+            if not self._ortools_available:
+                log.warning(
+                    "ortools not installed — OR-tools sequence optimization "
+                    "will refuse to run. Install via `pip install ortools` "
+                    "in the OSGeo4W Shell, then restart QGIS."
+                )
+            else:
+                log.info("ortools detected; OR-tools optimization available.")
+        except Exception:
+            log.exception("Unexpected error probing ortools availability")
+            self._ortools_available = False
+
         log.info("OBNPlannerDockWidget initialized.")
 
     def _on_optimization_level_changed(self, text):
-        """Phase 11d-2: grey-out the max-passes SpinBox when 2-opt is Off."""
+        """Phase 11d-2 / 13a: enable/disable the optimizer-specific
+        SpinBoxes based on the dropdown selection. Only one spinbox
+        is enabled at a time; the other stays grey.
+        """
+        is_2opt = (text == "2-opt (legacy)" or text == "2-opt")
+        is_ortools = (text == "OR-tools")
         if hasattr(self, 'optimizationMaxIterationsSpinBox'):
-            self.optimizationMaxIterationsSpinBox.setEnabled(text == "2-opt")
+            self.optimizationMaxIterationsSpinBox.setEnabled(is_2opt)
+        if hasattr(self, 'ortoolsTimeLimitSpinBox'):
+            self.ortoolsTimeLimitSpinBox.setEnabled(is_ortools)
 
     # --- Phase 6c-2: legacy self.last_* property shims ---
     # Each pair delegates to self._last_run (a _LastRunShim instance set
@@ -6723,6 +6749,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             follow_previous_direction = False
             optimization_level = "none"
             optimization_max_iterations = 200
+            ortools_time_limit_s = 30
+            ortools_metaheuristic = "GUIDED_LOCAL_SEARCH"
             try:
                 from .services.simulation_service import (
                     SimulationParams, diff_legacy_dict,
@@ -6731,6 +6759,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 follow_previous_direction = _shadow_params.follow_previous_direction
                 optimization_level = _shadow_params.optimization_level
                 optimization_max_iterations = _shadow_params.optimization_max_iterations
+                ortools_time_limit_s = _shadow_params.ortools_time_limit_s
+                ortools_metaheuristic = _shadow_params.ortools_metaheuristic
                 _diffs = diff_legacy_dict(sim_params, _shadow_params.to_legacy_dict())
                 if _diffs:
                     log.warning(f"Phase 6c-1 cross-check: {len(_diffs)} difference(s) "
@@ -7017,6 +7047,38 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         f"2-opt optimization failed: {_opt_err}. "
                         f"Falling back to pre-optimization sequence."
                     )
+            elif optimization_level == "ortools" and best_final_sequence_info:
+                # Phase 13a: OR-tools Guided Local Search. Availability gate
+                # lives here (not in _apply_ortools_optimization) so we can
+                # show a clear dialog telling the user how to fix it.
+                if not getattr(self, '_ortools_available', False):
+                    QMessageBox.warning(
+                        self,
+                        "OR-tools Not Installed",
+                        "OR-tools sequence optimization requires the ortools "
+                        "Python package, which is not installed in this QGIS "
+                        "environment.\n\n"
+                        "To enable, open the OSGeo4W Shell and run:\n"
+                        "    pip install ortools\n\n"
+                        "Then restart QGIS and re-run the simulation. "
+                        "Falling back to the un-optimized sequence for now."
+                    )
+                    log.warning("OR-tools requested but ortools not available; skipping optimization.")
+                else:
+                    try:
+                        self._apply_ortools_optimization(
+                            best_final_sequence_info,
+                            sim_params, line_data, required_layers,
+                            follow_previous_direction=follow_previous_direction,
+                            time_limit_s=ortools_time_limit_s,
+                            metaheuristic=ortools_metaheuristic,
+                        )
+                    except Exception as _opt_err:
+                        # OR-tools failures MUST NOT break the simulation.
+                        log.exception(
+                            f"OR-tools optimization failed: {_opt_err}. "
+                            f"Falling back to pre-optimization sequence."
+                        )
 
             # --- Post-Simulation Processing ---
             if best_final_sequence_info:
@@ -7772,6 +7834,346 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             f"new cost = {final_cost_seconds:.2f}s "
             f"({final_cost_seconds/3600.0:.2f}h)"
         )
+
+    def _apply_ortools_optimization(
+        self, best_final_sequence_info,
+        sim_params, line_data, required_layers,
+        follow_previous_direction: bool = False,
+        time_limit_s: int = 30,
+        metaheuristic: str = "GUIDED_LOCAL_SEARCH",
+    ):
+        """Phase 13a: apply OR-tools Guided Local Search to the generated sequence.
+
+        Builds an asymmetric Dubins-turn cost matrix over line-direction
+        node pairs, runs the solver, and mutates best_final_sequence_info
+        in place with the optimized sequence + cost + direction map
+        (same contract as _apply_2opt_optimization).
+
+        Phase 13a is BLOCKING — the cost matrix precompute and OR-tools
+        solve both run on the main thread with QApplication.processEvents()
+        between batches. UI is responsive enough to show progress and
+        accept cancel during the precompute phase but freezes during
+        the solve itself (OR-tools' C++ call releases the GIL but Python
+        cannot interrupt it). Phase 13b will wrap this in a QThread.
+
+        Direction-following (4D monitor surveys, follow_previous_direction=True):
+        each line gets ONE node in the solver (direction pre-pinned by
+        PREV_DIRECTION). Otherwise each line gets TWO nodes with a
+        disjunction so the solver picks the cheaper direction.
+
+        If OR-tools returns a sequence with cost >= the pre-optimization
+        cost, the dict is left unchanged (defensive — shouldn't happen
+        with GLS but the un-optimized sequence is always a valid fallback).
+        """
+        from .services.ortools_optimizer import (
+            optimize_with_ortools,
+            NodeMeta,
+            INFEASIBLE_ARC_COST,
+        )
+        from .services.sequence_service import build_direction_override_for_sequence
+
+        original_sequence = list(best_final_sequence_info.get('seq', []))
+        if len(original_sequence) < 2:
+            log.info(
+                f"OR-tools skipped: sequence too short (n={len(original_sequence)} < 2)"
+            )
+            return
+
+        original_cost = best_final_sequence_info.get('cost', 0.0) or 0.0
+
+        # --- Direction pinning ---------------------------------------------
+        if follow_previous_direction:
+            direction_override, dir_warnings = build_direction_override_for_sequence(
+                original_sequence, line_data, follow_previous=True,
+            )
+            for _w in dir_warnings:
+                log.warning(f"[OR-tools direction-following] {_w}")
+        else:
+            direction_override = None
+
+        # --- Build node layout ---------------------------------------------
+        # Node 0 = depot. Then for each line: either 2 nodes with disjunction
+        # (free direction choice) or 1 node (pinned by direction_override).
+        node_meta = [NodeMeta(line_num=None, is_reciprocal=False, is_depot=True)]
+        disjunction_pairs = []
+        line_to_nodes = {}   # line_num -> list of (node_idx, is_reciprocal)
+
+        for line_num in original_sequence:
+            if direction_override is not None and line_num in direction_override:
+                pinned_dir = direction_override[line_num]
+                is_reciprocal = (pinned_dir == 'high_to_low')
+                idx = len(node_meta)
+                node_meta.append(NodeMeta(line_num=line_num, is_reciprocal=is_reciprocal))
+                line_to_nodes[line_num] = [(idx, is_reciprocal)]
+            else:
+                idx_fwd = len(node_meta)
+                node_meta.append(NodeMeta(line_num=line_num, is_reciprocal=False))
+                idx_rev = len(node_meta)
+                node_meta.append(NodeMeta(line_num=line_num, is_reciprocal=True))
+                disjunction_pairs.append((idx_fwd, idx_rev))
+                line_to_nodes[line_num] = [(idx_fwd, False), (idx_rev, True)]
+
+        num_nodes = len(node_meta)
+        log.info(
+            f"OR-tools model: {num_nodes} nodes ({len(original_sequence)} lines, "
+            f"{len(disjunction_pairs)} disjunctions, "
+            f"direction_override={'yes' if direction_override else 'no'})"
+        )
+
+        # --- Precompute cost matrix ----------------------------------------
+        progress = QProgressDialog(
+            "Building OR-tools cost matrix...",
+            "Cancel",
+            0, num_nodes,
+            self,
+        )
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+        progress.show()
+        QApplication.processEvents()
+
+        turn_radius = sim_params.get('turn_radius_meters', 500.0)
+        turn_speed = sim_params.get('avg_turn_speed_mps', 3.0)
+        turn_rate = sim_params.get('vessel_turn_rate_dps')
+        shooting_speed = sim_params.get('avg_shooting_speed_mps', 4.0)
+        if shooting_speed <= 0:
+            shooting_speed = 4.0
+
+        cost_matrix: dict = {}
+        dubins_cache: dict = {}  # (from_line, from_is_recip, to_line, to_is_recip) -> seconds
+        runin_cache: dict = {}   # (line_num, is_reciprocal) -> seconds
+
+        def _acq_time(line_num):
+            info = line_data.get(line_num, {})
+            length = info.get('length', 0.0) or 0.0
+            return length / shooting_speed
+
+        def _runin_time(line_num, is_reciprocal):
+            key = (line_num, is_reciprocal)
+            if key in runin_cache:
+                return runin_cache[key]
+            geom_key = 'end_runin_geom' if is_reciprocal else 'start_runin_geom'
+            geom = line_data.get(line_num, {}).get(geom_key)
+            if not geom or geom.isEmpty():
+                runin_cache[key] = 0.0
+            else:
+                runin_cache[key] = self._calculate_runin_time(geom, sim_params)
+            return runin_cache[key]
+
+        precompute_start = time.time()
+        cancelled = False
+        for i in range(num_nodes):
+            # Update progress every 20 rows — enough for UI repaint without
+            # crushing the loop with event dispatch overhead.
+            if i % 20 == 0:
+                progress.setValue(i)
+                progress.setLabelText(
+                    f"Cost matrix: row {i}/{num_nodes} "
+                    f"({len(dubins_cache)} unique Dubins turns cached)"
+                )
+                QApplication.processEvents()
+                if progress.wasCanceled():
+                    cancelled = True
+                    break
+
+            meta_i = node_meta[i]
+            for j in range(num_nodes):
+                if i == j:
+                    continue
+                meta_j = node_meta[j]
+
+                # Depot arcs
+                if meta_i.is_depot and meta_j.is_depot:
+                    cost_matrix[(i, j)] = 0.0
+                    continue
+                if meta_i.is_depot:
+                    # depot -> first line: run-in + acquisition of destination
+                    cost_matrix[(i, j)] = (
+                        _runin_time(meta_j.line_num, meta_j.is_reciprocal)
+                        + _acq_time(meta_j.line_num)
+                    )
+                    continue
+                if meta_j.is_depot:
+                    # last line -> depot: free (open-path TSP)
+                    cost_matrix[(i, j)] = 0.0
+                    continue
+
+                # Same-line-different-direction: disjunction blocks this,
+                # but we still need a cost entry. Use INFEASIBLE as guard.
+                if meta_i.line_num == meta_j.line_num:
+                    cost_matrix[(i, j)] = INFEASIBLE_ARC_COST
+                    continue
+
+                # Line -> line: Dubins turn + destination runin + destination acq
+                dubins_key = (
+                    meta_i.line_num, meta_i.is_reciprocal,
+                    meta_j.line_num, meta_j.is_reciprocal,
+                )
+                if dubins_key not in dubins_cache:
+                    exit_pt, exit_hdg = self._get_next_exit_state(
+                        meta_i.line_num, meta_i.is_reciprocal, line_data
+                    )
+                    entry_pt, entry_hdg = self._get_entry_details(
+                        line_data[meta_j.line_num], meta_j.is_reciprocal
+                    )
+                    if (exit_pt is None or exit_hdg is None
+                            or entry_pt is None or entry_hdg is None):
+                        log.debug(
+                            f"Missing entry/exit for "
+                            f"{meta_i.line_num}({'rev' if meta_i.is_reciprocal else 'fwd'})"
+                            f"->{meta_j.line_num}({'rev' if meta_j.is_reciprocal else 'fwd'}); "
+                            f"marking infeasible"
+                        )
+                        dubins_cache[dubins_key] = float(INFEASIBLE_ARC_COST)
+                    else:
+                        _, _, turn_time = self._calculate_dubins_turn(
+                            exit_pt, exit_hdg, entry_pt, entry_hdg,
+                            turn_radius, turn_speed, turn_rate,
+                        )
+                        dubins_cache[dubins_key] = (
+                            float(INFEASIBLE_ARC_COST) if turn_time is None else float(turn_time)
+                        )
+
+                turn_time = dubins_cache[dubins_key]
+                if turn_time >= float(INFEASIBLE_ARC_COST):
+                    cost_matrix[(i, j)] = INFEASIBLE_ARC_COST
+                else:
+                    cost_matrix[(i, j)] = (
+                        turn_time
+                        + _runin_time(meta_j.line_num, meta_j.is_reciprocal)
+                        + _acq_time(meta_j.line_num)
+                    )
+
+        if cancelled:
+            progress.close()
+            log.info("OR-tools precompute cancelled by user; keeping pre-optimization sequence.")
+            return
+
+        progress.setValue(num_nodes)
+        precompute_elapsed = time.time() - precompute_start
+        log.info(
+            f"OR-tools cost matrix precomputed in {precompute_elapsed:.1f}s: "
+            f"{len(cost_matrix)} entries, {len(dubins_cache)} unique Dubins turns"
+        )
+
+        # --- Compute pinned_first_node -------------------------------------
+        pinned_first_node = None
+        first_line_num_raw = sim_params.get('first_line_num')
+        if first_line_num_raw is not None:
+            try:
+                first_line_num_int = int(first_line_num_raw)
+            except (TypeError, ValueError):
+                first_line_num_int = None
+            if first_line_num_int is not None and first_line_num_int in line_to_nodes:
+                # Pick the direction matching first_heading_option (or the
+                # pinned direction when follow_previous_direction is on).
+                user_prefers_reciprocal = (
+                    sim_params.get('first_heading_option')
+                    == "High to Low SP (Reciprocal)"
+                )
+                if (direction_override is not None
+                        and first_line_num_int in direction_override):
+                    want_reciprocal = (
+                        direction_override[first_line_num_int] == 'high_to_low'
+                    )
+                else:
+                    want_reciprocal = user_prefers_reciprocal
+                for node_idx, node_is_recip in line_to_nodes[first_line_num_int]:
+                    if node_is_recip == want_reciprocal:
+                        pinned_first_node = node_idx
+                        break
+
+        # --- Solve ---------------------------------------------------------
+        progress.setLabelText(
+            f"Running OR-tools {metaheuristic} solver ({time_limit_s}s)..."
+        )
+        QApplication.processEvents()
+
+        solve_start = time.time()
+        try:
+            opt_result = optimize_with_ortools(
+                cost_matrix=cost_matrix,
+                node_meta=node_meta,
+                disjunction_pairs=disjunction_pairs,
+                time_limit_s=time_limit_s,
+                pinned_first_node=pinned_first_node,
+                metaheuristic=metaheuristic,
+            )
+        finally:
+            progress.close()
+
+        solve_elapsed = time.time() - solve_start
+        log.info(
+            f"OR-tools solver finished in {solve_elapsed:.1f}s "
+            f"(total phase 13a wall clock: {precompute_elapsed + solve_elapsed:.1f}s)"
+        )
+
+        # --- Convert tour back to (line_num, direction) sequence -----------
+        optimized_line_sequence = []
+        optimized_directions = {}
+        for node_idx in opt_result.optimized_sequence:
+            m = node_meta[node_idx]
+            if m.is_depot:
+                continue   # safety (optimize_with_ortools already strips depot)
+            optimized_line_sequence.append(m.line_num)
+            optimized_directions[m.line_num] = (
+                'high_to_low' if m.is_reciprocal else 'low_to_high'
+            )
+
+        if len(optimized_line_sequence) != len(original_sequence):
+            log.warning(
+                f"OR-tools returned {len(optimized_line_sequence)} lines; expected "
+                f"{len(original_sequence)}. Disjunction or DROP_LINE_PENALTY may be "
+                f"misconfigured. Falling back to pre-optimization sequence."
+            )
+            return
+
+        # --- Recompute final cost + directions via _calculate_sequence_time ---
+        # Uses the real self.last_turn_cache so the editor / visualizer see
+        # identical numbers downstream. direction_override pins EVERY line
+        # so start_reciprocal is ignored.
+        final_cost, final_directions = self._calculate_sequence_time(
+            optimized_line_sequence,
+            False,  # start_reciprocal: ignored because optimized_directions covers all lines
+            sim_params,
+            line_data,
+            required_layers,
+            self.last_turn_cache,
+            direction_override=optimized_directions,
+        )
+
+        if final_cost is None or final_directions is None:
+            log.warning(
+                "OR-tools optimized sequence failed final cost recomputation "
+                "(possible infeasibility). Keeping original sequence."
+            )
+            return
+
+        if original_cost > 0 and final_cost >= original_cost - 1e-3:
+            log.info(
+                f"OR-tools produced no improvement: "
+                f"original={original_cost/3600.0:.3f}h, "
+                f"optimized={final_cost/3600.0:.3f}h. "
+                f"Keeping original sequence."
+            )
+            return
+
+        improvement_pct = (
+            (original_cost - final_cost) / original_cost * 100.0
+            if original_cost > 0 else 0.0
+        )
+        log.info(
+            f"OR-tools applied: sequence replaced. "
+            f"Cost {original_cost/3600.0:.2f}h -> {final_cost/3600.0:.2f}h "
+            f"({improvement_pct:+.2f}%)"
+        )
+
+        best_final_sequence_info['seq'] = optimized_line_sequence
+        best_final_sequence_info['cost'] = final_cost
+        best_final_sequence_info.setdefault('state', {})['line_directions'] = final_directions
 
     # --- 8. Sequence Editing & Finalization ---
 
