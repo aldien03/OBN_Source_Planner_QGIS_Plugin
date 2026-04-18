@@ -10,9 +10,114 @@ direction-following constraint on top of this module.
 from __future__ import annotations
 import logging
 from collections import Counter
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 log = logging.getLogger(__name__)
+
+
+# --- Direction-following (Phase 6a) -----------------------------------------
+#
+# Used by the upcoming "Follow previous shooting direction" feature for 4D
+# monitor surveys (UI checkbox added in Phase 8). With the feature OFF
+# (default), assign_direction_for_line just alternates the previous direction,
+# preserving today's behavior. With the feature ON, it pins each line to the
+# direction matching its PREV_DIRECTION value (parsed by Phase 3, aggregated
+# per line by Phase 4).
+
+@dataclass(frozen=True)
+class LineDirection:
+    """Direction-relevant info for a single survey line.
+
+    forward_heading_deg / reciprocal_heading_deg describe the two
+    possible vessel headings when shooting this line: forward (low SP
+    to high SP) and reciprocal (high SP to low SP). They differ by 180°.
+
+    prev_direction_deg comes from the line's PREV_DIRECTION attribute
+    (aggregated from constituent SPS points). None when the source SPS
+    file did not carry direction data — in that case the
+    "Follow previous shooting direction" feature must fall back to
+    plain alternation and warn the caller.
+    """
+    forward_heading_deg: float
+    reciprocal_heading_deg: float
+    prev_direction_deg: Optional[float] = None
+
+
+def _flip_direction(direction: str) -> str:
+    """Toggle between the two direction labels used throughout the plugin."""
+    return "high_to_low" if direction == "low_to_high" else "low_to_high"
+
+
+def _angular_diff_deg(a: float, b: float) -> float:
+    """Smallest positive angular difference in degrees, accounting for
+    the 360° wrap. _angular_diff_deg(359, 1) == 2, not 358."""
+    d = abs(a - b) % 360.0
+    return min(d, 360.0 - d)
+
+
+def assign_direction_for_line(
+    line_info: LineDirection,
+    prior_direction: str,
+    follow_previous: bool = False,
+    tolerance_deg: float = 1.0,
+) -> Tuple[str, Optional[str]]:
+    """Decide the shoot direction for a single line.
+
+    Args:
+        line_info: forward/reciprocal headings and optional prev_direction
+        prior_direction: "low_to_high" or "high_to_low" — the direction
+            the previously-acquired line was shot in. Used only when
+            follow_previous is False or no prev_direction data exists.
+        follow_previous: when True, pin the line to the direction
+            matching its PREV_DIRECTION value (4D monitor scenario).
+            When False (default), alternate from prior_direction
+            (existing behavior).
+        tolerance_deg: how close prev_direction must be to one of the
+            two headings before the choice is considered "clean".
+            Outside this tolerance, a warning is emitted (caller logs).
+
+    Returns:
+        (chosen_direction, warning_or_None) where chosen_direction is
+        "low_to_high" or "high_to_low".
+    """
+    # Default behavior: alternate. Cheap, deterministic, no warning.
+    if not follow_previous:
+        return _flip_direction(prior_direction), None
+
+    # Feature ON but the source SPS file lacked a direction column.
+    # Fall back to alternation and emit a warning so the caller can
+    # surface "no direction data — using alternation" to the user.
+    if line_info.prev_direction_deg is None:
+        return _flip_direction(prior_direction), (
+            "follow_previous_direction is enabled but PREV_DIRECTION is "
+            "not available for this line — falling back to alternation"
+        )
+
+    # Feature ON with data: pick the heading closer to PREV_DIRECTION.
+    pd = line_info.prev_direction_deg
+    diff_forward = _angular_diff_deg(pd, line_info.forward_heading_deg)
+    diff_reverse = _angular_diff_deg(pd, line_info.reciprocal_heading_deg)
+
+    if diff_forward <= diff_reverse:
+        chosen = "low_to_high"
+        chosen_diff = diff_forward
+    else:
+        chosen = "high_to_low"
+        chosen_diff = diff_reverse
+
+    warning = None
+    if chosen_diff > tolerance_deg:
+        warning = (
+            f"prev_direction={pd:.2f}° matches {chosen} heading with "
+            f"{chosen_diff:.2f}° spread (> {tolerance_deg:.1f}° tolerance) — "
+            f"choosing it anyway, but check whether PREV_DIRECTION matches "
+            f"the survey's actual orientation"
+        )
+    return chosen, warning
+
+
+# --- Sequence generation (Phase 5) ------------------------------------------
 
 
 def calculate_most_common_step(sorted_lines: List[int]) -> int:
