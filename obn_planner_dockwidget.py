@@ -36,13 +36,71 @@ import inspect # For debugging stack traces if needed
 import csv # Needed for CSV export helper
 
 # --- Set up logging ---
+#
+# Phase 13a-4: size-capped rotation. Pre-refactor the log grew unboundedly
+# within a QGIS session (Dubins DEBUG spam can generate MB/minute on a
+# large simulation — users reported 2+ GB files). The plugin's DEBUG
+# output is genuinely useful for forensic analysis (the Phase 12a
+# Heading-NULL bug was diagnosed from it), so reducing log level is
+# not an option. Instead:
+#
+#   * Keep the "fresh log per plugin init" behavior — mode='w' means
+#     each QGIS plugin load starts a new file. Enables easy correlation
+#     "I clicked Run Simulation at XX:XX" -> "line NN of the log".
+#
+#   * BEFORE opening the new file, inspect the leftover file from the
+#     previous session. If it's large (> LOG_MAX_BYTES), move it aside
+#     to a .1 backup. This preserves one session of history across
+#     restarts without letting the .log file itself accumulate.
+#
+#   * DURING the session, use RotatingFileHandler so that even a single
+#     very long simulation can't blow past LOG_MAX_BYTES — when the
+#     active file crosses the threshold, rotation shifts it to .1,
+#     any pre-existing .1 shifts to .2, and logging continues in a
+#     fresh file. Bounded disk footprint: LOG_MAX_BYTES * (1 + BACKUPS).
+#
+# Defaults: 50 MB per file, 2 backups -> 150 MB max on disk.
+# Conservative; survives a full day of heavy use. Adjust here if
+# operational feedback shows 50 MB is tight.
+
+LOG_MAX_BYTES = 50 * 1024 * 1024   # 50 MB per file
+LOG_BACKUP_COUNT = 2                # keep .1 and .2 alongside the active .log
+
 log = logging.getLogger(__name__)
 root_logger = logging.getLogger("obn_planner")
 if not root_logger.handlers:
     log_dir = os.path.dirname(__file__)
     log_file = os.path.join(log_dir, 'obn_planner_debug.log')
     try:
-        file_handler = logging.FileHandler(log_file, mode='w') # Overwrite log each time
+        # Pre-handler cleanup: if the leftover file from the last session
+        # is larger than the rotation threshold, move it aside so the
+        # new session starts fresh without losing the old data. Best
+        # effort — filesystem errors are logged but never fatal.
+        try:
+            if (os.path.exists(log_file)
+                    and os.path.getsize(log_file) > LOG_MAX_BYTES):
+                backup_file = log_file + '.1'
+                if os.path.exists(backup_file):
+                    try:
+                        os.remove(backup_file)
+                    except OSError:
+                        pass  # best effort; if we can't remove, rename will fail fine
+                os.rename(log_file, backup_file)
+        except OSError as _rot_e:
+            # print, not log — logger isn't set up yet
+            print(f"obn_planner: pre-session log rotation failed: {_rot_e}")
+
+        # RotatingFileHandler handles mid-session growth. mode='w'
+        # truncates on open (giving us the "fresh log per plugin load"
+        # contract). maxBytes triggers rotation when the active file
+        # crosses the threshold during a long session.
+        from logging.handlers import RotatingFileHandler
+        file_handler = RotatingFileHandler(
+            log_file,
+            mode='w',
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT,
+        )
         file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         file_handler.setFormatter(file_formatter); file_handler.setLevel(logging.DEBUG)
         console_handler = logging.StreamHandler()
@@ -50,7 +108,10 @@ if not root_logger.handlers:
         console_handler.setFormatter(console_formatter); console_handler.setLevel(logging.INFO)
         root_logger.addHandler(file_handler); root_logger.addHandler(console_handler)
         root_logger.setLevel(logging.DEBUG); log.setLevel(logging.DEBUG)
-        log.info(f"Logger initialized. Debug log file: {log_file}")
+        log.info(
+            f"Logger initialized. Debug log file: {log_file} "
+            f"(rotation: {LOG_MAX_BYTES // (1024*1024)}MB x {LOG_BACKUP_COUNT+1} files max)"
+        )
     except Exception as log_e:
         print(f"CRITICAL: Failed to initialize logging: {log_e}")
         logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
