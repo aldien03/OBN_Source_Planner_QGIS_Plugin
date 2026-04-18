@@ -1869,6 +1869,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 raise ValueError("Max Run-in Length cannot be negative")
             log.debug(f"Max Run-in Length: {max_run_in_length} meters")
 
+            # Phase 16b: Operation defaults to Production. Per-line overrides
+            # happen in the sequence editor (dock dropdown intentionally
+            # omitted to keep the dock panel compact).
+            from .services.line_metadata import DEFAULT_OPERATION
+            default_operation_value = DEFAULT_OPERATION.value
+
             # Get filtered lines
             matching_line_nums = self.handle_apply_filter()
             if matching_line_nums is None:
@@ -2122,10 +2128,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             log.warning(f"LineNum {line_num}: {dir_warning}")
                         prev_dir_attr = NULL if line_prev_direction is None else line_prev_direction
 
-                        # Phase 16a: defaults assume nominal forward traversal
-                        # (FGSP=lowest, LGSP=highest) and Production operation.
-                        # Per-line overrides happen in the sequence editor (Phase 16b).
-                        from .services.line_metadata import DEFAULT_OPERATION
+                        # Phase 16b: defaults assume nominal forward traversal
+                        # (FGSP=lowest, LGSP=highest). Operation defaults come from
+                        # the dock's Default Operation combo (see default_operation
+                        # resolved once at the top of handle_generate_lines).
+                        # Per-line overrides happen in the sequence editor.
 
                         # Create line feature
                         line_feature = QgsFeature(line_fields)
@@ -2142,7 +2149,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             highest_sp_point.x(),
                             highest_sp_point.y(),
                             prev_dir_attr,
-                            DEFAULT_OPERATION.value,
+                            default_operation_value,
                             lowest_sp,
                             highest_sp,
                         ])
@@ -8357,6 +8364,94 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
 # --- Inside OBNPlannerDockWidget class in obn_planner_dockwidget.py ---
 
+    def _read_line_metadata_map(self, lines_layer):
+        """Phase 16b: snapshot Operation/FGSP/LGSP per line from Generated_Survey_Lines.
+
+        Returns {line_num: {'operation': str, 'fgsp': int, 'lgsp': int}}.
+        Missing fields (stale layer from earlier plugin version) yield None values.
+        """
+        result = {}
+        if lines_layer is None:
+            log.warning("_read_line_metadata_map: lines layer is None")
+            return result
+        fields = lines_layer.fields()
+        idx_line = fields.lookupField("LineNum")
+        idx_op = fields.lookupField("Operation")
+        idx_fgsp = fields.lookupField("FGSP")
+        idx_lgsp = fields.lookupField("LGSP")
+        idx_low = fields.lookupField("LowestSP")
+        idx_high = fields.lookupField("HighestSP")
+        if idx_line < 0:
+            log.warning("_read_line_metadata_map: LineNum field missing")
+            return result
+        for feat in lines_layer.getFeatures():
+            try:
+                line_num = int(feat.attribute(idx_line))
+            except (TypeError, ValueError):
+                continue
+            def _int_or_none(idx):
+                if idx < 0:
+                    return None
+                v = feat.attribute(idx)
+                try:
+                    return int(v) if v not in (None, NULL) else None
+                except (TypeError, ValueError):
+                    return None
+            op_val = feat.attribute(idx_op) if idx_op >= 0 else None
+            result[line_num] = {
+                'operation': op_val if op_val not in (None, NULL) else None,
+                'fgsp': _int_or_none(idx_fgsp),
+                'lgsp': _int_or_none(idx_lgsp),
+                'lowest_sp': _int_or_none(idx_low),
+                'highest_sp': _int_or_none(idx_high),
+            }
+        return result
+
+    def _commit_line_metadata_edits(self, lines_layer, edits):
+        """Phase 16b: write editor's Operation/FGSP/LGSP edits back to the layer.
+
+        edits: {line_num: {'operation': str, 'fgsp': int, 'lgsp': int}}
+        Returns True on success, False otherwise.
+        """
+        if not edits:
+            return True
+        if lines_layer is None:
+            log.error("_commit_line_metadata_edits: lines layer is None")
+            return False
+        fields = lines_layer.fields()
+        idx_line = fields.lookupField("LineNum")
+        idx_op = fields.lookupField("Operation")
+        idx_fgsp = fields.lookupField("FGSP")
+        idx_lgsp = fields.lookupField("LGSP")
+        if min(idx_line, idx_op, idx_fgsp, idx_lgsp) < 0:
+            log.error("_commit_line_metadata_edits: one of LineNum/Operation/FGSP/LGSP missing")
+            return False
+        if not lines_layer.startEditing():
+            log.error("_commit_line_metadata_edits: startEditing failed")
+            return False
+        try:
+            for feat in lines_layer.getFeatures():
+                try:
+                    line_num = int(feat.attribute(idx_line))
+                except (TypeError, ValueError):
+                    continue
+                if line_num not in edits:
+                    continue
+                e = edits[line_num]
+                lines_layer.changeAttributeValue(feat.id(), idx_op, e['operation'])
+                lines_layer.changeAttributeValue(feat.id(), idx_fgsp, int(e['fgsp']))
+                lines_layer.changeAttributeValue(feat.id(), idx_lgsp, int(e['lgsp']))
+            if not lines_layer.commitChanges():
+                log.error(f"_commit_line_metadata_edits: commitChanges failed: {lines_layer.commitErrors()}")
+                lines_layer.rollBack()
+                return False
+        except Exception:
+            log.exception("_commit_line_metadata_edits: unexpected error")
+            lines_layer.rollBack()
+            return False
+        log.info(f"Committed Operation/FGSP/LGSP edits for {len(edits)} lines")
+        return True
+
     def show_edit_sequence_dialog(self):
         """
         Shows the sequence editor dialog, passing context including deviated line data.
@@ -8393,6 +8488,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                f"Missing required data: {', '.join(missing_context)}. Please re-run simulation.")
             return
 
+        # Phase 16b: snapshot current Operation/FGSP/LGSP per line from the
+        # Generated_Survey_Lines layer so the editor can display + edit them.
+        lines_layer = self.last_required_layers.get('lines')
+        line_metadata_map = self._read_line_metadata_map(lines_layer)
+
         # Prepare context with helper functions and data
         context = {
             "sim_params": self.last_sim_params,
@@ -8405,6 +8505,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             "_calculate_runin_time": self._calculate_runin_time,
             "_get_next_exit_state": self._get_next_exit_state,
             "_get_entry_details": self._get_entry_details,
+            # Phase 16b: per-line metadata the editor can edit + commit back.
+            "line_metadata_map": line_metadata_map,
         }
 
         # --- Initial Simulation Result Logging (for debugging) ---
@@ -8447,6 +8549,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
                 # Update the stored results with the edited sequence/cost/state
                 self.last_simulation_result = final_info
+
+                # Phase 16b: persist Operation/FGSP/LGSP edits back to the
+                # Generated_Survey_Lines layer if the dialog collected any.
+                metadata_edits = final_info.get('line_metadata_edits') or {}
+                if metadata_edits:
+                    lines_layer = self.last_required_layers.get('lines')
+                    if not self._commit_line_metadata_edits(lines_layer, metadata_edits):
+                        QMessageBox.warning(self, "Save Error",
+                            "Failed to save Operation/FGSP/LGSP edits to Generated_Survey_Lines layer.")
 
                 # Visualize the final path based on the edited information
                 QApplication.setOverrideCursor(Qt.WaitCursor)

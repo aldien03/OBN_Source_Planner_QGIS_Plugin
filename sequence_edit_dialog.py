@@ -12,22 +12,29 @@ from qgis.PyQt import QtCore, QtGui, QtWidgets
 from qgis.PyQt.QtCore import Qt, QDateTime
 from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QTableWidget, QTableWidgetItem, QAbstractItemView,
-                             QLabel, QHeaderView, QComboBox, QMessageBox,
+                             QLabel, QHeaderView, QComboBox, QSpinBox, QMessageBox,
                              QSizePolicy, QApplication, QFileDialog) # Added QFileDialog
+
+try:
+    # Phase 16b: allow partial-range acquisition editing.
+    from .services.line_metadata import LineOperation, DEFAULT_OPERATION
+except ImportError:  # pragma: no cover - stand-alone import path
+    from services.line_metadata import LineOperation, DEFAULT_OPERATION  # type: ignore
 
 # --- Logger ---
 log = logging.getLogger("obn_planner") # Use the main plugin logger
 
 # --- Define constants for column indices ---
-COL_SEQ_NUM = 0 # New
+COL_SEQ_NUM = 0
 COL_LINE_NUM = 1
-COL_START_SP = 2
-COL_END_SP = 3
-COL_START_TIME = 4
-COL_END_TIME = 5
-COL_DURATION = 6
-COL_DIRECTION = 7
-COL_ACTIONS = 8 # Placeholder
+COL_OPERATION = 2   # Phase 16b
+COL_FGSP = 3        # Phase 16b
+COL_LGSP = 4        # Phase 16b
+COL_START_TIME = 5
+COL_END_TIME = 6
+COL_DURATION = 7
+COL_DIRECTION = 8
+COL_ACTIONS = 9     # Placeholder
 
 # --- ENHANCED custom_deepcopy (using copy constructor for QgsGeometry) ---
 def custom_deepcopy(obj, memo=None):
@@ -114,22 +121,32 @@ class SequenceEditDialog(QDialog):
 
         self.segment_timings = {} # Cache detailed timings: {line_num: {'start': dt, 'end': dt, 'turn': s, 'runin': s, 'line': s, 'total_segment': s}}
 
+        # Phase 16b: mutable per-line {operation, fgsp, lgsp, lowest_sp, highest_sp}
+        # snapshot. Seeded from context; edited in-place by the table widgets.
+        # On accept, diff against the snapshot to build line_metadata_edits.
+        initial_meta = self.recalculation_context.get("line_metadata_map", {}) or {}
+        self._metadata_snapshot = copy.deepcopy(initial_meta)
+        self.line_metadata_state = copy.deepcopy(initial_meta)
+
         # --- UI Elements ---
         self.layout = QVBoxLayout(self)
 
         # Table Widget
         self.tableWidget = QTableWidget()
-        # --- MODIFIED: Column count and headers (Requirement 3) ---
-        self.tableWidget.setColumnCount(9) # Increased count
+        # Phase 16b: Start SP/End SP columns replaced by editable FGSP/LGSP +
+        # new Operation column. Direction column is a derived convenience
+        # toggle (flipping it swaps FGSP/LGSP).
+        self.tableWidget.setColumnCount(10)
         self.tableWidget.setHorizontalHeaderLabels([
-            "Seq", "Line", "Start SP", "End SP", "Start Time", "End Time", "Duration", "Direction", "Actions"
+            "Seq", "Line", "Operation", "FGSP", "LGSP",
+            "Start Time", "End Time", "Duration", "Direction", "Actions"
         ])
 
-        # Adjust column widths (Updated indices - Requirement 3)
-        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_SEQ_NUM, QHeaderView.ResizeToContents) # New
+        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_SEQ_NUM, QHeaderView.ResizeToContents)
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_LINE_NUM, QHeaderView.ResizeToContents)
-        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_START_SP, QHeaderView.ResizeToContents)
-        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_END_SP, QHeaderView.ResizeToContents)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_OPERATION, QHeaderView.ResizeToContents)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_FGSP, QHeaderView.ResizeToContents)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(COL_LGSP, QHeaderView.ResizeToContents)
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_START_TIME, QHeaderView.Stretch)
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_END_TIME, QHeaderView.Stretch)
         self.tableWidget.horizontalHeader().setSectionResizeMode(COL_DURATION, QHeaderView.ResizeToContents)
@@ -389,25 +406,72 @@ class SequenceEditDialog(QDialog):
             line_item.setFlags(line_item.flags() & ~Qt.ItemIsEditable)
             self.tableWidget.setItem(i, COL_LINE_NUM, line_item)
 
-            # --- Get SP based on Direction (Requirement 1 - Ensure consistency) ---
-            direction_str = directions.get(line_num, 'low_to_high') # Get stored direction
-            log.debug(f"  Row {i}, Line {line_num}: Fetched direction = '{direction_str}'") # DEBUG
-            is_reciprocal = (direction_str == 'high_to_low')
-            # Fetch SPs based on the *stored* direction
-            start_sp_val = line_specific_data.get('highest_sp') if is_reciprocal else line_specific_data.get('lowest_sp')
-            end_sp_val = line_specific_data.get('lowest_sp') if is_reciprocal else line_specific_data.get('highest_sp')
-            start_sp_str = str(start_sp_val) if start_sp_val is not None else "N/A"
-            end_sp_str = str(end_sp_val) if end_sp_val is not None else "N/A"
+            # --- Phase 16b: Operation / FGSP / LGSP widgets ---
+            # FGSP/LGSP own direction (FGSP < LGSP => forward). The Direction
+            # combo below is a derived convenience toggle.
+            meta = self.line_metadata_state.setdefault(line_num, {})
+            lowest_sp = meta.get('lowest_sp')
+            if lowest_sp is None:
+                lowest_sp = line_specific_data.get('lowest_sp')
+            highest_sp = meta.get('highest_sp')
+            if highest_sp is None:
+                highest_sp = line_specific_data.get('highest_sp')
+            # Seed defaults when metadata missing (Generated_Survey_Lines from
+            # an old plugin version before Phase 16a fields landed).
+            if meta.get('fgsp') is None:
+                meta['fgsp'] = lowest_sp
+            if meta.get('lgsp') is None:
+                meta['lgsp'] = highest_sp
+            if meta.get('operation') is None:
+                meta['operation'] = DEFAULT_OPERATION.value
+            meta['lowest_sp'] = lowest_sp
+            meta['highest_sp'] = highest_sp
 
-            start_sp_item = QTableWidgetItem(start_sp_str)
-            start_sp_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            start_sp_item.setFlags(start_sp_item.flags() & ~Qt.ItemIsEditable)
-            self.tableWidget.setItem(i, COL_START_SP, start_sp_item)
+            fgsp_val = meta.get('fgsp')
+            lgsp_val = meta.get('lgsp')
+            is_reciprocal = (
+                fgsp_val is not None and lgsp_val is not None
+                and fgsp_val > lgsp_val
+            )
+            # Keep line_directions (used by downstream sim + timing) in sync
+            # with FGSP/LGSP ordering.
+            direction_str = 'high_to_low' if is_reciprocal else 'low_to_high'
+            directions[line_num] = direction_str
+            log.debug(f"  Row {i}, Line {line_num}: FGSP={fgsp_val}, LGSP={lgsp_val}, direction={direction_str}")
 
-            end_sp_item = QTableWidgetItem(end_sp_str)
-            end_sp_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            end_sp_item.setFlags(end_sp_item.flags() & ~Qt.ItemIsEditable)
-            self.tableWidget.setItem(i, COL_END_SP, end_sp_item)
+            # Operation combo
+            op_combo = QComboBox()
+            op_combo.addItems([op.value for op in LineOperation])
+            current_op = meta.get('operation') or DEFAULT_OPERATION.value
+            op_idx = op_combo.findText(current_op)
+            if op_idx < 0:
+                op_idx = 0
+            op_combo.setProperty("row", i)
+            op_combo.currentIndexChanged.connect(self.operation_changed)
+            self.tableWidget.setCellWidget(i, COL_OPERATION, op_combo)
+            combos_to_set.append({'combo': op_combo, 'index': op_idx, 'row': i, 'line': line_num, 'kind': 'operation'})
+
+            # FGSP / LGSP spinboxes — full-range bounds per line; FGSP != LGSP enforced on accept.
+            sp_min = int(lowest_sp) if lowest_sp is not None else 0
+            sp_max = int(highest_sp) if highest_sp is not None else 999999
+            if sp_min > sp_max:
+                sp_min, sp_max = sp_max, sp_min
+
+            fgsp_spin = QSpinBox()
+            fgsp_spin.setRange(sp_min, sp_max)
+            fgsp_spin.setValue(int(fgsp_val) if fgsp_val is not None else sp_min)
+            fgsp_spin.setProperty("row", i)
+            fgsp_spin.setKeyboardTracking(False)
+            fgsp_spin.valueChanged.connect(self.fgsp_changed)
+            self.tableWidget.setCellWidget(i, COL_FGSP, fgsp_spin)
+
+            lgsp_spin = QSpinBox()
+            lgsp_spin.setRange(sp_min, sp_max)
+            lgsp_spin.setValue(int(lgsp_val) if lgsp_val is not None else sp_max)
+            lgsp_spin.setProperty("row", i)
+            lgsp_spin.setKeyboardTracking(False)
+            lgsp_spin.valueChanged.connect(self.lgsp_changed)
+            self.tableWidget.setCellWidget(i, COL_LGSP, lgsp_spin)
             # ---
 
             # Timing Items
@@ -446,7 +510,7 @@ class SequenceEditDialog(QDialog):
 
             # Determine the correct index and store it
             direction_index = 1 if is_reciprocal else 0
-            combos_to_set.append({'combo': combo, 'index': direction_index, 'row': i, 'line': line_num})
+            combos_to_set.append({'combo': combo, 'index': direction_index, 'row': i, 'line': line_num, 'kind': 'direction'})
             # --- End Direction ComboBox creation ---
 
             # Actions Item
@@ -468,33 +532,107 @@ class SequenceEditDialog(QDialog):
         self.tableWidget.blockSignals(False)
         self.tableWidget.resizeRowsToContents()
 
-    def direction_changed(self, index):
-        """ Handles direction ComboBox changes and triggers recalculation. """
-        sender_combo = self.sender()
-        if not sender_combo: return
-
-        row = sender_combo.property("row")
-        # Get line number from the correct column now (COL_LINE_NUM)
+    def _line_num_for_row(self, row):
         line_num_item = self.tableWidget.item(row, COL_LINE_NUM)
-        if line_num_item is None: return # Should not happen
-
+        if line_num_item is None:
+            return None
         try:
-            line_num = int(line_num_item.text())
+            return int(line_num_item.text())
         except (ValueError, TypeError):
             log.error(f"Error getting line number from row {row}")
+            return None
+
+    def _set_directions_state(self, line_num, direction_str):
+        state = self.current_sequence_info.setdefault('state', {})
+        state.setdefault('line_directions', {})[line_num] = direction_str
+
+    def direction_changed(self, index):
+        """Phase 16b: toggling direction swaps FGSP and LGSP.
+
+        FGSP/LGSP are the source of truth for direction; the combo is a
+        convenience toggle. The combo's desired state is whatever the user
+        just picked — so we swap only if current FGSP/LGSP disagree.
+        """
+        sender_combo = self.sender()
+        if not sender_combo:
+            return
+        row = sender_combo.property("row")
+        line_num = self._line_num_for_row(row)
+        if line_num is None:
             return
 
-        new_direction_text = sender_combo.currentText()
-        new_direction_str = new_direction_text.lower().replace(" ", "_")
+        desired_reciprocal = (sender_combo.currentIndex() == 1)  # "High to Low"
+        meta = self.line_metadata_state.get(line_num, {})
+        fgsp = meta.get('fgsp')
+        lgsp = meta.get('lgsp')
+        if fgsp is None or lgsp is None:
+            log.warning(f"direction_changed line {line_num}: FGSP/LGSP missing")
+            return
+        current_reciprocal = fgsp > lgsp
+        if desired_reciprocal == current_reciprocal:
+            return  # combo already matches state; no swap needed
 
-        if 'state' in self.current_sequence_info and 'line_directions' in self.current_sequence_info['state']:
-            if self.current_sequence_info['state']['line_directions'].get(line_num) != new_direction_str:
-                self.current_sequence_info['state']['line_directions'][line_num] = new_direction_str
-                log.info(f"Direction updated for line {line_num} to {new_direction_str}")
-                # Recalculate and update table (important to refresh SPs and timings)
-                self.run_full_timing_calculation_and_update(show_message=False)
-        else:
-            log.error(f"Error: Could not update direction state for line {line_num}")
+        meta['fgsp'], meta['lgsp'] = lgsp, fgsp
+        new_direction_str = 'high_to_low' if desired_reciprocal else 'low_to_high'
+        self._set_directions_state(line_num, new_direction_str)
+        log.info(f"Direction toggled for line {line_num}: swapped FGSP/LGSP -> FGSP={meta['fgsp']}, LGSP={meta['lgsp']}")
+        # Sync the spinboxes without firing our own handlers.
+        self._sync_fgsp_lgsp_spinboxes(row, meta['fgsp'], meta['lgsp'])
+        self.run_full_timing_calculation_and_update(show_message=False)
+
+    def operation_changed(self, index):
+        sender_combo = self.sender()
+        if not sender_combo:
+            return
+        row = sender_combo.property("row")
+        line_num = self._line_num_for_row(row)
+        if line_num is None:
+            return
+        meta = self.line_metadata_state.setdefault(line_num, {})
+        new_op = sender_combo.currentText()
+        if meta.get('operation') != new_op:
+            meta['operation'] = new_op
+            log.info(f"Operation updated for line {line_num} to {new_op}")
+            # No timing change — just state.
+
+    def fgsp_changed(self, value):
+        self._handle_sp_edit(self.sender(), 'fgsp', value)
+
+    def lgsp_changed(self, value):
+        self._handle_sp_edit(self.sender(), 'lgsp', value)
+
+    def _handle_sp_edit(self, spin, which, value):
+        if spin is None:
+            return
+        row = spin.property("row")
+        line_num = self._line_num_for_row(row)
+        if line_num is None:
+            return
+        meta = self.line_metadata_state.setdefault(line_num, {})
+        if meta.get(which) == value:
+            return
+        meta[which] = int(value)
+        # Keep Direction combo + line_directions in sync with new FGSP/LGSP.
+        fgsp = meta.get('fgsp')
+        lgsp = meta.get('lgsp')
+        if fgsp is not None and lgsp is not None and fgsp != lgsp:
+            direction_str = 'high_to_low' if fgsp > lgsp else 'low_to_high'
+            self._set_directions_state(line_num, direction_str)
+            dir_combo = self.tableWidget.cellWidget(row, COL_DIRECTION)
+            if isinstance(dir_combo, QComboBox):
+                dir_combo.blockSignals(True)
+                dir_combo.setCurrentIndex(1 if fgsp > lgsp else 0)
+                dir_combo.blockSignals(False)
+        log.info(f"Line {line_num}: {which.upper()} updated to {value} (FGSP={fgsp}, LGSP={lgsp})")
+        self.run_full_timing_calculation_and_update(show_message=False)
+
+    def _sync_fgsp_lgsp_spinboxes(self, row, fgsp, lgsp):
+        for col, val in ((COL_FGSP, fgsp), (COL_LGSP, lgsp)):
+            spin = self.tableWidget.cellWidget(row, col)
+            if isinstance(spin, QSpinBox):
+                spin.blockSignals(True)
+                spin.setValue(int(val))
+                spin.blockSignals(False)
 
     # --- Export to XLSX (Requirement 4) ---
     def export_to_xlsx(self):
@@ -539,28 +677,25 @@ class SequenceEditDialog(QDialog):
             for col_idx, header in enumerate(headers):
                 worksheet.write(0, col_idx, header, header_format)
             
+            def _cell_text(row_idx, col_idx):
+                widget = self.tableWidget.cellWidget(row_idx, col_idx)
+                if isinstance(widget, QComboBox):
+                    return widget.currentText()
+                if isinstance(widget, QSpinBox):
+                    return str(widget.value())
+                item = self.tableWidget.item(row_idx, col_idx)
+                return item.text() if item else ""
+
             # Write data rows
             for row_idx in range(self.tableWidget.rowCount()):
                 for col_idx in range(self.tableWidget.columnCount()):
-                    widget = self.tableWidget.cellWidget(row_idx, col_idx)
-                    if isinstance(widget, QComboBox):
-                        value = widget.currentText()
-                    else:
-                        item = self.tableWidget.item(row_idx, col_idx)
-                        value = item.text() if item else ""
-                    worksheet.write(row_idx + 1, col_idx, value)
-            
+                    worksheet.write(row_idx + 1, col_idx, _cell_text(row_idx, col_idx))
+
             # Auto-fit columns (equivalent to auto-adjust column widths)
             for col_idx in range(len(headers)):
                 max_width = len(headers[col_idx])
                 for row_idx in range(self.tableWidget.rowCount()):
-                    widget = self.tableWidget.cellWidget(row_idx, col_idx)
-                    if isinstance(widget, QComboBox):
-                        cell_text = widget.currentText()
-                    else:
-                        item = self.tableWidget.item(row_idx, col_idx)
-                        cell_text = item.text() if item else ""
-                    max_width = max(max_width, len(str(cell_text)))
+                    max_width = max(max_width, len(str(_cell_text(row_idx, col_idx))))
                 worksheet.set_column(col_idx, col_idx, max_width + 2)
             
             # Close the workbook
@@ -610,10 +745,37 @@ class SequenceEditDialog(QDialog):
         cost_hours = cost_seconds / 3600.0
         self.timeLabel.setText(f"Est. Total Time: {cost_hours:.2f} hours")
 
+    def _collect_metadata_edits(self):
+        """Phase 16b: diff current state vs snapshot; block if FGSP == LGSP.
+
+        Returns ({line_num: {'operation', 'fgsp', 'lgsp'}}, error_message_or_None).
+        """
+        edits = {}
+        for line_num, meta in self.line_metadata_state.items():
+            fgsp = meta.get('fgsp')
+            lgsp = meta.get('lgsp')
+            op = meta.get('operation')
+            if fgsp is None or lgsp is None or op is None:
+                continue
+            if fgsp == lgsp:
+                return None, f"Line {line_num}: FGSP and LGSP must differ (both are {fgsp})."
+            snap = self._metadata_snapshot.get(line_num, {})
+            if (snap.get('operation') == op
+                and snap.get('fgsp') == fgsp
+                and snap.get('lgsp') == lgsp):
+                continue
+            edits[line_num] = {'operation': op, 'fgsp': int(fgsp), 'lgsp': int(lgsp)}
+        return edits, None
+
     def on_accept(self):
         """ Run final recalculation before accepting to ensure consistency. """
         log.info("Accepting sequence edit dialog.")
+        edits, err = self._collect_metadata_edits()
+        if err:
+            QMessageBox.warning(self, "Invalid FGSP/LGSP", err)
+            return
         if self.run_full_timing_calculation_and_update(show_message=False):
+            self.current_sequence_info['line_metadata_edits'] = edits
             super().accept()
         else:
             QMessageBox.warning(self, "Accept Failed", "Final timing calculation failed. Cannot accept.")
