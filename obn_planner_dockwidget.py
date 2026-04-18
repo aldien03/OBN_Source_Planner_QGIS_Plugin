@@ -1947,6 +1947,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # NULL if the source SPS file had no direction data. Used by Phase 6's
             # "Follow previous shooting direction" feature for 4D monitor surveys.
             line_fields.append(QgsField("PrevDirection", QVariant.Double, len=10, prec=1))
+            # Phase 16a: per-line metadata feeding Phase 17 PDF export and
+            # Phase 16c partial-range simulation. See services/line_metadata.py.
+            line_fields.append(QgsField("Operation", QVariant.String, len=12))
+            line_fields.append(QgsField("FGSP", QVariant.Int))
+            line_fields.append(QgsField("LGSP", QVariant.Int))
 
             # Create run-in feature fields
             runin_fields = QgsFields()
@@ -2117,6 +2122,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             log.warning(f"LineNum {line_num}: {dir_warning}")
                         prev_dir_attr = NULL if line_prev_direction is None else line_prev_direction
 
+                        # Phase 16a: defaults assume nominal forward traversal
+                        # (FGSP=lowest, LGSP=highest) and Production operation.
+                        # Per-line overrides happen in the sequence editor (Phase 16b).
+                        from .services.line_metadata import DEFAULT_OPERATION
+
                         # Create line feature
                         line_feature = QgsFeature(line_fields)
                         line_feature.setGeometry(line_geometry)
@@ -2132,6 +2142,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                             highest_sp_point.x(),
                             highest_sp_point.y(),
                             prev_dir_attr,
+                            DEFAULT_OPERATION.value,
+                            lowest_sp,
+                            highest_sp,
                         ])
 
                         line_features.append(line_feature)
