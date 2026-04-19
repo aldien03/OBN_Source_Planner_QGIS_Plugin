@@ -1945,18 +1945,30 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.exception(f"Error creating run-ins layer: {e}")
             return None
 
-    def _find_runin_geom(self, runin_layer, target_line_num, target_position):
+    def _find_runin_geom(self, runin_layer, target_line_num, target_position, target_sub_line_id=None):
         """
         Finds the geometry of a specific run-in feature based on line number and position.
 
         Args:
             runin_layer (QgsVectorLayer): Layer containing run-in features
-            target_line_num (int): Line number to find run-in for
+            target_line_num (int | tuple): Line number. Phase 16d-2a: accepts
+                either an int line_num (matches any SubLineId — backward
+                compatible with pre-16d-2 callers that don't know about
+                sub-lines) or a tuple (line_num, sub_line_id) that implicitly
+                sets target_sub_line_id.
             target_position (str): Position to find ("Start" or "End")
+            target_sub_line_id (int | None): When given (or when target_line_num
+                is a tuple), filter the query by SubLineId too. Required when
+                a parent has multiple sub-lines to avoid matching the wrong
+                run-in feature.
 
         Returns:
             QgsGeometry: Run-in geometry if found, None otherwise
         """
+        # Phase 16d-2a: accept tuple key as target_line_num and unpack.
+        if isinstance(target_line_num, tuple) and len(target_line_num) == 2:
+            target_line_num, target_sub_line_id = target_line_num
+
         # Validate input parameters
         if not runin_layer or not runin_layer.isValid():
             log.error("Invalid run-in layer provided")
@@ -1971,8 +1983,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             return None
 
         try:
-            # Case-insensitive position matching for robustness
+            # Case-insensitive position matching for robustness. Phase 16d-2a:
+            # filter by SubLineId when provided so multi-sub-line parents
+            # return the correct run-in (not just the first one sharing LineNum).
             expr_str = f"\"LineNum\" = {target_line_num} AND upper(\"Position\") = '{target_position.upper()}'"
+            if target_sub_line_id is not None:
+                expr_str += f" AND \"SubLineId\" = {int(target_sub_line_id)}"
             expr = QgsExpression(expr_str)
 
             # Create a feature request with the filter expression
@@ -2219,6 +2235,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Create run-in feature fields
             runin_fields = QgsFields()
             runin_fields.append(QgsField("LineNum", QVariant.Int))
+            # Phase 16d-2a: SubLineId mirrors the parent Generated_Survey_Lines
+            # schema so run-ins can be matched per (LineNum, SubLineId) when a
+            # parent line has multiple sub-lines (gap scenario). Memory layer
+            # — no migration concern.
+            runin_fields.append(QgsField("SubLineId", QVariant.Int))
             runin_fields.append(QgsField("Length_m", QVariant.Double, len=10, prec=2))
             runin_fields.append(QgsField("Position", QVariant.String, len=10))
             runin_fields.append(QgsField("Direction", QVariant.String, len=20))
@@ -2479,6 +2500,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                     start_runin_feature.setGeometry(start_runin_geom)
                                     start_runin_feature.setAttributes([
                                         line_num,
+                                        sub_idx,
                                         start_runin_geom.length(),
                                         "Start",
                                         "Low to High SP",
@@ -2501,6 +2523,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                                     end_runin_feature.setGeometry(end_runin_geom)
                                     end_runin_feature.setAttributes([
                                         line_num,
+                                        sub_idx,
                                         end_runin_geom.length(),
                                         "End",
                                         "High to Low SP",
@@ -6863,6 +6886,16 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         if prev_direction_idx != -1:
             field_indices['prev_direction'] = prev_direction_idx
 
+        # SubLineId is OPTIONAL (Phase 16d+). Pre-16d layers don't carry it;
+        # in that case every parent line is treated as a single sub-line
+        # with SubLineId=1. Phase 16d-2a keys line_data by
+        # (LineNum, SubLineId) tuple so gap-scenario parents (multiple
+        # TBA runs → multiple sub-lines sharing LineNum) get distinct
+        # entries instead of overwriting.
+        sub_line_id_idx = line_fields.lookupField("SubLineId")
+        if sub_line_id_idx != -1:
+            field_indices['sub_line_id'] = sub_line_id_idx
+
         # Check for missing fields (excluding optional ones)
         _required = ('line_num', 'base_heading', 'status', 'length', 'lowest_sp', 'highest_sp')
         missing_fields = [name for name in _required if field_indices.get(name, -1) == -1]
@@ -6883,6 +6916,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             'end_x': runin_fields.lookupField("end_x"),
             'end_y': runin_fields.lookupField("end_y")
         }
+        # Phase 16d-2a: SubLineId on run-ins is OPTIONAL (absent on run-ins
+        # generated before 16d-2a shipped). Fallback = 1 (assume single
+        # sub-line per parent).
+        runin_sub_line_id_idx = runin_fields.lookupField("SubLineId")
+        if runin_sub_line_id_idx != -1:
+            runin_indices['sub_line_id'] = runin_sub_line_id_idx
 
         # Check if run-in layer has coordinate fields
         has_runin_coords = all(idx != -1 for name, idx in runin_indices.items() 
@@ -6928,6 +6967,18 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     except (ValueError, TypeError):
                         prev_direction_val = None
 
+            # Phase 16d-2a: SubLineId from the feature. Pre-16d layers lack
+            # this field — fall back to 1 so legacy single-sub-line surveys
+            # still work and their line_data keys are (line_num, 1).
+            sub_line_id = 1
+            if 'sub_line_id' in field_indices:
+                _raw_sli = feature.attribute(field_indices['sub_line_id'])
+                if _raw_sli is not None and _raw_sli != NULL:
+                    try:
+                        sub_line_id = int(_raw_sli)
+                    except (ValueError, TypeError):
+                        sub_line_id = 1
+
             # Check line status
             status_str = str(status_val).strip().upper() if status_val is not None and status_val != NULL else ""
             if status_str != "TO BE ACQUIRED":
@@ -6961,35 +7012,23 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             start_pt = vertices[0]  # QgsPoint
             end_pt = vertices[-1]   # QgsPoint
 
-            # Phase 16d preflight: the simulation pipeline keys line_data by
-            # LineNum (integer). If handle_generate_lines emitted multiple
-            # sub-lines for the same parent (gap scenario), the later sub-
-            # lines would silently overwrite earlier ones here — hiding
-            # TBA work from the simulation and producing a partial plan.
-            # Show a clean actionable dialog and abort; sub-line-aware
-            # simulation is tracked as Phase 16d-2 (follow-up work).
-            if line_num in line_data:
-                log.error(
-                    f"LineNum {line_num} appears on multiple sub-line features; "
-                    f"aborting _prepare_line_data (Phase 16d-2 needed)."
+            # Phase 16d-2a: line_data is now keyed by (line_num, sub_line_id)
+            # so gap-scenario parents (multiple TBA runs → multiple sub-lines
+            # sharing the same LineNum) no longer overwrite each other.
+            # A genuine duplicate (same LineNum + SubLineId on two features)
+            # is a data-layer bug; log and skip the second occurrence.
+            line_key = (line_num, sub_line_id)
+            if line_key in line_data:
+                log.warning(
+                    f"Duplicate feature for line_key={line_key}; "
+                    f"keeping the first occurrence."
                 )
-                QMessageBox.warning(
-                    self,
-                    "Multi-Segment Line Not Yet Supported",
-                    f"Line {line_num} has been split into multiple acquisition "
-                    f"segments because some shotpoints in the middle were marked "
-                    f"Acquired, leaving gaps.\n\n"
-                    f"Simulation does not yet plan across multi-segment parent "
-                    f"lines — this is Phase 16d-2 work.\n\n"
-                    f"Workaround: mark the intermediate acquired SPs back to "
-                    f"'To Be Acquired' so line {line_num} has a single contiguous "
-                    f"range, then click Generate Lookahead Lines and Run Simulation "
-                    f"again."
-                )
-                return None, None
+                continue
 
             # Store line data
-            line_data[line_num] = {
+            line_data[line_key] = {
+                'line_num': line_num,           # Phase 16d-2a: explicit for callers
+                'sub_line_id': sub_line_id,     # Phase 16d-2a: explicit for callers
                 'line_geom': line_geom,
                 'base_heading': base_heading,
                 'length': length,
@@ -7049,8 +7088,21 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     runins_skipped_attr += 1
                     continue
 
+                # Phase 16d-2a: read SubLineId with fallback to 1 for
+                # pre-16d-2a run-in features (layer gains the field only
+                # when Generate Lookahead Lines runs on the updated code).
+                runin_sub_line_id = 1
+                if 'sub_line_id' in runin_indices:
+                    _raw_rsli = feature.attribute(runin_indices['sub_line_id'])
+                    if _raw_rsli is not None and _raw_rsli != NULL:
+                        try:
+                            runin_sub_line_id = int(_raw_rsli)
+                        except (ValueError, TypeError):
+                            runin_sub_line_id = 1
+                line_key = (line_num, runin_sub_line_id)
+
                 # Skip if line wasn't processed or is not 'To Be Acquired'
-                if line_num not in line_data:
+                if line_key not in line_data:
                     continue
 
                 # Phase 12b: always fetch the full run-in geometry (used both
@@ -7097,7 +7149,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         continue
                     
                 # Get the line endpoint to connect to (start or end of the line)
-                line_info = line_data[line_num]
+                line_info = line_data[line_key]
                 expected_connection_point = None
 
                 if position == "Start":
@@ -7138,11 +7190,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     # (2-opt, OR-tools) never have to rescan the run-ins layer.
                     if is_connected and runin_outer_pt:
                         if position == "Start":
-                            line_data[line_num]['start_runin_point'] = runin_outer_pt
-                            line_data[line_num]['start_runin_geom'] = runin_geom
+                            line_data[line_key]['start_runin_point'] = runin_outer_pt
+                            line_data[line_key]['start_runin_geom'] = runin_geom
                         elif position == "End":
-                            line_data[line_num]['end_runin_point'] = runin_outer_pt
-                            line_data[line_num]['end_runin_geom'] = runin_geom
+                            line_data[line_key]['end_runin_point'] = runin_outer_pt
+                            line_data[line_key]['end_runin_geom'] = runin_geom
                         runins_matched += 1
                     elif is_connected:
                         log.error(f"Internal error: Run-in FID {feature.id()} connected but failed to identify outer point.")
@@ -7154,22 +7206,23 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.warning(f"Skipping run-in processing loop as '{runins_layer.name()}' is empty.")
 
         # --- Validate Final Line Data ---
+        # Phase 16d-2a: keys here are (line_num, sub_line_id) tuples.
         final_line_data = {}
-        missing_runin_lines = []
+        missing_runin_keys = []
 
-        for line_num, data in line_data.items():
+        for line_key, data in line_data.items():
             if data.get('start_runin_point') is None or data.get('end_runin_point') is None:
-                missing_runin_lines.append(line_num)
+                missing_runin_keys.append(line_key)
             else:
-                final_line_data[line_num] = data
+                final_line_data[line_key] = data
 
-        if missing_runin_lines:
-            log.warning(f"Excluding {len(missing_runin_lines)} lines missing run-in points: {sorted(missing_runin_lines)}")
-            QMessageBox.warning(self, "Missing Run-in Data", 
-                              f"Excluding {len(missing_runin_lines)} lines missing run-in points. Check connections.")
+        if missing_runin_keys:
+            log.warning(f"Excluding {len(missing_runin_keys)} lines missing run-in points: {sorted(missing_runin_keys)}")
+            QMessageBox.warning(self, "Missing Run-in Data",
+                              f"Excluding {len(missing_runin_keys)} lines missing run-in points. Check connections.")
 
-        final_line_nums = sorted(list(final_line_data.keys()))
-        log.info(f"Prepared final data for {len(final_line_nums)} lines: {final_line_nums}")
+        final_line_keys = sorted(list(final_line_data.keys()))
+        log.info(f"Prepared final data for {len(final_line_keys)} lines: {final_line_keys}")
 
         if not final_line_data:
             QMessageBox.warning(self, "No Data", "No valid lines with run-in points found.")
@@ -7277,32 +7330,43 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             start_sim_time = time.time()
             best_final_sequence_info = None
 
-            # --- Filter out lines marked as failed DURING deviation ---
-            # We're commenting this out since we're not doing deviation calculations
-            # active_line_nums = sorted([ln for ln, data in line_data.items() if not data.get('deviation_failed', False)])
-            # Using all line numbers instead since we're not calculating deviations
-            active_line_nums = sorted(line_data.keys())
+            # Phase 16d-2a: line_data is now keyed by (line_num, sub_line_id)
+            # tuples. Downstream sequence generators (services.sequence_service)
+            # do integer arithmetic on line numbers; we derive the parent list
+            # here, generate the parent order, then expand each parent to its
+            # sub-lines in SubLineId order. This keeps services/sequence_service
+            # untouched while unlocking multi-sub-line (gap scenario) surveys.
+            active_line_nums = sorted(line_data.keys())                  # tuples
+            active_parent_nums = sorted({k[0] for k in active_line_nums})
+            parent_to_keys: dict = {}
+            for _k in active_line_nums:
+                parent_to_keys.setdefault(_k[0], []).append(_k)
+            for _p in parent_to_keys:
+                parent_to_keys[_p].sort()  # sub_line_id ascending
 
             if not active_line_nums:
                 log.error("No active lines remain after preparation.")
                 QMessageBox.critical(self, "Sequencing Error", "No usable lines available for sequencing.")
                 raise ValueError("No usable lines for sequencing.")
-            log.info(f"Proceeding with {len(active_line_nums)} lines for sequencing.")
+            log.info(
+                f"Proceeding with {len(active_line_nums)} sub-lines "
+                f"across {len(active_parent_nums)} parent lines for sequencing."
+            )
             # ---
 
-            all_remaining_lines = set(active_line_nums)
-            first_line_num = sim_params['first_line_num']
+            all_remaining_lines = set(active_line_nums)                  # set of tuples
+            first_line_num = sim_params['first_line_num']                # int (parent)
 
-            # Validate first line *against the filtered list* - commented out deviation checks
-            if first_line_num not in all_remaining_lines:
-                # Removed deviation failure check
-                # if first_line_num in line_data and line_data[first_line_num].get('deviation_failed'):
-                #     log.error(f"Specified first line {first_line_num} failed deviation calculation and cannot be used to start the sequence.")
-                #     QMessageBox.critical(self, "Start Line Error", f"The specified start line ({first_line_num}) failed the deviation calculation. Please choose a different start line or resolve the deviation issue.")
-                #     raise ValueError(f"Specified first line {first_line_num} failed deviation.")
-                # else:
-                log.warning(f"Specified first line {first_line_num} not in active line list. Using first available: {active_line_nums[0]}")
-                first_line_num = active_line_nums[0]
+            # Validate first line against the PARENT list (user types a parent
+            # LineNum; sub-lines are resolved to the lowest-SubLineId sub-line
+            # of that parent).
+            if first_line_num not in active_parent_nums:
+                log.warning(
+                    f"Specified first line {first_line_num} not in active parent "
+                    f"list. Using first available: {active_parent_nums[0]}"
+                )
+                first_line_num = active_parent_nums[0]
+            first_line_key = parent_to_keys[first_line_num][0]  # first sub-line tuple
 
             # ================================================
             # --- BRANCH BASED ON SELECTED MODE ---
@@ -7312,26 +7376,27 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 start_reciprocal_teardrop = (sim_params['first_heading_option'] == "High to Low SP (Reciprocal)")
                 log.info(f"Teardrop starting direction: {'Reciprocal' if start_reciprocal_teardrop else 'Normal'}")
 
-                current_seq = [first_line_num]
-                first_line_info = line_data.get(first_line_num)
-                if not first_line_info: raise ValueError(f"Line data missing for first line {first_line_num}")
+                # Phase 16d-2a: sequence and state use tuple keys end-to-end.
+                current_seq = [first_line_key]
+                first_line_info = line_data.get(first_line_key)
+                if not first_line_info: raise ValueError(f"Line data missing for first line {first_line_key}")
 
                 initial_cost = 0.0
                 line_time = first_line_info['length'] / sim_params['avg_shooting_speed_mps'] if sim_params['avg_shooting_speed_mps'] > 0 else 0.0
                 runin_time = 0.0
-                runin_geom = self._find_runin_geom(required_layers['runins'], first_line_num, "End" if start_reciprocal_teardrop else "Start")
+                runin_geom = self._find_runin_geom(required_layers['runins'], first_line_key, "End" if start_reciprocal_teardrop else "Start")
                 if runin_geom: runin_time = self._calculate_runin_time(runin_geom, sim_params)
                 initial_cost += runin_time + line_time
 
-                current_exit_pt, current_exit_hdg = self._get_next_exit_state(first_line_num, start_reciprocal_teardrop, line_data)
+                current_exit_pt, current_exit_hdg = self._get_next_exit_state(first_line_key, start_reciprocal_teardrop, line_data)
                 if current_exit_pt is None or current_exit_hdg is None: raise ValueError("Exit state error after first line (Teardrop init)")
 
-                initial_remaining = all_remaining_lines - {first_line_num}
+                initial_remaining = all_remaining_lines - {first_line_key}
                 initial_direction_str = 'high_to_low' if start_reciprocal_teardrop else 'low_to_high'
                 initial_state = {
-                    'last_line_num': first_line_num, 'exit_pt': current_exit_pt, 'exit_hdg': current_exit_hdg,
+                    'last_line_num': first_line_key, 'exit_pt': current_exit_pt, 'exit_hdg': current_exit_hdg,
                     'is_reciprocal': start_reciprocal_teardrop, 'remaining_lines': initial_remaining,
-                    'line_directions': {first_line_num: initial_direction_str}
+                    'line_directions': {first_line_key: initial_direction_str}
                 }
 
                 current_state = initial_state
@@ -7350,8 +7415,20 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         exit_hdg = current_state['exit_hdg']
                         remaining_lines = current_state['remaining_lines']
 
-                        next_line_num = self._determine_next_line(last_line_num, remaining_lines, line_data)
-                        if next_line_num is None: break # No more lines
+                        # Phase 16d-2a: Teardrop next-line picker — delegate to
+                        # the int-arithmetic service function over PARENT line
+                        # numbers, then map the chosen parent back to its lowest-
+                        # SubLineId sub-line still in remaining_lines.
+                        _current_parent = last_line_num[0] if isinstance(last_line_num, tuple) else last_line_num
+                        _remaining_parents = sorted({k[0] if isinstance(k, tuple) else k for k in remaining_lines})
+                        _next_parent = self._determine_next_line(_current_parent, _remaining_parents, line_data)
+                        if _next_parent is None: break  # No more lines
+                        _candidates = sorted(
+                            k for k in remaining_lines
+                            if (isinstance(k, tuple) and k[0] == _next_parent) or k == _next_parent
+                        )
+                        if not _candidates: break
+                        next_line_num = _candidates[0]
 
                         next_line_info = line_data.get(next_line_num)
                         if not next_line_info: raise ValueError(f"Line data missing for next line {next_line_num}")
@@ -7360,7 +7437,18 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         # pin the next line's direction to its PREV_DIRECTION
                         # via assign_direction_for_line. Otherwise alternate
                         # (legacy behavior).
-                        if follow_previous_direction:
+                        # Phase 16d-2a: per-parent direction constraint. If
+                        # the next sub-line is of the SAME parent as the
+                        # previous step, inherit direction (don't alternate).
+                        # Otherwise use follow-previous or alternation as before.
+                        _prev_parent = last_line_num[0] if isinstance(last_line_num, tuple) else last_line_num
+                        _next_parent = next_line_num[0] if isinstance(next_line_num, tuple) else next_line_num
+                        _same_parent = (_prev_parent == _next_parent)
+
+                        if _same_parent:
+                            next_is_reciprocal = current_state['is_reciprocal']
+                            chosen_direction_str = 'high_to_low' if next_is_reciprocal else 'low_to_high'
+                        elif follow_previous_direction:
                             from .services.sequence_service import (
                                 LineDirection, assign_direction_for_line,
                             )
@@ -7426,11 +7514,24 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 else: log.warning("Could not determine valid line interval. Falling back to jump=1.")
                 log.info(f"Calculated Ideal Racetrack Jump = {ideal_jump_count} lines")
 
-                generated_racetrack_sequence = self._generate_interleaved_racetrack_sequence(
-                    active_line_nums, first_line_num, ideal_jump_count
+                # Phase 16d-2a: racetrack generator operates on PARENT line
+                # numbers (int arithmetic). We then expand each parent to its
+                # sub-line tuples in SubLineId order, giving the final tuple-
+                # keyed sequence for downstream simulation.
+                parent_racetrack_sequence = self._generate_interleaved_racetrack_sequence(
+                    active_parent_nums, first_line_num, ideal_jump_count
                 )
-                if not generated_racetrack_sequence: raise ValueError("Failed to generate interleaved racetrack sequence.")
-                log.debug(f"Generated Interleaved Racetrack Sequence: {generated_racetrack_sequence}")
+                if not parent_racetrack_sequence: raise ValueError("Failed to generate interleaved racetrack sequence.")
+                generated_racetrack_sequence = [
+                    _k for _p in parent_racetrack_sequence for _k in parent_to_keys.get(_p, [])
+                ]
+                log.debug(
+                    f"Generated Interleaved Racetrack Sequence (parents): {parent_racetrack_sequence}"
+                )
+                log.debug(
+                    f"Expanded to sub-line keys ({len(generated_racetrack_sequence)} entries): "
+                    f"{generated_racetrack_sequence}"
+                )
 
                 # Phase 6c-3: when 'follow_previous_direction' is on (4D
                 # monitor survey), the per-line direction is determined by
@@ -7528,7 +7629,32 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 # Phase 13a: OR-tools Guided Local Search. Availability gate
                 # lives here (not in _apply_ortools_optimization) so we can
                 # show a clear dialog telling the user how to fix it.
-                if not getattr(self, '_ortools_available', False):
+                # Phase 16d-2a: OR-tools is NOT YET sub-line-aware (the cost
+                # matrix model treats each node as a full line with its own
+                # direction choice; per-parent direction constraint is Phase
+                # 16d-2b work). If any parent has multiple sub-lines, skip
+                # OR-tools for this run with a clear message.
+                _multi_sub_line = any(len(v) > 1 for v in parent_to_keys.values())
+                if _multi_sub_line:
+                    _parents_with_gaps = [p for p, ks in parent_to_keys.items() if len(ks) > 1]
+                    log.warning(
+                        f"OR-tools skipped: multi-sub-line survey detected "
+                        f"(parents with sub-lines: {_parents_with_gaps}). "
+                        f"Phase 16d-2b will re-enable OR-tools for these. "
+                        f"Keeping the Racetrack/Teardrop sequence unoptimized."
+                    )
+                    if hasattr(self, 'iface') and self.iface:
+                        try:
+                            self.iface.messageBar().pushInfo(
+                                "OR-tools skipped",
+                                f"Multi-sub-line survey detected "
+                                f"({len(_parents_with_gaps)} parent line(s) with gaps) — "
+                                f"OR-tools is pending Phase 16d-2b. Using the "
+                                f"Racetrack/Teardrop sequence without optimization."
+                            )
+                        except Exception:
+                            pass
+                elif not getattr(self, '_ortools_available', False):
                     QMessageBox.warning(
                         self,
                         "OR-tools Not Installed",
@@ -8062,8 +8188,18 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 to_line = sequence_list[i + 1]
 
                 # Direction for each consecutive line: legacy alternation,
-                # OR direction_override (Phase 6c-3 follow-previous feature).
-                if direction_override is not None and to_line in direction_override:
+                # OR direction_override (Phase 6c-3 follow-previous feature),
+                # OR per-parent inheritance (Phase 16d-2a: when the next sub-
+                # line shares a parent with the previous step, inherit the
+                # parent's direction — never alternate within a parent).
+                _from_parent = from_line[0] if isinstance(from_line, tuple) else from_line
+                _to_parent = to_line[0] if isinstance(to_line, tuple) else to_line
+                _same_parent = (_from_parent == _to_parent)
+
+                if _same_parent:
+                    next_is_reciprocal = current_state['is_reciprocal']
+                    next_direction = 'high_to_low' if next_is_reciprocal else 'low_to_high'
+                elif direction_override is not None and to_line in direction_override:
                     next_direction = direction_override[to_line]
                     next_is_reciprocal = (next_direction == 'high_to_low')
                 else:
