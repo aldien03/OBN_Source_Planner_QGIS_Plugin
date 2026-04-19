@@ -7629,28 +7629,35 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 # Phase 13a: OR-tools Guided Local Search. Availability gate
                 # lives here (not in _apply_ortools_optimization) so we can
                 # show a clear dialog telling the user how to fix it.
-                # Phase 16d-2a: OR-tools is NOT YET sub-line-aware (the cost
-                # matrix model treats each node as a full line with its own
-                # direction choice; per-parent direction constraint is Phase
-                # 16d-2b work). If any parent has multiple sub-lines, skip
-                # OR-tools for this run with a clear message.
+                # Phase 16d-2b.2: OR-tools works with multi-sub-line surveys
+                # ONLY when follow_previous_direction is on (4D monitor
+                # surveys). In that mode each sub-line's direction is
+                # pre-pinned from its parent's PREV_DIRECTION, so the
+                # per-parent direction constraint is satisfied by
+                # construction. For non-4D multi-sub-line surveys the
+                # cost model can't choose a direction for a partial line
+                # sensibly, so we still skip.
                 _multi_sub_line = any(len(v) > 1 for v in parent_to_keys.values())
-                if _multi_sub_line:
+                _block_multi_sub_line = _multi_sub_line and not follow_previous_direction
+                if _block_multi_sub_line:
                     _parents_with_gaps = [p for p, ks in parent_to_keys.items() if len(ks) > 1]
                     log.warning(
                         f"OR-tools skipped: multi-sub-line survey detected "
-                        f"(parents with sub-lines: {_parents_with_gaps}). "
-                        f"Phase 16d-2b will re-enable OR-tools for these. "
+                        f"(parents with sub-lines: {_parents_with_gaps}) and "
+                        f"'Follow previous shooting direction' is OFF. OR-tools "
+                        f"can only set direction for partial lines when "
+                        f"PREV_DIRECTION is pinned (4D monitor workflow). "
                         f"Keeping the Racetrack/Teardrop sequence unoptimized."
                     )
                     if hasattr(self, 'iface') and self.iface:
                         try:
                             self.iface.messageBar().pushInfo(
                                 "OR-tools skipped",
-                                f"Multi-sub-line survey detected "
-                                f"({len(_parents_with_gaps)} parent line(s) with gaps) — "
-                                f"OR-tools is pending Phase 16d-2b. Using the "
-                                f"Racetrack/Teardrop sequence without optimization."
+                                f"Multi-sub-line survey without 'Follow previous "
+                                f"direction' ({len(_parents_with_gaps)} parent "
+                                f"line(s) with gaps). Enable Follow-Previous for "
+                                f"4D-monitor surveys to let OR-tools optimize, or "
+                                f"keep using Racetrack/Teardrop without optimization."
                             )
                         except Exception:
                             pass
@@ -8546,24 +8553,45 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # --- Build node layout ---------------------------------------------
         # Node 0 = depot. Then for each line: either 2 nodes with disjunction
         # (free direction choice) or 1 node (pinned by direction_override).
-        node_meta = [NodeMeta(line_num=None, is_reciprocal=False, is_depot=True)]
+        # Phase 16d-2b.2: original_sequence elements are (line_num, sub_line_id)
+        # tuples. NodeMeta carries both fields so the caller can look up
+        # line_data by the full key. line_to_nodes is tuple-keyed.
+        node_meta = [NodeMeta(line_num=None, is_reciprocal=False, is_depot=True, sub_line_id=None)]
         disjunction_pairs = []
-        line_to_nodes = {}   # line_num -> list of (node_idx, is_reciprocal)
+        line_to_nodes = {}   # (line_num, sub_line_id) -> list of (node_idx, is_reciprocal)
 
-        for line_num in original_sequence:
-            if direction_override is not None and line_num in direction_override:
-                pinned_dir = direction_override[line_num]
+        for line_key in original_sequence:
+            # line_key is a tuple (line_num, sub_line_id) in Phase 16d-2a+
+            # world; fall back to (int, 1) for any legacy caller that still
+            # passes a bare int.
+            if isinstance(line_key, tuple) and len(line_key) == 2:
+                parent_num, sub_id = line_key
+            else:
+                parent_num, sub_id = int(line_key), 1
+                line_key = (parent_num, sub_id)
+
+            if direction_override is not None and line_key in direction_override:
+                pinned_dir = direction_override[line_key]
                 is_reciprocal = (pinned_dir == 'high_to_low')
                 idx = len(node_meta)
-                node_meta.append(NodeMeta(line_num=line_num, is_reciprocal=is_reciprocal))
-                line_to_nodes[line_num] = [(idx, is_reciprocal)]
+                node_meta.append(NodeMeta(
+                    line_num=parent_num, sub_line_id=sub_id,
+                    is_reciprocal=is_reciprocal,
+                ))
+                line_to_nodes[line_key] = [(idx, is_reciprocal)]
             else:
                 idx_fwd = len(node_meta)
-                node_meta.append(NodeMeta(line_num=line_num, is_reciprocal=False))
+                node_meta.append(NodeMeta(
+                    line_num=parent_num, sub_line_id=sub_id,
+                    is_reciprocal=False,
+                ))
                 idx_rev = len(node_meta)
-                node_meta.append(NodeMeta(line_num=line_num, is_reciprocal=True))
+                node_meta.append(NodeMeta(
+                    line_num=parent_num, sub_line_id=sub_id,
+                    is_reciprocal=True,
+                ))
                 disjunction_pairs.append((idx_fwd, idx_rev))
-                line_to_nodes[line_num] = [(idx_fwd, False), (idx_rev, True)]
+                line_to_nodes[line_key] = [(idx_fwd, False), (idx_rev, True)]
 
         num_nodes = len(node_meta)
         log.info(
@@ -8595,25 +8623,26 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             shooting_speed = 4.0
 
         cost_matrix: dict = {}
-        dubins_cache: dict = {}  # (from_line, from_is_recip, to_line, to_is_recip) -> seconds
-        runin_cache: dict = {}   # (line_num, is_reciprocal) -> seconds
+        # Phase 16d-2b.2: caches keyed by the line_data key (tuple) + direction.
+        dubins_cache: dict = {}  # (from_key, from_is_recip, to_key, to_is_recip) -> seconds
+        runin_cache: dict = {}   # (line_key, is_reciprocal) -> seconds
 
-        def _acq_time(line_num):
-            info = line_data.get(line_num, {})
+        def _acq_time(line_key):
+            info = line_data.get(line_key, {})
             length = info.get('length', 0.0) or 0.0
             return length / shooting_speed
 
-        def _runin_time(line_num, is_reciprocal):
-            key = (line_num, is_reciprocal)
-            if key in runin_cache:
-                return runin_cache[key]
+        def _runin_time(line_key, is_reciprocal):
+            cache_key = (line_key, is_reciprocal)
+            if cache_key in runin_cache:
+                return runin_cache[cache_key]
             geom_key = 'end_runin_geom' if is_reciprocal else 'start_runin_geom'
-            geom = line_data.get(line_num, {}).get(geom_key)
+            geom = line_data.get(line_key, {}).get(geom_key)
             if not geom or geom.isEmpty():
-                runin_cache[key] = 0.0
+                runin_cache[cache_key] = 0.0
             else:
-                runin_cache[key] = self._calculate_runin_time(geom, sim_params)
-            return runin_cache[key]
+                runin_cache[cache_key] = self._calculate_runin_time(geom, sim_params)
+            return runin_cache[cache_key]
 
         precompute_start = time.time()
         cancelled = False
@@ -8640,11 +8669,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 if meta_i.is_depot and meta_j.is_depot:
                     cost_matrix[(i, j)] = 0.0
                     continue
+                # Phase 16d-2b.2: build tuple keys for line_data lookups.
+                key_j = (meta_j.line_num, meta_j.sub_line_id) if meta_j.line_num is not None else None
+                key_i = (meta_i.line_num, meta_i.sub_line_id) if meta_i.line_num is not None else None
                 if meta_i.is_depot:
                     # depot -> first line: run-in + acquisition of destination
                     cost_matrix[(i, j)] = (
-                        _runin_time(meta_j.line_num, meta_j.is_reciprocal)
-                        + _acq_time(meta_j.line_num)
+                        _runin_time(key_j, meta_j.is_reciprocal)
+                        + _acq_time(key_j)
                     )
                     continue
                 if meta_j.is_depot:
@@ -8652,30 +8684,33 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     cost_matrix[(i, j)] = 0.0
                     continue
 
-                # Same-line-different-direction: disjunction blocks this,
+                # Same SUB-LINE, different direction: disjunction blocks this,
                 # but we still need a cost entry. Use INFEASIBLE as guard.
-                if meta_i.line_num == meta_j.line_num:
+                # Phase 16d-2b.2: check the full (line_num, sub_line_id) key
+                # so different sub-lines of the same parent are NOT treated
+                # as "same line" (they're separate acquisitions).
+                if key_i == key_j:
                     cost_matrix[(i, j)] = INFEASIBLE_ARC_COST
                     continue
 
                 # Line -> line: Dubins turn + destination runin + destination acq
                 dubins_key = (
-                    meta_i.line_num, meta_i.is_reciprocal,
-                    meta_j.line_num, meta_j.is_reciprocal,
+                    key_i, meta_i.is_reciprocal,
+                    key_j, meta_j.is_reciprocal,
                 )
                 if dubins_key not in dubins_cache:
                     exit_pt, exit_hdg = self._get_next_exit_state(
-                        meta_i.line_num, meta_i.is_reciprocal, line_data
+                        key_i, meta_i.is_reciprocal, line_data
                     )
                     entry_pt, entry_hdg = self._get_entry_details(
-                        line_data[meta_j.line_num], meta_j.is_reciprocal
+                        line_data[key_j], meta_j.is_reciprocal
                     )
                     if (exit_pt is None or exit_hdg is None
                             or entry_pt is None or entry_hdg is None):
                         log.debug(
                             f"Missing entry/exit for "
-                            f"{meta_i.line_num}({'rev' if meta_i.is_reciprocal else 'fwd'})"
-                            f"->{meta_j.line_num}({'rev' if meta_j.is_reciprocal else 'fwd'}); "
+                            f"{key_i}({'rev' if meta_i.is_reciprocal else 'fwd'})"
+                            f"->{key_j}({'rev' if meta_j.is_reciprocal else 'fwd'}); "
                             f"marking infeasible"
                         )
                         dubins_cache[dubins_key] = float(INFEASIBLE_ARC_COST)
@@ -8698,8 +8733,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 else:
                     cost_matrix[(i, j)] = (
                         turn_time
-                        + _runin_time(meta_j.line_num, meta_j.is_reciprocal)
-                        + _acq_time(meta_j.line_num)
+                        + _runin_time(key_j, meta_j.is_reciprocal)
+                        + _acq_time(key_j)
                     )
 
         if cancelled:
@@ -8722,21 +8757,28 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 first_line_num_int = int(first_line_num_raw)
             except (TypeError, ValueError):
                 first_line_num_int = None
-            if first_line_num_int is not None and first_line_num_int in line_to_nodes:
-                # Pick the direction matching first_heading_option (or the
-                # pinned direction when follow_previous_direction is on).
+            # Phase 16d-2b.2: line_to_nodes is keyed by (line_num, sub_line_id)
+            # tuples. The user-typed first_line_num is a parent int — match
+            # it to the LOWEST-SubLineId sub-line of that parent.
+            candidate_keys = [
+                k for k in line_to_nodes.keys()
+                if isinstance(k, tuple) and k[0] == first_line_num_int
+            ]
+            candidate_keys.sort()  # sort by (line_num, sub_line_id) ascending
+            if first_line_num_int is not None and candidate_keys:
+                first_key = candidate_keys[0]
                 user_prefers_reciprocal = (
                     sim_params.get('first_heading_option')
                     == "High to Low SP (Reciprocal)"
                 )
                 if (direction_override is not None
-                        and first_line_num_int in direction_override):
+                        and first_key in direction_override):
                     want_reciprocal = (
-                        direction_override[first_line_num_int] == 'high_to_low'
+                        direction_override[first_key] == 'high_to_low'
                     )
                 else:
                     want_reciprocal = user_prefers_reciprocal
-                for node_idx, node_is_recip in line_to_nodes[first_line_num_int]:
+                for node_idx, node_is_recip in line_to_nodes[first_key]:
                     if node_is_recip == want_reciprocal:
                         pinned_first_node = node_idx
                         break
@@ -8970,15 +9012,19 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             f"(total phase 13b wall clock: {precompute_elapsed + solve_elapsed:.1f}s)"
         )
 
-        # --- Convert tour back to (line_num, direction) sequence -----------
+        # --- Convert tour back to (line_key, direction) sequence -----------
+        # Phase 16d-2b.2: reassemble the tuple keys from NodeMeta.line_num +
+        # NodeMeta.sub_line_id so downstream timing code (already tuple-aware
+        # post-Phase-16d-2a) matches line_data entries correctly.
         optimized_line_sequence = []
         optimized_directions = {}
         for node_idx in opt_result.optimized_sequence:
             m = node_meta[node_idx]
             if m.is_depot:
                 continue   # safety (optimize_with_ortools already strips depot)
-            optimized_line_sequence.append(m.line_num)
-            optimized_directions[m.line_num] = (
+            line_key = (m.line_num, m.sub_line_id) if m.sub_line_id is not None else m.line_num
+            optimized_line_sequence.append(line_key)
+            optimized_directions[line_key] = (
                 'high_to_low' if m.is_reciprocal else 'low_to_high'
             )
 

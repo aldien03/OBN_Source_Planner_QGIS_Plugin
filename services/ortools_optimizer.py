@@ -86,15 +86,23 @@ _VALID_METAHEURISTICS = (
 class NodeMeta:
     """Per-node metadata. Indexed by solver node number.
 
-    Node 0 MUST be the depot (is_depot=True, line_num=None).
+    Node 0 MUST be the depot (is_depot=True, line_num=None, sub_line_id=None).
     Nodes 1..N MUST be line-direction alternates: for line k (1-indexed
     in the caller's node_meta list), the caller chooses the pairing
     (e.g. nodes 2k-1 and 2k) and passes the indices in
     `disjunction_pairs`.
+
+    Phase 16d-2b.2: sub_line_id distinguishes sub-lines of the same parent
+    when the caller is using multi-sub-line surveys (gap scenario). For
+    single-sub-line surveys every sub_line_id is 1. The caller looks up
+    the corresponding line_data entry by the tuple (line_num, sub_line_id);
+    the solver itself only sees node indices and doesn't care about
+    either field.
     """
-    line_num: Optional[int]     # None iff is_depot=True
-    is_reciprocal: bool          # ignored when is_depot=True
+    line_num: Optional[int]           # None iff is_depot=True
+    is_reciprocal: bool               # ignored when is_depot=True
     is_depot: bool = False
+    sub_line_id: Optional[int] = None  # None iff is_depot=True; 1 for single-sub-line
 
 
 @dataclass(frozen=True)
