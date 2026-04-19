@@ -329,9 +329,19 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # Phase 16c: changing the Status filter should re-seed the spinbox
         # defaults so the chief edits the range of the status they're
         # reviewing (e.g., switch to Acquired to fix a mis-mark).
+        # Phase 16d-2b.2 follow-up: also gate Generate Lookahead Lines —
+        # generating from Acquired/Pending/All makes no sense (output is
+        # only TBA lines), so disable the button unless filter is TBA.
         if hasattr(self, 'statusFilterComboBox'):
             self.statusFilterComboBox.currentTextChanged.connect(
                 lambda _txt: self._refresh_sp_range_visibility()
+            )
+            self.statusFilterComboBox.currentTextChanged.connect(
+                self._on_status_filter_changed_for_generate_gate
+            )
+            # Apply initial state (default filter is 'To Be Acquired').
+            self._on_status_filter_changed_for_generate_gate(
+                self.statusFilterComboBox.currentText()
             )
         if hasattr(self, 'runSimulationButton'): self.runSimulationButton.clicked.connect(self.handle_run_simulation)
         else: log.warning("UI Warning: runSimulationButton not found.")
@@ -431,6 +441,26 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         else:
             self.sequenceOptimizationComboBox.setToolTip("")
         self.sequenceOptimizationComboBox.setEnabled(not is_teardrop)
+
+    def _on_status_filter_changed_for_generate_gate(self, text):
+        """Generate Lookahead Lines is only meaningful when the Status
+        filter is 'To Be Acquired' — that's the set of lines the plugin
+        emits as sub-lines. Acquired/Pending/All filters either have no
+        TBA runs or would surprise the operator by generating something
+        different from what they see selected. Grey out the button
+        outside TBA mode.
+        """
+        if not hasattr(self, 'generateLinesButton'):
+            return
+        is_tba = (text == "To Be Acquired")
+        self.generateLinesButton.setEnabled(is_tba)
+        if is_tba:
+            self.generateLinesButton.setToolTip("")
+        else:
+            self.generateLinesButton.setToolTip(
+                "Generate Lookahead Lines requires Status filter set to "
+                "'To Be Acquired'."
+            )
 
     # --- Phase 6c-2: legacy self.last_* property shims ---
     # Each pair delegates to self._last_run (a _LastRunShim instance set
@@ -2110,6 +2140,26 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         Lines are created by connecting SPS points of the same line number.
         Run-ins are created based on heading values and max run-in length.
         """
+        # Guard: only run when Status filter is 'To Be Acquired'. The button
+        # is already greyed out in that case (see _on_status_filter_changed_
+        # for_generate_gate), but a direct method call would bypass the UI
+        # state, so we re-check here and surface a clear dialog.
+        if hasattr(self, 'statusFilterComboBox'):
+            _filter_text = self.statusFilterComboBox.currentText()
+            if _filter_text != "To Be Acquired":
+                log.warning(
+                    f"Generate Lookahead Lines requested while Status filter "
+                    f"is '{_filter_text}' — aborting. Only TBA is valid."
+                )
+                QMessageBox.warning(
+                    self,
+                    "Status Filter Not 'To Be Acquired'",
+                    "Generate Lookahead Lines only works when the Status "
+                    "filter is set to 'To Be Acquired'. Change the filter "
+                    "and try again.",
+                )
+                return
+
         log.info("Starting generation of survey lines and run-ins")
         start_time = time.time()
 
