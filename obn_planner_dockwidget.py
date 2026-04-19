@@ -10699,6 +10699,17 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             self._add_layer_to_output_group(layer, to_top=True)
             self.optimized_path_layer = layer
 
+            # Once the vessel route is visible, hide the intermediate
+            # geometry layers (Generated_Survey_Lines, Generated_RunIns) to
+            # keep the map clean. They stay in the Layers panel — user can
+            # re-enable visibility via the checkbox any time.
+            root = QgsProject.instance().layerTreeRoot()
+            for hide_name in ("Generated_Survey_Lines", "Generated_RunIns"):
+                for ml in QgsProject.instance().mapLayersByName(hide_name):
+                    node = root.findLayer(ml.id())
+                    if node is not None:
+                        node.setItemVisibilityChecked(False)
+
             log.info(f"Added visualization layer '{layer_name}' to project")
 
         except Exception as e:
