@@ -354,12 +354,27 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         # others stay grey to avoid the impression that their values
         # matter when they don't.
         if hasattr(self, 'sequenceOptimizationComboBox'):
+            # Default to OR-tools so daily-ops users don't have to change
+            # the dropdown every session. Teardrop mode will auto-flip this
+            # back to "Off" via _on_acquisition_mode_changed below.
+            self.sequenceOptimizationComboBox.setCurrentText("OR-tools")
             self.sequenceOptimizationComboBox.currentTextChanged.connect(
                 self._on_optimization_level_changed
             )
-            # Apply initial state to match the combo's default ("Off")
             self._on_optimization_level_changed(
                 self.sequenceOptimizationComboBox.currentText()
+            )
+
+        # Acquisition Mode ↔ Sequence Optimization coupling: Teardrop turn
+        # geometry doesn't match the cost model OR-tools assumes, so we
+        # auto-set Sequence Optimization to Off and grey out the dropdown
+        # whenever the user selects Teardrop.
+        if hasattr(self, 'acquisitionModeComboBox'):
+            self.acquisitionModeComboBox.currentTextChanged.connect(
+                self._on_acquisition_mode_changed
+            )
+            self._on_acquisition_mode_changed(
+                self.acquisitionModeComboBox.currentText()
             )
 
         # Phase 13a: detect ortools at plugin init so the dispatch in
@@ -396,6 +411,26 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         is_ortools = (text == "OR-tools")
         if hasattr(self, 'ortoolsTimeLimitSpinBox'):
             self.ortoolsTimeLimitSpinBox.setEnabled(is_ortools)
+
+    def _on_acquisition_mode_changed(self, text):
+        """Teardrop acquisition disables Sequence Optimization: OR-tools'
+        cost model assumes Racetrack turn geometry, so using it with
+        Teardrop would plan against wrong times. Force Off + grey out
+        the dropdown while Teardrop is selected; restore the user's
+        ability to pick OR-tools when they switch back to Racetrack.
+        """
+        if not hasattr(self, 'sequenceOptimizationComboBox'):
+            return
+        is_teardrop = (text == "Teardrop")
+        if is_teardrop:
+            self.sequenceOptimizationComboBox.setCurrentText("Off")
+            self.sequenceOptimizationComboBox.setToolTip(
+                "Sequence optimization is only available for Racetrack "
+                "acquisition mode."
+            )
+        else:
+            self.sequenceOptimizationComboBox.setToolTip("")
+        self.sequenceOptimizationComboBox.setEnabled(not is_teardrop)
 
     # --- Phase 6c-2: legacy self.last_* property shims ---
     # Each pair delegates to self._last_run (a _LastRunShim instance set
