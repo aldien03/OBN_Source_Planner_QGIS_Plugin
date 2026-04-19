@@ -10796,7 +10796,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     # Format values for display
                     q_start = QDateTime(start_t)
                     q_end = QDateTime(end_t)
-                    disp_line_num = line_num if line_num is not None else NULL
+                    # Phase 16d-2a: line_num may be a (line_num, sub_line_id)
+                    # tuple when the path came from a tuple-keyed simulation.
+                    # Optimized_Path's LineNum field is int — unpack to parent.
+                    if isinstance(line_num, tuple) and len(line_num) >= 1:
+                        disp_line_num = line_num[0]
+                    else:
+                        disp_line_num = line_num if line_num is not None else NULL
                     disp_heading = round(heading, 1) if heading is not None else NULL
 
                     # Format duration as hh:mm
