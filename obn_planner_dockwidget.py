@@ -9842,12 +9842,19 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             log.error(f"Missing base heading for line {line_num}")
             return None, None
 
-        # Determine exit point and heading based on direction
+        # Determine exit point and heading based on direction.
+        # Phase B: exit at the line's acquisition endpoint (line-end), NOT at
+        # the far end of the runout run-in. OBN ops don't traverse a runout
+        # after acquisition — the vessel begins the turn immediately at
+        # line-end (Dubins-constrained by turn_radius_m). Stabilization before
+        # the next line is provided by the turn's own terminal straight
+        # (tangent to the destination heading, guaranteed by Dubins) plus
+        # the entry-side run-in of the next line.
         if not direction_is_reciprocal:  # Normal direction (Low->High)
-            exit_pt_xy = line_info.get('end_runin_point')
+            exit_pt_xy = line_info.get('end_point_geom')
             exit_hdg = base_heading
         else:  # Reciprocal direction (High->Low)
-            exit_pt_xy = line_info.get('start_runin_point')
+            exit_pt_xy = line_info.get('start_point_geom')
             exit_hdg = (base_heading + 180) % 360
 
         # Validate exit point
@@ -10680,19 +10687,15 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             # Apply labeling
             self._apply_path_labeling(layer)
 
-            # For a different layer showing only turns, you could apply turn labeling
-            turn_layer = self._create_turns_layer(path_segments, source_crs)
-            if turn_layer:
-                self._apply_turn_labeling(turn_layer)
+            # Phase B: Turn_Segments standalone layer removed from the output
+            # group. Turn geometry/timing still lives in path_segments
+            # (SegmentType='Turn') for anything that needs it; the layer was
+            # purely decorative labels. _create_turns_layer() is kept intact
+            # (dead code) for easy revert if we ever want it back.
 
             # Phase 12 / 12c: Optimized_Path joins the output group AT THE TOP
             # so the vessel route is the most prominent child regardless of
             # how many times the user re-runs Generate Lines + Run Simulation.
-            # Turn_Segments was also inserted-at-top just above (inside
-            # _create_turns_layer), so the final order is:
-            #   Optimized_Path (topmost)
-            #   Turn_Segments
-            #   [any other output layers]
             self._add_layer_to_output_group(layer, to_top=True)
             self.optimized_path_layer = layer
 
