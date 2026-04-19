@@ -9,15 +9,21 @@ ticks, Stop button fires) while the solver works in a background thread.
 The public sync API in services.ortools_optimizer is unchanged; tests keep
 calling optimize_with_ortools directly. Only the dockwidget uses the task.
 
-Stop semantics: request_stop() calls routing.solver().FinishCurrentSearch()
-on the live solver. This is safe to call from the main thread while the
-worker thread is inside SolveWithParameters — OR-tools' C++ solver checks
-the stop flag at yield points (between iterations, after each solution)
-and returns with the best-so-far assignment, typically within a few hundred
-ms of the request. The caller then extracts and applies that assignment
-normally; if no solution had been found yet, SolveWithParameters returns
-None and optimize_with_ortools raises RuntimeError, which the caller
-catches and falls back to the pre-optimization sequence.
+Stop semantics: request_stop() calls routing.CancelSearch() on the live
+RoutingModel. This is safe to call from the main thread while the worker
+thread is inside SolveWithParameters — OR-tools' C++ solver checks the
+cancel flag at yield points (between local-search iterations, after each
+solution) and returns with the best-so-far assignment within a few hundred
+ms. The caller then extracts and applies that assignment normally; if no
+solution had been found yet, SolveWithParameters returns None and
+optimize_with_ortools raises RuntimeError, which the caller catches and
+falls back to the pre-optimization sequence.
+
+NOTE on API choice: Solver.FinishCurrentSearch() is for the decision-builder
+CP search, NOT for RoutingModel's local-search/GLS loop, and calling it on
+a routing solve has no effect — the GLS loop ignores the flag and runs to
+the configured time_limit. RoutingModel.CancelSearch() is the correct
+interrupt for local search and does stop the GLS loop promptly.
 """
 
 from __future__ import annotations
@@ -92,13 +98,15 @@ class OrToolsTask(QgsTask):
         """Ask the solver to stop early and return its best-so-far.
 
         Safe to call from the main thread while run() is blocked in
-        SolveWithParameters (FinishCurrentSearch is a cross-thread atomic
-        flag write per OR-tools' design). No-op if the solver hasn't
-        entered SolveWithParameters yet — in that case the task's natural
-        run() flow will proceed to a normal (short) solve.
+        SolveWithParameters. CancelSearch is a cross-thread atomic flag
+        write per OR-tools' design; the C++ local-search loop checks it
+        at its next yield point and returns within a few hundred ms.
+        No-op if the solver hasn't entered SolveWithParameters yet — in
+        that case the task's natural run() flow proceeds to a normal
+        (short) solve.
         """
         if self._routing is not None:
-            self._routing.solver().FinishCurrentSearch()
+            self._routing.CancelSearch()
 
     def run(self) -> bool:
         """Executes in worker thread — must not touch Qt/QGIS UI."""

@@ -8623,7 +8623,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         f"(saved {saved_h:.2f} h, {saved_pct:.1f}%)"
                     )
                     lines.append(
-                        f"{latest_solution_count[0]} improvements found"
+                        f"{latest_solution_count[0]} better routes found"
                     )
                 else:
                     lines.append(
@@ -8631,11 +8631,11 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         f"Best so far: {best_h:.2f} h (still searching)"
                     )
                     lines.append(
-                        f"{latest_solution_count[0]} solutions found"
+                        f"{latest_solution_count[0]} routes tried"
                     )
             else:
                 lines.append(
-                    f"Starting cost: {initial_cost_h:.2f} h — searching..."
+                    f"Starting cost: {initial_cost_h:.2f} h — searching for a better route..."
                 )
             progress.setLabelText("\n".join(lines))
 
@@ -8647,9 +8647,31 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         stop_requested = [False]
 
+        # --- Auto-stop on plateau (user-interview thresholds) ----------------
+        # Fire task.request_stop() when the solver has clearly converged, so
+        # the user who batched a stack of simulations and walked away isn't
+        # burning CPU on a solve that's already found its answer. All six
+        # conditions must hold (see _check_plateau below).
+        _PLATEAU_SILENCE_S = 5.0
+        _PLATEAU_RECENT_COUNT = 3
+        _PLATEAU_IMPROVEMENT_FRAC = 0.005  # 0.5%
+        _PLATEAU_MIN_RUNTIME_FRAC = 0.25   # 25% of time_limit_s
+        _AUTO_STOP_DISABLE_ABOVE_S = 60.0  # long "final estimate" runs are exempt
+
+        solutions_history = []  # list of (elapsed_s, cost_seconds), in order
+        auto_stop_fired = [False]
+        auto_stop_disabled = time_limit_s > _AUTO_STOP_DISABLE_ABOVE_S
+
         def _on_solution_found(best_cost_s, solution_num):
             latest_best_cost_s[0] = best_cost_s
             latest_solution_count[0] = solution_num
+            if task.start_time > 0.0:
+                elapsed = time.time() - task.start_time
+                solutions_history.append((elapsed, best_cost_s))
+                log.info(
+                    f"[ortools solution #{solution_num}] t={elapsed:.1f}s, "
+                    f"cost={best_cost_s/3600.0:.4f}h"
+                )
             _rebuild_label()
 
         task.solutionFound.connect(_on_solution_found)
@@ -8661,7 +8683,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             stop_requested[0] = True
             task.request_stop()
             progress.setLabelText(
-                "Stopping — finalizing the best order found so far..."
+                "Stopping — using the best route so far..."
             )
 
         progress.canceled.connect(_on_stop_clicked)
@@ -8669,15 +8691,79 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         timer = QTimer()
         timer.setInterval(500)
 
+        _plateau_diag_last_log_t = [0.0]  # limit diagnostic log frequency
+
+        def _check_plateau(elapsed_s):
+            """Return True iff all six plateau-detection conditions hold."""
+            if auto_stop_disabled:
+                return False
+            if auto_stop_fired[0]:
+                return False
+            if latest_best_cost_s[0] is None:
+                return False  # no solution yet
+            if original_cost <= 0.0:
+                return False  # guard: no valid starting cost to compare against
+            if latest_best_cost_s[0] >= original_cost:
+                return False  # still searching for first improvement over start
+            if elapsed_s < _PLATEAU_MIN_RUNTIME_FRAC * time_limit_s:
+                return False  # min-runtime guard
+            if len(solutions_history) < _PLATEAU_RECENT_COUNT:
+                return False  # not enough data points yet
+            last_sol_elapsed = solutions_history[-1][0]
+            silence = elapsed_s - last_sol_elapsed
+            recent = solutions_history[-_PLATEAU_RECENT_COUNT:]
+            improvements = []
+            for i in range(1, len(recent)):
+                prev_cost = recent[i - 1][1]
+                curr_cost = recent[i][1]
+                if prev_cost <= 0.0:
+                    return False
+                improvements.append((prev_cost - curr_cost) / prev_cost)
+            # Diagnostic log at most every 2s so we can see why plateau fires or
+            # doesn't. Remove after calibration is complete.
+            if elapsed_s - _plateau_diag_last_log_t[0] >= 2.0:
+                _plateau_diag_last_log_t[0] = elapsed_s
+                log.info(
+                    f"[plateau check] t={elapsed_s:.1f}s silence={silence:.1f}s "
+                    f"recent_improvements={[f'{i*100:.3f}%' for i in improvements]} "
+                    f"solutions={len(solutions_history)}"
+                )
+            if silence < _PLATEAU_SILENCE_S:
+                return False
+            for imp in improvements:
+                if imp >= _PLATEAU_IMPROVEMENT_FRAC:
+                    return False
+            return True
+
         def _tick():
             if task.start_time == 0.0:
                 return  # worker thread hasn't entered run() yet
             if stop_requested[0]:
-                return  # leave the "Stopping..." label alone
+                return  # leave the "Stopping..." / "Plateau..." label alone
             elapsed_s = time.time() - task.start_time
             elapsed_ms = min(int(elapsed_s * 1000), time_limit_s * 1000)
             progress.setValue(elapsed_ms)
             _rebuild_label()
+            # Auto-stop check: if plateau detected, trigger the same
+            # FinishCurrentSearch path as Stop & Use Best. The solver
+            # returns its best-so-far within a few hundred ms; the apply
+            # path downstream is identical to natural completion.
+            if _check_plateau(elapsed_s):
+                auto_stop_fired[0] = True
+                stop_requested[0] = True
+                best_h = latest_best_cost_s[0] / 3600.0
+                saved_s = time_limit_s - elapsed_s
+                log.info(
+                    f"OR-tools auto-stop: plateau at {elapsed_s:.1f}s "
+                    f"(silence>={_PLATEAU_SILENCE_S:.0f}s, last "
+                    f"{_PLATEAU_RECENT_COUNT} improvements each "
+                    f"<{_PLATEAU_IMPROVEMENT_FRAC*100:.1f}%). "
+                    f"Best={best_h:.2f}h, saved ~{saved_s:.0f}s of solver CPU."
+                )
+                task.request_stop()
+                progress.setLabelText(
+                    "No more improvements — using the best route found."
+                )
 
         timer.timeout.connect(_tick)
         timer.start()

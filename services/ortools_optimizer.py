@@ -301,22 +301,28 @@ def optimize_with_ortools(
     )
     solve_start = time.time()
 
-    # Progress wiring: AddAtSolutionCallback fires a no-arg Python callback each
-    # time the solver finds an improved solution. We read routing.CostVar().Value()
-    # (guaranteed set by the time the callback fires) and hand OrToolsProgress
-    # to the caller's progress_callback. Runs in whatever thread SolveWithParameters
-    # is called from — the OrToolsTask worker in production. Qt signal emissions
-    # from the caller's callback are thread-safe via QueuedConnection.
+    # Progress wiring: AddAtSolutionCallback fires a no-arg Python callback on
+    # every local-search candidate, which for GLS includes non-improving moves
+    # (GLS accepts temporary regressions to escape local optima). We filter here
+    # to only emit progress_callback on strict improvements over best-so-far —
+    # gives the caller a clean monotonically-decreasing cost stream with one
+    # event per genuine improvement (~50/solve instead of ~8000/solve).
+    # Runs in whatever thread SolveWithParameters is called from (OrToolsTask
+    # worker in production); Qt signal emissions are thread-safe.
     if progress_callback is not None:
-        _solution_count = [0]
+        _improvement_count = [0]
+        _best_cost_scaled = [float("inf")]
 
         def _at_solution():
-            _solution_count[0] += 1
             cost_scaled = routing.CostVar().Value()
+            if cost_scaled >= _best_cost_scaled[0]:
+                return  # non-improving candidate; GLS internal exploration
+            _best_cost_scaled[0] = cost_scaled
+            _improvement_count[0] += 1
             progress_callback(OrToolsProgress(
                 elapsed_s=time.time() - solve_start,
                 best_cost=cost_scaled / FLOAT_TO_INT_SCALE,
-                solutions_found=_solution_count[0],
+                solutions_found=_improvement_count[0],
             ))
 
         routing.AddAtSolutionCallback(_at_solution)
