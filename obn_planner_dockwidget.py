@@ -7649,18 +7649,32 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         f"PREV_DIRECTION is pinned (4D monitor workflow). "
                         f"Keeping the Racetrack/Teardrop sequence unoptimized."
                     )
-                    if hasattr(self, 'iface') and self.iface:
-                        try:
-                            self.iface.messageBar().pushInfo(
-                                "OR-tools skipped",
-                                f"Multi-sub-line survey without 'Follow previous "
-                                f"direction' ({len(_parents_with_gaps)} parent "
-                                f"line(s) with gaps). Enable Follow-Previous for "
-                                f"4D-monitor surveys to let OR-tools optimize, or "
-                                f"keep using Racetrack/Teardrop without optimization."
+                    # qgis.utils.iface is the plugin-accessible iface; the
+                    # dockwidget's self.iface attribute isn't populated by
+                    # its __init__ signature (parent=None only). Also fall
+                    # back to a QMessageBox so the user sees SOMETHING even
+                    # if the message bar rejects the call.
+                    _user_msg = (
+                        f"Multi-sub-line survey without 'Follow previous "
+                        f"direction' ({len(_parents_with_gaps)} parent "
+                        f"line(s) with gaps). Enable Follow-Previous for "
+                        f"4D-monitor surveys to let OR-tools optimize, or "
+                        f"keep using Racetrack/Teardrop without optimization."
+                    )
+                    _shown = False
+                    try:
+                        from qgis.utils import iface as _qgis_iface
+                        if _qgis_iface is not None:
+                            _qgis_iface.messageBar().pushInfo(
+                                "OR-tools skipped", _user_msg,
                             )
-                        except Exception:
-                            pass
+                            _shown = True
+                    except Exception:
+                        pass
+                    if not _shown:
+                        QMessageBox.information(
+                            self, "OR-tools skipped", _user_msg,
+                        )
                 elif not getattr(self, '_ortools_available', False):
                     QMessageBox.warning(
                         self,
