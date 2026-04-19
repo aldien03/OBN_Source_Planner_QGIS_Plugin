@@ -372,13 +372,24 @@ The plugin's `README.md` (or a new `INSTALL.md`) gains a short section:
 
 > ## Installing OR-tools (required for sequence optimization)
 >
-> 1. Open "OSGeo4W Shell" from the Start menu (this is the Python environment QGIS uses — do NOT use system Python).
-> 2. Run: `pip install ortools`
-> 3. Verify: `python -c "import ortools; print(ortools.__version__)"` — expect ortools 9.7 or newer.
+> OR-tools is installed into a plugin-local `vendor/` directory, NOT into QGIS's site-packages. This is because ortools 9.15+ requires numpy 2.x, which is ABI-incompatible with QGIS 3.40.5's bundled numpy 1.26.4 and would crash GDAL/scipy/pandas. We pin `ortools==9.14.6206` (last release that works with numpy 1.x) and use `sys.path` injection from `services/ortools_optimizer.py`.
+>
+> 1. Open "OSGeo4W Shell" from the Start menu (regular user — do NOT run as Administrator; we want per-plugin install, not system-wide).
+> 2. `cd` into the plugin directory, e.g. `cd "C:\Users\<you>\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\obn_planner"`
+> 3. Run: `pip install --target="vendor" --no-deps ortools==9.14.6206 absl-py "protobuf>=6.31,<6.32" immutabledict "typing-extensions>=4.12"`
+>    - `--target="vendor"` installs into the plugin's `vendor/` folder (gitignored).
+>    - `--no-deps` is CRITICAL: without it, pip would also install numpy into `vendor/`, which our `sys.path.insert(0, vendor)` would then shadow over QGIS's numpy 1.26.4 — defeating the whole point.
 > 4. Restart QGIS.
-> 5. In the OBN Planner dock, the "Sequence Optimization: OR-tools" option should now be selectable.
+> 5. Verify in QGIS Python Console:
+>    ```python
+>    from obn_planner.services import ortools_optimizer  # primes sys.path
+>    import ortools, numpy
+>    print(ortools.__version__, ortools.__file__)    # → 9.14.6206, path under vendor/
+>    print(numpy.__version__, numpy.__file__)        # → 1.26.4, path under QGIS install
+>    ```
+> 6. In the OBN Planner dock, the "Sequence Optimization: OR-tools" option should now be selectable.
 
-For the user's fleet: one-time install per vessel. If a vessel gets a fresh QGIS install, repeat.
+For the user's fleet: one-time install per vessel. If a vessel gets a fresh QGIS install, repeat the `pip install --target="vendor"` step — the `vendor/` folder is gitignored and NOT shipped in the plugin zip.
 
 No changes to `metadata.txt` plugin manifest are needed — QGIS doesn't parse Python dependencies from it.
 

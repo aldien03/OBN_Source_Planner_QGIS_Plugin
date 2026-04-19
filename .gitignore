@@ -11,6 +11,9 @@ dist/
 build/
 *.egg-info/
 
+# Vendored dependencies (installed via pip --target; see services/ortools_optimizer.py)
+vendor/
+
 # Virtual environments
 .venv/
 .env/

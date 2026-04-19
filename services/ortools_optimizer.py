@@ -32,9 +32,16 @@ returns so callers can swap the two optimizers behind a dropdown.
 from __future__ import annotations
 
 import logging
+import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
+
+# Vendored ortools 9.14 lives in <plugin>/vendor to dodge the QGIS-numpy-1.26 vs ortools-9.15-numpy-2.x ABI conflict.
+_VENDOR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vendor")
+if os.path.isdir(_VENDOR_DIR) and _VENDOR_DIR not in sys.path:
+    sys.path.insert(0, _VENDOR_DIR)
 
 from .sequence_service import OptimizationResult
 
@@ -132,6 +139,7 @@ def optimize_with_ortools(
     metaheuristic: str = "GUIDED_LOCAL_SEARCH",
     progress_callback: Optional[Callable[[OrToolsProgress], None]] = None,
     cancel_fn: Optional[Callable[[], bool]] = None,
+    started_callback: Optional[Callable[[object], None]] = None,
 ) -> OptimizationResult:
     """Run the OR-tools routing solver on an asymmetric TSP with
     direction disjunctions.
@@ -159,10 +167,19 @@ def optimize_with_ortools(
             chooses freely.
         metaheuristic: local-search meta-algorithm name. See
             _VALID_METAHEURISTICS. Default GUIDED_LOCAL_SEARCH.
-        progress_callback: reserved for Phase 13b threading. Phase 13a
-            accepts but does not invoke this callback.
-        cancel_fn: reserved for Phase 13b threading. Phase 13a accepts
-            but does not check this flag (solve is blocking).
+        progress_callback: invoked each time the solver finds an improved
+            solution (via AddAtSolutionCallback). Receives an OrToolsProgress
+            with elapsed_s / best_cost / solutions_found. Fires from whatever
+            thread SolveWithParameters is running on — the OrToolsTask worker
+            in production.
+        cancel_fn: reserved for Phase 13c. Phase 13b uses started_callback +
+            external FinishCurrentSearch() call instead.
+        started_callback: invoked once, immediately before SolveWithParameters,
+            with the RoutingModel as its single argument. Lets the caller (e.g.
+            OrToolsTask) obtain a handle on the live solver so it can call
+            routing.solver().FinishCurrentSearch() from another thread to
+            stop the solve early. SolveWithParameters then returns with the
+            best-so-far assignment, which this function extracts normally.
 
     Returns:
         OptimizationResult with optimized_sequence containing the node
@@ -284,10 +301,36 @@ def optimize_with_ortools(
     )
     solve_start = time.time()
 
-    # Phase 13a: blocking call. Phase 13b wraps this in a QThread worker.
-    # progress_callback and cancel_fn are accepted in the signature but
-    # are intentionally unused here — wiring them requires SearchMonitor
-    # subclassing which is tightly coupled to threading and is deferred.
+    # Progress wiring: AddAtSolutionCallback fires a no-arg Python callback each
+    # time the solver finds an improved solution. We read routing.CostVar().Value()
+    # (guaranteed set by the time the callback fires) and hand OrToolsProgress
+    # to the caller's progress_callback. Runs in whatever thread SolveWithParameters
+    # is called from — the OrToolsTask worker in production. Qt signal emissions
+    # from the caller's callback are thread-safe via QueuedConnection.
+    if progress_callback is not None:
+        _solution_count = [0]
+
+        def _at_solution():
+            _solution_count[0] += 1
+            cost_scaled = routing.CostVar().Value()
+            progress_callback(OrToolsProgress(
+                elapsed_s=time.time() - solve_start,
+                best_cost=cost_scaled / FLOAT_TO_INT_SCALE,
+                solutions_found=_solution_count[0],
+            ))
+
+        routing.AddAtSolutionCallback(_at_solution)
+
+    # Hand the live routing model to the caller BEFORE we block in
+    # SolveWithParameters. OrToolsTask stores this so the UI thread can call
+    # routing.solver().FinishCurrentSearch() to stop the solve early; the
+    # solver then returns with its best-so-far assignment, which extracts
+    # below exactly like a normal completion.
+    if started_callback is not None:
+        started_callback(routing)
+
+    # Blocking call — the caller (services.ortools_task.OrToolsTask) runs
+    # this on a QgsTask worker thread so QGIS stays responsive.
     solution = routing.SolveWithParameters(search_params)
     solve_elapsed = time.time() - solve_start
 

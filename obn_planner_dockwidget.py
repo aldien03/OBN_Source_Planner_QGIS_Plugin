@@ -4641,7 +4641,10 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
 
                             # --- Calculate Far Points and Truncated Segments ---
-                            tangent_offset_dist = turn_radius_m * 0.5 ; log.debug(f"  [Dubins Prep] Tangent Offset Distance: {tangent_offset_dist:.1f}m")
+                            # 2.0 * R places the far entry/exit points at least 2R from the
+                            # obstacle center along the chord, so the 5-piece top-hat detour
+                            # (span 4R) fits without needing backward travel.
+                            tangent_offset_dist = turn_radius_m * 2.0 ; log.debug(f"  [Dubins Prep] Tangent Offset Distance: {tangent_offset_dist:.1f}m")
                             far_entry_point = None; far_exit_point = None;
                             new_truncated_geom1 = None; new_truncated_geom2 = None
                             # --- PHASE 1: Calculate Headings ---
@@ -4845,12 +4848,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             deviation_connectors_layer = None # Ensure it's None if creation fails
             deviation_provider = None
 
-        # --- Smoothing Parameters ---
-        densify_factor = 5.0
-        smooth_iterations = 3
-        smooth_offset = 0.25
-        endpoint_tolerance = 0.5
-        # --- End Smoothing Parameters ---
+        # Smoothing parameters were removed: connector is now generated as a
+        # 5-piece G1-continuous tangent-arc detour by services.deviation_geometry.
+        # See that module for the sampling density (0.5m max chord error).
 
         # --- Main Processing Block ---
         edit_started_here = False
@@ -4933,72 +4933,102 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
                         log.debug(f"  [Smooth Prep] L{line_num} Obs{obs_idx}: Points: Entry({entry_point.x():.1f},{entry_point.y():.1f}), Peak({peak_point.x():.1f},{peak_point.y():.1f}), Exit({exit_point.x():.1f},{exit_point.y():.1f})")
 
-                        initial_sharp_geom = QgsGeometry.fromPolylineXY([entry_point, peak_point, exit_point])
-                        if initial_sharp_geom.isEmpty() or not initial_sharp_geom.isGeosValid():
-                            log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Initial sharp connector geometry invalid. Skipping smoothing.")
-                            connector_geom = None
-                            smoothing_status = "Sharp Geom Invalid"
-                        else:
+                        # Build the smooth deviation polyline via the 5-piece top-hat
+                        # construction. See services/deviation_geometry.py for details.
+                        # No fallback to a piecewise-linear "sharp" geometry: if anything
+                        # fails we drop the deviation for this line and surface a warning
+                        # so the chief navigator knows to hand-route it. Safety beats
+                        # shipping a plan with an unsafe track.
+                        from .services.deviation_geometry import (
+                            build_smooth_deviation,
+                            DeviationTooShort,
+                            DeviationTooTall,
+                        )
+
+                        # Extract the obstacle buffer polygon vertices (world coords) for
+                        # the current obs_idx. Used to compute h_req (peak height) and to
+                        # validate that the final polyline doesn't clip the buffer.
+                        buffer_pts_xy = []
+                        specific_obstacle_buffer = None
+                        if 0 <= obs_idx < len(obstacle_geometries):
+                            specific_obstacle_buffer = obstacle_geometries[obs_idx]
+                            if specific_obstacle_buffer and not specific_obstacle_buffer.isEmpty():
+                                for v in specific_obstacle_buffer.vertices():
+                                    buffer_pts_xy.append((v.x(), v.y()))
+
+                        try:
                             smoothing_status = "Attempted"
-                            densify_distance = max(1.0, turn_radius_m / densify_factor)
-                            densified_geom = initial_sharp_geom.densifyByDistance(densify_distance)
-                            if densified_geom.isEmpty():
-                                log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Densification failed. Falling back to sharp.")
-                                connector_geom = initial_sharp_geom
-                                smoothing_status = "Densify Failed"
+                            smooth_pts = build_smooth_deviation(
+                                entry=(entry_point.x(), entry_point.y()),
+                                exit_=(exit_point.x(), exit_point.y()),
+                                peak=(peak_point.x(), peak_point.y()),
+                                turn_radius_m=turn_radius_m,
+                                clearance_m=clearance_m,
+                                buffer_polygon_pts=buffer_pts_xy,
+                                point_ctor=QgsPointXY,
+                            )
+                            smoothed_geom_candidate = QgsGeometry.fromPolylineXY(smooth_pts)
+
+                            if smoothed_geom_candidate.isEmpty() or not smoothed_geom_candidate.isGeosValid():
+                                log.error(
+                                    f"  [Deviation Fail] L{line_num}, Obs{obs_idx}: "
+                                    f"smooth polyline geometry invalid. Dropping deviation."
+                                )
+                                connector_geom = None
+                                smoothing_status = "Invalid Geometry"
+                            elif (specific_obstacle_buffer
+                                  and not specific_obstacle_buffer.isEmpty()
+                                  and smoothed_geom_candidate.intersects(specific_obstacle_buffer)):
+                                log.error(
+                                    f"  [Deviation Fail] L{line_num}, Obs{obs_idx}: "
+                                    f"smooth polyline intersects obstacle buffer. "
+                                    f"Dropping deviation; navigator must hand-route."
+                                )
+                                if hasattr(self, 'iface') and self.iface:
+                                    self.iface.messageBar().pushWarning(
+                                        "Deviation dropped",
+                                        f"Line {line_num} (obstacle {obs_idx}): smooth "
+                                        f"polyline intersects obstacle buffer. Hand-route required."
+                                    )
+                                connector_geom = None
+                                smoothing_status = "Obstacle Intersection"
                             else:
-                                log.debug(f"  [Smooth Step] L{line_num}, Obs{obs_idx}: Densified to {len(list(densified_geom.vertices()))} vertices (dist={densify_distance:.1f}m)")
-                                smoothed_geom_candidate = densified_geom.smooth(smooth_iterations, smooth_offset)
-                                if smoothed_geom_candidate.isEmpty():
-                                    log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Smoothing resulted in empty geometry. Falling back to sharp.")
-                                    connector_geom = initial_sharp_geom
-                                    smoothing_status = "Smooth Failed (Empty)"
-                                else:
-                                    log.debug(f"  [Smooth Step] L{line_num}, Obs{obs_idx}: Smoothed geom length {smoothed_geom_candidate.length():.1f}m")
+                                log.info(
+                                    f"  [Deviation OK] L{line_num}, Obs{obs_idx}: "
+                                    f"smooth polyline {smoothed_geom_candidate.length():.1f}m, "
+                                    f"{len(smooth_pts)} vertices."
+                                )
+                                connector_geom = smoothed_geom_candidate
+                                smoothing_status = "Success"
 
-                                    start_ok = False; end_ok = False
-                                    try:
-                                        smooth_start_pt = QgsPointXY(smoothed_geom_candidate.vertexAt(0))
-                                        vertex_iter = smoothed_geom_candidate.vertices(); vertex_count = 0; last_v = None
-                                        while vertex_iter.hasNext(): last_v = vertex_iter.next(); vertex_count += 1
-                                        if last_v and vertex_count > 0:
-                                             smooth_end_pt = QgsPointXY(last_v)
-                                             log.debug(f"    Expected Exit: ({exit_point.x():.3f}, {exit_point.y():.3f})")
-                                             log.debug(f"    Smoothed End:  ({smooth_end_pt.x():.3f}, {smooth_end_pt.y():.3f})")
-                                             start_dist = entry_point.distance(smooth_start_pt); end_dist = exit_point.distance(smooth_end_pt)
-                                             start_ok = start_dist <= endpoint_tolerance; end_ok = end_dist <= endpoint_tolerance
-                                             log.debug(f"  [Smooth Validate] L{line_num}, Obs{obs_idx}: Endpoint shift: Start={start_dist:.3f}m (OK={start_ok}), End={end_dist:.3f}m (OK={end_ok})")
-                                        else: log.warning(f"  [Smooth Validate] Could not get last vertex for L{line_num}, Obs{obs_idx}")
-                                    except Exception as ep_err: log.warning(f"  [Smooth Validate] Error checking endpoints L{line_num}, Obs{obs_idx}: {ep_err}")
-
-                                    # TODO: Re-enable obstacle validation after confirming endpoint fix and merge process.
-                                    obstacle_ok = True # Assume OK for now
-                                    # try:
-                                    #     if 0 <= obs_idx < len(obstacle_geometries):
-                                    #         specific_obstacle_buffer = obstacle_geometries[obs_idx]
-                                    #         if specific_obstacle_buffer and not specific_obstacle_buffer.isEmpty():
-                                    #              intersects = smoothed_geom_candidate.intersects(specific_obstacle_buffer)
-                                    #              obstacle_ok = not intersects
-                                    #              log.debug(f"  [Smooth Validate] L{line_num}, Obs{obs_idx}: Intersects obstacle buffer: {intersects} (OK={obstacle_ok})")
-                                    #         else:
-                                    #              log.warning(f"  [Smooth Validate] Invalid or empty obstacle buffer for Obs {obs_idx}. Assuming OK.")
-                                    #              obstacle_ok = True # Assume OK if buffer is invalid
-                                    #     else:
-                                    #         log.error(f"  [Smooth Validate] Invalid obs_idx {obs_idx} for L{line_num}. Cannot validate intersection.")
-                                    #         obstacle_ok = False # Fail safe
-                                    # except Exception as obs_err:
-                                    #     log.warning(f"  [Smooth Validate] Error checking intersection L{line_num}, Obs{obs_idx}: {obs_err}")
-                                    #     obstacle_ok = False # Fail safe if check fails
-
-                                    if start_ok and end_ok and obstacle_ok:
-                                        log.info(f"  [Smooth Success] L{line_num}, Obs{obs_idx}: Using smoothed geometry.")
-                                        connector_geom = smoothed_geom_candidate
-                                        obstacle_check_skipped = obstacle_ok is True # This condition means the check was skipped
-                                        smoothing_status = "Success (Obstacle Check Skipped)" if obstacle_check_skipped else "Success"
-                                    else:
-                                        log.warning(f"  [Smooth Fail] L{line_num}, Obs{obs_idx}: Validation failed (EndpointOK={start_ok and end_ok}, ObstacleOK={obstacle_ok}). Falling back to sharp geometry.")
-                                        connector_geom = initial_sharp_geom
-                                        smoothing_status = "Validation Failed"
+                        except DeviationTooShort as e_short:
+                            log.error(
+                                f"  [Deviation Fail] L{line_num}, Obs{obs_idx}: "
+                                f"line too short for 4R detour ({e_short}). Hand-route required."
+                            )
+                            if hasattr(self, 'iface') and self.iface:
+                                self.iface.messageBar().pushWarning(
+                                    "Deviation dropped",
+                                    f"Line {line_num} (obstacle {obs_idx}): line too short "
+                                    f"for detour at turn_radius_m = {turn_radius_m:.0f}m."
+                                )
+                            connector_geom = None
+                            smoothing_status = "Line Too Short"
+                        except DeviationTooTall as e_tall:
+                            log.error(
+                                f"  [Deviation Fail] L{line_num}, Obs{obs_idx}: "
+                                f"obstacle too tall for detour at this turn radius "
+                                f"({e_tall}). Hand-route required."
+                            )
+                            if hasattr(self, 'iface') and self.iface:
+                                self.iface.messageBar().pushWarning(
+                                    "Deviation dropped",
+                                    f"Line {line_num} (obstacle {obs_idx}): obstacle extends "
+                                    f"more than 3 x turn_radius_m = {3.0 * turn_radius_m:.0f}m "
+                                    f"perpendicular to the line. Hand-route required."
+                                )
+                            connector_geom = None
+                            smoothing_status = "Obstacle Too Tall"
 
                         if connector_geom and not connector_geom.isEmpty():
                             connector_heading = None
@@ -5212,10 +5242,9 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         fld_seg_type_idx = target_fields.lookupField("SegmentType")
         # --- End Field Index Lookups ---
 
-        # --- Re-smoothing & Connection Params ---
-        densify_factor_merge = 5.0
-        smooth_iterations_merge = 3
-        smooth_offset_merge = 0.25
+        # --- Connection Params ---
+        # Re-smoothing parameters removed: post-merge smoothing is a no-op now
+        # that the connector itself is G1-continuous. See _complete_deviation_calculation.
         connect_tolerance = 0.1
         # --- End Params ---
 
@@ -5388,37 +5417,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 log.error(f"  Failed to create a valid merged geometry for Line {line_num}. Skipping feature creation.")
                 continue
 
-            # --- Optional: Re-Smooth ---
-            # ... (Re-smoothing logic - SAME AS PREVIOUS VERSION) ...
+            # Post-merge smoothing was removed: the new connector is already a
+            # G1-continuous smooth polyline, and the outside line segments join it
+            # tangentially at E' and X' (same tangent direction as the first/last
+            # arcs' tangent at the line). Re-applying densify+smooth on the merged
+            # geometry only blurs the exact arc shape and serves no purpose now.
             final_geom = merged_geom
-            try:
-                log.debug(f"  Attempting re-smoothing for merged Line {line_num}...")
-                densify_dist_merge = max(1.0, turn_radius_m / densify_factor_merge)
-                densified_merge = merged_geom.densifyByDistance(densify_dist_merge)
-                if not densified_merge.isEmpty():
-                    smoothed_merge = densified_merge.smooth(smooth_iterations_merge, smooth_offset_merge)
-                    if not smoothed_merge.isEmpty() and smoothed_merge.isGeosValid():
-                         orig_start_re = QgsPointXY(merged_geom.vertexAt(0))
-                         mg_vertices = list(merged_geom.vertices())
-                         orig_end_re = QgsPointXY(mg_vertices[-1]) if mg_vertices else None
-                         smooth_start_re = QgsPointXY(smoothed_merge.vertexAt(0))
-                         sm_vertices = list(smoothed_merge.vertices())
-                         smooth_end_re = QgsPointXY(sm_vertices[-1]) if sm_vertices else None
-
-                         if orig_end_re and smooth_end_re and \
-                            orig_start_re.distance(smooth_start_re) < 1.0 and \
-                            orig_end_re.distance(smooth_end_re) < 1.0:
-                              log.info(f"  Re-smoothing successful for Line {line_num}. Final length: {smoothed_merge.length():.1f}m")
-                              final_geom = smoothed_merge
-                         else:
-                              log.warning(f"  Re-smoothing endpoint shift too large or failed for Line {line_num}. Using un-smoothed merged geometry.")
-                    else:
-                         log.warning(f"  Re-smoothing failed (empty/invalid) for Line {line_num}. Using un-smoothed merged geometry.")
-                else:
-                     log.warning(f"  Densification for re-smoothing failed for Line {line_num}. Using un-smoothed merged geometry.")
-            except Exception as smooth_err:
-                log.warning(f"  Error during re-smoothing for Line {line_num}: {smooth_err}. Using un-smoothed merged geometry.")
-            # --- End Re-Smoothing ---
 
             # --- Create Final Feature ---
             merged_feature = QgsFeature(target_fields)
@@ -8320,12 +8324,19 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         in place with the optimized sequence + cost + direction map
         (same contract as _apply_2opt_optimization).
 
-        Phase 13a is BLOCKING — the cost matrix precompute and OR-tools
-        solve both run on the main thread with QApplication.processEvents()
-        between batches. UI is responsive enough to show progress and
-        accept cancel during the precompute phase but freezes during
-        the solve itself (OR-tools' C++ call releases the GIL but Python
-        cannot interrupt it). Phase 13b will wrap this in a QThread.
+        Threading model: cost matrix precompute runs on the main thread
+        with QApplication.processEvents() between batches (per-node progress
+        updates). The OR-tools solve itself runs in a QgsTask worker (see
+        services.ortools_task.OrToolsTask); this method spins a local
+        QEventLoop during the solve so the UI stays responsive — progress
+        bar ticks via QTimer, cost-progress label updates via AtSolution
+        callback, and the "Stop && Accept" button asks the solver to finish
+        its current iteration via routing.solver().FinishCurrentSearch().
+        The solver returns its best-so-far within a few hundred ms of the
+        stop request, and the result is applied via the same extraction
+        path as a natural completion. If the user stops before any
+        solution is found, optimize_with_ortools raises RuntimeError and
+        the caller falls back to the pre-optimization sequence.
 
         Direction-following (4D monitor surveys, follow_previous_direction=True):
         each line gets ONE node in the solver (direction pre-pinned by
@@ -8337,7 +8348,6 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         with GLS but the un-optimized sequence is always a valid fallback).
         """
         from .services.ortools_optimizer import (
-            optimize_with_ortools,
             NodeMeta,
             INFEASIBLE_ARC_COST,
         )
@@ -8393,7 +8403,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
         # --- Precompute cost matrix ----------------------------------------
         progress = QProgressDialog(
-            "Building OR-tools cost matrix...",
+            "Analyzing line-to-line distances...",
             "Cancel",
             0, num_nodes,
             self,
@@ -8442,8 +8452,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             if i % 20 == 0:
                 progress.setValue(i)
                 progress.setLabelText(
-                    f"Cost matrix: row {i}/{num_nodes} "
-                    f"({len(dubins_cache)} unique Dubins turns cached)"
+                    f"Analyzing line-to-line distances: {i} of {num_nodes}..."
                 )
                 QApplication.processEvents()
                 if progress.wasCanceled():
@@ -8557,29 +8566,147 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         pinned_first_node = node_idx
                         break
 
-        # --- Solve ---------------------------------------------------------
-        progress.setLabelText(
-            f"Running OR-tools {metaheuristic} solver ({time_limit_s}s)..."
+        # --- Solve (Phase 13b: threaded via QgsTask) ------------------------
+        # Solver runs in a background thread; main thread sits in a local
+        # QEventLoop that exits on taskCompleted/taskTerminated. UI stays
+        # responsive — progress bar ticks, Cancel button fires. Nested event
+        # loop means other QActions could theoretically fire during solve;
+        # safe here because no main-thread state is mutated between loop.exec_()
+        # start and the result-consumption block below.
+        from .services.ortools_task import OrToolsTask
+        from qgis.core import QgsApplication
+        from qgis.PyQt.QtCore import QEventLoop, QTimer
+
+        task = OrToolsTask(
+            cost_matrix=cost_matrix,
+            node_meta=node_meta,
+            disjunction_pairs=disjunction_pairs,
+            time_limit_s=time_limit_s,
+            pinned_first_node=pinned_first_node,
+            metaheuristic=metaheuristic,
         )
-        QApplication.processEvents()
+
+        # Reset the shared progress dialog into solve phase: determinate bar
+        # scaled to time_limit_s in milliseconds (so the 500ms tick has headroom).
+        progress.setMaximum(time_limit_s * 1000)
+        progress.setValue(0)
+        # Relabel the cancel button to reflect new semantics: click stops the
+        # solver early via FinishCurrentSearch and applies its best-so-far.
+        # The double-&& escapes Qt's mnemonic parser so the ampersand renders.
+        progress.setCancelButtonText("Stop && Use Best")
+
+        # Shared label state, updated by both the QTimer tick (elapsed time)
+        # and the solutionFound signal (cost progression). _rebuild_label
+        # composes both into one multi-line label so each update shows the
+        # full picture without clobbering the other.
+        latest_best_cost_s = [None]  # type: List[Optional[float]]
+        latest_solution_count = [0]
+        initial_cost_h = original_cost / 3600.0 if original_cost > 0 else 0.0
+
+        def _rebuild_label():
+            elapsed_s = (
+                time.time() - task.start_time if task.start_time > 0.0 else 0.0
+            )
+            lines = [
+                f"Optimizing line order ({elapsed_s:.1f}s / {time_limit_s}s)"
+            ]
+            if latest_best_cost_s[0] is not None:
+                best_h = latest_best_cost_s[0] / 3600.0
+                if original_cost > 0 and latest_best_cost_s[0] < original_cost:
+                    saved_h = (original_cost - latest_best_cost_s[0]) / 3600.0
+                    saved_pct = (
+                        (original_cost - latest_best_cost_s[0]) / original_cost * 100.0
+                    )
+                    lines.append(
+                        f"Starting: {initial_cost_h:.2f} h → "
+                        f"Best so far: {best_h:.2f} h "
+                        f"(saved {saved_h:.2f} h, {saved_pct:.1f}%)"
+                    )
+                    lines.append(
+                        f"{latest_solution_count[0]} improvements found"
+                    )
+                else:
+                    lines.append(
+                        f"Starting: {initial_cost_h:.2f} h → "
+                        f"Best so far: {best_h:.2f} h (still searching)"
+                    )
+                    lines.append(
+                        f"{latest_solution_count[0]} solutions found"
+                    )
+            else:
+                lines.append(
+                    f"Starting cost: {initial_cost_h:.2f} h — searching..."
+                )
+            progress.setLabelText("\n".join(lines))
+
+        _rebuild_label()  # show the initial state before solve starts
+
+        loop = QEventLoop()
+        task.taskCompleted.connect(loop.quit)
+        task.taskTerminated.connect(loop.quit)
+
+        stop_requested = [False]
+
+        def _on_solution_found(best_cost_s, solution_num):
+            latest_best_cost_s[0] = best_cost_s
+            latest_solution_count[0] = solution_num
+            _rebuild_label()
+
+        task.solutionFound.connect(_on_solution_found)
+
+        def _on_stop_clicked():
+            # Early-stop: tell the solver to finish its current iteration
+            # and return best-so-far. SolveWithParameters unblocks within a
+            # few hundred ms; the extraction/apply path runs unchanged.
+            stop_requested[0] = True
+            task.request_stop()
+            progress.setLabelText(
+                "Stopping — finalizing the best order found so far..."
+            )
+
+        progress.canceled.connect(_on_stop_clicked)
+
+        timer = QTimer()
+        timer.setInterval(500)
+
+        def _tick():
+            if task.start_time == 0.0:
+                return  # worker thread hasn't entered run() yet
+            if stop_requested[0]:
+                return  # leave the "Stopping..." label alone
+            elapsed_s = time.time() - task.start_time
+            elapsed_ms = min(int(elapsed_s * 1000), time_limit_s * 1000)
+            progress.setValue(elapsed_ms)
+            _rebuild_label()
+
+        timer.timeout.connect(_tick)
+        timer.start()
 
         solve_start = time.time()
-        try:
-            opt_result = optimize_with_ortools(
-                cost_matrix=cost_matrix,
-                node_meta=node_meta,
-                disjunction_pairs=disjunction_pairs,
-                time_limit_s=time_limit_s,
-                pinned_first_node=pinned_first_node,
-                metaheuristic=metaheuristic,
-            )
-        finally:
-            progress.close()
-
+        QgsApplication.taskManager().addTask(task)
+        loop.exec_()
+        timer.stop()
         solve_elapsed = time.time() - solve_start
+
+        progress.close()
+
+        if stop_requested[0]:
+            log.info(
+                f"OR-tools stop requested after {solve_elapsed:.1f}s; "
+                f"accepting solver's best-so-far."
+            )
+
+        if task.error is not None:
+            # If the user stopped before any solution was found, the solver
+            # returned None and optimize_with_ortools raised RuntimeError.
+            # Let the caller's try/except fall back to the pre-optimization
+            # sequence — same behavior as a canceled-before-first-solution.
+            raise task.error
+
+        opt_result = task.result
         log.info(
             f"OR-tools solver finished in {solve_elapsed:.1f}s "
-            f"(total phase 13a wall clock: {precompute_elapsed + solve_elapsed:.1f}s)"
+            f"(total phase 13b wall clock: {precompute_elapsed + solve_elapsed:.1f}s)"
         )
 
         # --- Convert tour back to (line_num, direction) sequence -----------
