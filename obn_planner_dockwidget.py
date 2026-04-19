@@ -8544,9 +8544,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         )
                         dubins_cache[dubins_key] = float(INFEASIBLE_ARC_COST)
                     else:
+                        # length_only=True skips the polyline densification and
+                        # QgsGeometry.fromPolylineXY/.length() roundtrip. Cost
+                        # matrix only uses turn_time; turn_geom here is discarded.
                         _, _, turn_time = self._calculate_dubins_turn(
                             exit_pt, exit_hdg, entry_pt, entry_hdg,
                             turn_radius, turn_speed, turn_rate,
+                            length_only=True,
                         )
                         dubins_cache[dubins_key] = (
                             float(INFEASIBLE_ARC_COST) if turn_time is None else float(turn_time)
@@ -9608,7 +9612,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
 
     # --- 10. Turn Calculations & Sequencing Helpers ---
 
-    def _calculate_dubins_turn(self, p_exit, h_exit, p_entry, h_entry, radius, turn_speed_mps, turn_rate_dps=None):
+    def _calculate_dubins_turn(self, p_exit, h_exit, p_entry, h_entry, radius, turn_speed_mps, turn_rate_dps=None, length_only=False):
         """
         Calculates the shortest Dubins path between two poses using the local dubins_path module.
 
@@ -9623,9 +9627,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             radius (float): Turning radius in meters
             turn_speed_mps (float): Turn speed in meters per second
             turn_rate_dps (float, optional): Turn rate in degrees per second
+            length_only (bool): If True, skip waypoint densification and polyline
+                construction — compute length analytically via dubins_length().
+                Returns (None, length, time); turn_geometry will be None. Used
+                by the OR-tools cost-matrix precompute, which only needs time.
 
         Returns:
-            tuple: (turn_geometry, turn_length, turn_time_seconds) or (None, None, None) on failure
+            tuple: (turn_geometry, turn_length, turn_time_seconds) or (None, None, None) on failure.
+                   turn_geometry is None when length_only=True.
         """
         # Log input parameters for debugging
         log.debug("Calculating Dubins turn with:")
@@ -9654,12 +9663,37 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             point_distance_sq = p_exit.sqrDist(p_entry)
             if point_distance_sq < 1e-6:
                 log.info("Start/end points are coincident, returning minimal path")
+                if length_only:
+                    return None, 0.0, 0.0
                 minimal_geom = QgsGeometry.fromPolylineXY([p_exit, p_entry])
                 return minimal_geom, 0.0, 0.0
 
             # Convert QGIS headings (0=N, CW) to mathematical convention (0=E, CCW)
             start_heading_math = (90.0 - h_exit + 360.0) % 360.0
             end_heading_math = (90.0 - h_entry + 360.0) % 360.0
+
+            # Length-only fast path: skip densification + polyline + .length().
+            # Used by the OR-tools cost-matrix precompute (turn_geom is discarded
+            # there anyway). ~7× faster per turn than the full geometry path.
+            if length_only:
+                turn_length = dubins_calc.dubins_length(
+                    s_x=p_exit.x(), s_y=p_exit.y(), s_head=start_heading_math,
+                    e_x=p_entry.x(), e_y=p_entry.y(), e_head=end_heading_math,
+                    radius=radius,
+                )
+                if turn_length is None:
+                    log.error("dubins_length returned None for length-only turn")
+                    return None, None, None
+                turn_length = max(0.0, float(turn_length))
+                time_seconds = 0.0
+                if turn_speed_mps and turn_speed_mps > 0:
+                    distance_time = turn_length / turn_speed_mps
+                    time_seconds = distance_time
+                    if turn_rate_dps and turn_rate_dps > 0:
+                        heading_diff = abs((h_entry - h_exit + 180) % 360 - 180)
+                        heading_time = heading_diff / turn_rate_dps * 60
+                        time_seconds = max(distance_time, heading_time)
+                return None, turn_length, time_seconds
 
             # Configure densification parameters for smoother curves
             densification_distance = radius / 3.0  # Much fewer points than the original radius/10

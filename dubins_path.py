@@ -482,6 +482,36 @@ def dubins_path(start, end, radius):
     return b_mode, [bt * c, bp * c, bq * c], [c] * 3
 
 
+def dubins_length(s_x, s_y, s_head, e_x, e_y, e_head, radius):
+    """Return total Dubins path length in meters, analytically.
+
+    Skips the waypoint densification that get_curve() performs — ~100× faster
+    when the caller only needs the total length (e.g. OR-tools cost matrix
+    precompute). Segment lengths come directly from the shortest-path solver.
+
+    Non-negativity note: the current planner list in dubins_path() only
+    contains uppercase planners (LSL/RSR/LSR/RSL/RLR/LRL), so the three
+    returned lengths are all non-negative. If a lowercase "reverse" planner
+    is ever added to that list, switch this sum to sum(abs(l) for l in lengths).
+
+    :param s_x: starting x
+    :param s_y: starting y
+    :param s_head: starting heading in degrees (math convention: 0=+x, CCW)
+    :param e_x: ending x
+    :param e_y: ending y
+    :param e_head: ending heading in degrees (math convention)
+    :param radius: turning radius in meters
+    :return: total length in meters, or None on solver failure
+    """
+    start = (s_x, s_y, math.radians(s_head))
+    end = (e_x, e_y, math.radians(e_head))
+    solution = dubins_path(start=start, end=end, radius=radius)
+    if solution is None or solution[0] is None:
+        return None
+    _, lengths, _ = solution
+    return sum(lengths)
+
+
 def get_curve(s_x, s_y, s_head, e_x, e_y, e_head, radius, max_line_distance):
     """
     Function calculates the curve path between two points.
