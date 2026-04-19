@@ -9041,7 +9041,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     def _read_line_metadata_map(self, lines_layer):
         """Phase 16b: snapshot Operation/FGSP/LGSP per line from Generated_Survey_Lines.
 
-        Returns {line_num: {'operation': str, 'fgsp': int, 'lgsp': int}}.
+        Phase 16d-2b.1: keys are now (line_num, sub_line_id) tuples so
+        multi-sub-line parents produce distinct entries (one per sub-line
+        feature). SubLineId is optional on the layer; when missing it
+        defaults to 1 and single-sub-line surveys behave as before.
+
+        Returns {(line_num, sub_line_id): {'operation': str, 'fgsp': int, 'lgsp': int, ...}}.
         Missing fields (stale layer from earlier plugin version) yield None values.
         """
         result = {}
@@ -9056,6 +9061,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         idx_low = fields.lookupField("LowestSP")
         idx_high = fields.lookupField("HighestSP")
         idx_label = fields.lookupField("Label")  # Phase 16d
+        idx_sub = fields.lookupField("SubLineId")  # Phase 16d-2b.1 (optional)
         if idx_line < 0:
             log.warning("_read_line_metadata_map: LineNum field missing")
             return result
@@ -9064,6 +9070,14 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                 line_num = int(feat.attribute(idx_line))
             except (TypeError, ValueError):
                 continue
+            sub_line_id = 1
+            if idx_sub >= 0:
+                _raw_sli = feat.attribute(idx_sub)
+                if _raw_sli not in (None, NULL):
+                    try:
+                        sub_line_id = int(_raw_sli)
+                    except (TypeError, ValueError):
+                        sub_line_id = 1
             def _int_or_none(idx):
                 if idx < 0:
                     return None
@@ -9074,7 +9088,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     return None
             op_val = feat.attribute(idx_op) if idx_op >= 0 else None
             label_val = feat.attribute(idx_label) if idx_label >= 0 else None
-            result[line_num] = {
+            result[(line_num, sub_line_id)] = {
                 'operation': op_val if op_val not in (None, NULL) else None,
                 'fgsp': _int_or_none(idx_fgsp),
                 'lgsp': _int_or_none(idx_lgsp),
@@ -9087,7 +9101,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
     def _commit_line_metadata_edits(self, lines_layer, edits):
         """Phase 16b: write editor's Operation/FGSP/LGSP edits back to the layer.
 
-        edits: {line_num: {'operation': str, 'fgsp': int, 'lgsp': int}}
+        Phase 16d-2b.1: edits dict is keyed by (line_num, sub_line_id) tuples
+        so multi-sub-line parents are written to the correct feature. Falls
+        back to pure-LineNum match when SubLineId field is absent (pre-16d
+        layers) and when the edit key is a bare int.
+
+        edits: {(line_num, sub_line_id): {'operation': str, 'fgsp': int, 'lgsp': int}}
         Returns True on success, False otherwise.
         """
         if not edits:
@@ -9100,6 +9119,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         idx_op = fields.lookupField("Operation")
         idx_fgsp = fields.lookupField("FGSP")
         idx_lgsp = fields.lookupField("LGSP")
+        idx_sub = fields.lookupField("SubLineId")  # Phase 16d-2b.1 (optional)
         if min(idx_line, idx_op, idx_fgsp, idx_lgsp) < 0:
             log.error("_commit_line_metadata_edits: one of LineNum/Operation/FGSP/LGSP missing")
             return False
@@ -9112,9 +9132,24 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     line_num = int(feat.attribute(idx_line))
                 except (TypeError, ValueError):
                     continue
-                if line_num not in edits:
+                sub_line_id = 1
+                if idx_sub >= 0:
+                    _raw = feat.attribute(idx_sub)
+                    if _raw not in (None, NULL):
+                        try:
+                            sub_line_id = int(_raw)
+                        except (TypeError, ValueError):
+                            sub_line_id = 1
+                key = (line_num, sub_line_id)
+                # Phase 16d-2b.1: primary match by tuple key. For
+                # backward-compat (edits that came from a pre-tuple
+                # caller), also try the bare line_num.
+                if key in edits:
+                    e = edits[key]
+                elif line_num in edits:
+                    e = edits[line_num]
+                else:
                     continue
-                e = edits[line_num]
                 lines_layer.changeAttributeValue(feat.id(), idx_op, e['operation'])
                 lines_layer.changeAttributeValue(feat.id(), idx_fgsp, int(e['fgsp']))
                 lines_layer.changeAttributeValue(feat.id(), idx_lgsp, int(e['lgsp']))

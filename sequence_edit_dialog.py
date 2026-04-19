@@ -402,10 +402,17 @@ class SequenceEditDialog(QDialog):
 
             # Line Number (Phase 16d: prefer Label — "2146" or "2146 (1101-1500)")
             meta_for_label = self.line_metadata_state.get(line_num, {}) or {}
-            line_label = meta_for_label.get('label') or str(line_num)
+            # Phase 16d-2b.1: parent number fallback handles tuple line_num
+            # keys without int()-ing the tuple.
+            _parent = line_num[0] if isinstance(line_num, tuple) else line_num
+            line_label = meta_for_label.get('label') or str(_parent)
             line_item = QTableWidgetItem(line_label)
             line_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             line_item.setFlags(line_item.flags() & ~Qt.ItemIsEditable)
+            # Phase 16d-2b.1: store the tuple line-key on the cell's UserRole so
+            # _line_key_for_row can recover it without parsing display text
+            # (Label strings like "2431 (1101-1200)" aren't int-coercible).
+            line_item.setData(Qt.UserRole, line_num)
             self.tableWidget.setItem(i, COL_LINE_NUM, line_item)
 
             # --- Phase 16b: Operation / FGSP / LGSP widgets ---
@@ -552,14 +559,22 @@ class SequenceEditDialog(QDialog):
         self.tableWidget.blockSignals(False)
         self.tableWidget.resizeRowsToContents()
 
-    def _line_num_for_row(self, row):
+    def _line_key_for_row(self, row):
+        """Phase 16d-2b.1: return the sequence element (tuple after Phase
+        16d-2a) stored on the Line cell's UserRole. Falls back to parsing
+        the display text as an int for any row that predates this phase
+        (shouldn't happen within the same dialog instance)."""
         line_num_item = self.tableWidget.item(row, COL_LINE_NUM)
         if line_num_item is None:
             return None
+        key = line_num_item.data(Qt.UserRole)
+        if key is not None:
+            return key
+        # Fallback for rows without UserRole data
         try:
             return int(line_num_item.text())
         except (ValueError, TypeError):
-            log.error(f"Error getting line number from row {row}")
+            log.error(f"Error getting line key from row {row}")
             return None
 
     def _set_directions_state(self, line_num, direction_str):
@@ -577,7 +592,7 @@ class SequenceEditDialog(QDialog):
         if not sender_combo:
             return
         row = sender_combo.property("row")
-        line_num = self._line_num_for_row(row)
+        line_num = self._line_key_for_row(row)
         if line_num is None:
             return
 
@@ -605,7 +620,7 @@ class SequenceEditDialog(QDialog):
         if not sender_combo:
             return
         row = sender_combo.property("row")
-        line_num = self._line_num_for_row(row)
+        line_num = self._line_key_for_row(row)
         if line_num is None:
             return
         meta = self.line_metadata_state.setdefault(line_num, {})
@@ -625,7 +640,7 @@ class SequenceEditDialog(QDialog):
         if spin is None:
             return
         row = spin.property("row")
-        line_num = self._line_num_for_row(row)
+        line_num = self._line_key_for_row(row)
         if line_num is None:
             return
         meta = self.line_metadata_state.setdefault(line_num, {})
