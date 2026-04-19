@@ -429,17 +429,28 @@ class SequenceEditDialog(QDialog):
             meta['lowest_sp'] = lowest_sp
             meta['highest_sp'] = highest_sp
 
+            # Direction is the simulation's per-line alternation output
+            # (from _calculate_sequence_time via line_directions). Phase 16b
+            # erroneously derived this from FGSP/LGSP ordering, but FGSP/LGSP
+            # are stored direction-neutral (FGSP=min, LGSP=max per Phase 16d)
+            # so that check always read "low_to_high" regardless of the
+            # actual racetrack alternation. Fix: read from simulation and
+            # align stored FGSP/LGSP to match (the 16b model uses the
+            # ordering as the on-disk encoding of direction).
+            direction_str = directions.get(line_num, 'low_to_high')
+            is_reciprocal = (direction_str == 'high_to_low')
+
             fgsp_val = meta.get('fgsp')
             lgsp_val = meta.get('lgsp')
-            is_reciprocal = (
-                fgsp_val is not None and lgsp_val is not None
-                and fgsp_val > lgsp_val
+            if fgsp_val is not None and lgsp_val is not None:
+                stored_reciprocal = fgsp_val > lgsp_val
+                if is_reciprocal != stored_reciprocal:
+                    meta['fgsp'], meta['lgsp'] = lgsp_val, fgsp_val
+                    fgsp_val, lgsp_val = lgsp_val, fgsp_val
+            log.debug(
+                f"  Row {i}, Line {line_num}: FGSP={fgsp_val}, LGSP={lgsp_val}, "
+                f"direction={direction_str} (from simulation)"
             )
-            # Keep line_directions (used by downstream sim + timing) in sync
-            # with FGSP/LGSP ordering.
-            direction_str = 'high_to_low' if is_reciprocal else 'low_to_high'
-            directions[line_num] = direction_str
-            log.debug(f"  Row {i}, Line {line_num}: FGSP={fgsp_val}, LGSP={lgsp_val}, direction={direction_str}")
 
             # Operation combo
             op_combo = QComboBox()
