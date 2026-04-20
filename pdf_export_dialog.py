@@ -616,12 +616,46 @@ class PdfExportDialog(QDialog):
                 self.fitLayerCombo.setCurrentIndex(idx)
         self.fitLayerCombo.blockSignals(False)
 
+    # ---- Key helpers for the layer tree ------------------------------------
+    #
+    # Phase 17d.6 made the tree mixed — top-level rows are either groups
+    # (key "g:<name>") or standalone layers ("l:<id>"), and member layers
+    # of a group appear as INDENTED CHILD rows (also keyed "l:<id>"). The
+    # helpers below abstract both layouts so every consumer handles both
+    # top-level and nested layer rows uniformly.
+
+    @staticmethod
+    def _row_layer_id(item):
+        """Return the layer_id from an item's UserRole, or None if the
+        item is a group row. Accepts legacy bare layer_id (pre-17d.6)."""
+        key = item.data(0, Qt.UserRole)
+        if not key:
+            return None
+        if key.startswith("l:"):
+            return key[2:]
+        if key.startswith("g:"):
+            return None
+        return key  # legacy format — plain layer_id
+
+    def _iter_layer_items(self):
+        """Yield every (item, layer_id) pair in the tree — both
+        top-level standalone layers AND member layers nested under
+        group rows. Skips group rows themselves."""
+        for i in range(self.layerTree.topLevelItemCount()):
+            top = self.layerTree.topLevelItem(i)
+            lid = self._row_layer_id(top)
+            if lid is not None:
+                yield top, lid
+            for j in range(top.childCount()):
+                child = top.child(j)
+                clid = self._row_layer_id(child)
+                if clid is not None:
+                    yield child, clid
+
     def _selected_layers(self):
         layers = []
-        for i in range(self.layerTree.topLevelItemCount()):
-            item = self.layerTree.topLevelItem(i)
+        for item, lid in self._iter_layer_items():
             if item.checkState(0) == Qt.Checked:
-                lid = item.data(0, Qt.UserRole)
                 layer = self._project.mapLayer(lid)
                 if layer is not None:
                     layers.append(layer)
@@ -631,18 +665,18 @@ class PdfExportDialog(QDialog):
         """Return {layer_id: display_name} for layers that have a
         non-empty override typed into the second column."""
         overrides = {}
-        for i in range(self.layerTree.topLevelItemCount()):
-            item = self.layerTree.topLevelItem(i)
-            lid = item.data(0, Qt.UserRole)
+        for item, lid in self._iter_layer_items():
             name = (item.text(1) or "").strip()
             if lid and name:
                 overrides[lid] = name
         return overrides
 
     def _on_layer_item_changed(self, item, column):
-        """Handle checkbox toggles (col 0, col 2) and display-name edits (col 1)."""
+        """Handle checkbox toggles (col 0, col 2) and display-name edits (col 1).
+        Group rows are skipped for per-layer settings — their own
+        "Rename legend groups…" modal handles them."""
+        lid = self._row_layer_id(item)
         if column == 1:
-            lid = item.data(0, Qt.UserRole)
             if lid:
                 new_name = (item.text(1) or "").strip()
                 _settings().setValue(
@@ -650,7 +684,6 @@ class PdfExportDialog(QDialog):
                 )
             return
         if column == 2:
-            lid = item.data(0, Qt.UserRole)
             if lid:
                 hidden = item.checkState(2) != Qt.Checked
                 _settings().setValue(
@@ -715,14 +748,12 @@ class PdfExportDialog(QDialog):
         return list(raw)
 
     def _legend_hidden_set(self) -> set:
-        """Layer IDs where column 2 ('In legend') is UNCHECKED."""
+        """Layer IDs where column 2 ('In legend') is UNCHECKED.
+        Walks both top-level and group-nested rows."""
         hidden = set()
-        for i in range(self.layerTree.topLevelItemCount()):
-            item = self.layerTree.topLevelItem(i)
+        for item, lid in self._iter_layer_items():
             if item.checkState(2) != Qt.Checked:
-                lid = item.data(0, Qt.UserRole)
-                if lid:
-                    hidden.add(lid)
+                hidden.add(lid)
         return hidden
 
     def _group_display_overrides(self) -> dict:
