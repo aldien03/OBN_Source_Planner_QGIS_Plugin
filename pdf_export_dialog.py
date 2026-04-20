@@ -70,12 +70,13 @@ except ImportError:  # pragma: no cover
         rows_from_optimized_path_layer,
     )
 
-# Mirror the PDF map body aspect so the preview canvas shows what the
-# PDF will actually render. See services/pdf_export.py for the body
-# geometry: width 249mm (297 - 10 - 18 - 60 - 10) by height 172mm
-# (210 - 26 - 2 - 10) -> aspect ~1.45 when the legend is enabled.
+# Phase 17d.2: title band shrunk from 26 -> 18 mm. Mirror the PDF map
+# body aspect so the preview canvas shows what the PDF will actually
+# render. Body geometry: width 249 mm (297 - 10 - 18 - 60 - 10) by
+# height 180 mm (210 - 18 - 2 - 10) -> aspect ~1.38 when the legend is
+# enabled.
 _PDF_BODY_ASPECT = (297.0 - 10.0 - 18.0 - 60.0 - 10.0) / \
-                   (210.0 - 26.0 - 2.0 - 10.0)
+                   (210.0 - 18.0 - 2.0 - 10.0)
 
 log = logging.getLogger("obn_planner")
 
@@ -282,11 +283,15 @@ class PdfExportDialog(QDialog):
         left.addWidget(gb_export)
 
         # Layers panel — 2 columns: [checkbox + real name] | display name
+        # Phase 17d.3: three-column layer tree:
+        #   col 0: checkbox (show on map)  + layer name
+        #   col 1: editable display name for the legend
+        #   col 2: checkbox (show in legend)
         gb_layers = QGroupBox("Layers to include in map")
         lay_layers = QVBoxLayout(gb_layers)
         self.layerTree = QTreeWidget()
-        self.layerTree.setColumnCount(2)
-        self.layerTree.setHeaderLabels(["Layer", "Display as (legend)"])
+        self.layerTree.setColumnCount(3)
+        self.layerTree.setHeaderLabels(["Layer", "Display as (legend)", "In legend"])
         self.layerTree.setRootIsDecorated(False)
         self.layerTree.setAlternatingRowColors(True)
         self.layerTree.setEditTriggers(
@@ -296,10 +301,11 @@ class PdfExportDialog(QDialog):
         hdr = self.layerTree.header()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.layerTree.setToolTip(
-            "Tick which layers to draw. Double-click the right column to "
-            "rename how a layer appears in the PDF legend — the main "
-            "QGIS project is not affected."
+            "Col 1: tick = show on map. Col 2: rename how a layer appears "
+            "in the PDF legend (double-click to edit). Col 3: tick = "
+            "include in legend. The main QGIS project is not affected."
         )
         lay_layers.addWidget(self.layerTree)
         left.addWidget(gb_layers, stretch=1)
@@ -314,19 +320,41 @@ class PdfExportDialog(QDialog):
         self.cbNorth = QCheckBox("North arrow")
         self.cbScale = QCheckBox("Scale bar")
         self.cbLegend = QCheckBox("Legend")
-        self.cbGrid = QCheckBox("Coord grid")
-        for cb in (self.cbNorth, self.cbScale, self.cbLegend, self.cbGrid):
+        for cb in (self.cbNorth, self.cbScale, self.cbLegend):
             cb.setChecked(True)
             cb.toggled.connect(lambda _v: self._save_per_export_settings())
         deco = QHBoxLayout()
         deco.addWidget(self.cbNorth)
         deco.addWidget(self.cbScale)
         deco.addWidget(self.cbLegend)
-        deco.addWidget(self.cbGrid)
         deco_wrap = QtWidgets.QWidget()
         deco_wrap.setLayout(deco)
         lay_map.addRow("Fit to:", self.fitLayerCombo)
         lay_map.addRow("Decorations:", deco_wrap)
+
+        # Phase 17d.3: coord-grid style (off / light / normal).
+        self.gridStyleCombo = QComboBox()
+        self.gridStyleCombo.addItem("Off", "off")
+        self.gridStyleCombo.addItem("Light (recommended)", "light")
+        self.gridStyleCombo.addItem("Normal", "normal")
+        self.gridStyleCombo.setToolTip(
+            "Coordinate grid intensity. 'Light' keeps the grid visible "
+            "but lets the survey plan show through."
+        )
+        self.gridStyleCombo.currentIndexChanged.connect(
+            lambda _i: self._save_per_export_settings()
+        )
+        lay_map.addRow("Grid:", self.gridStyleCombo)
+
+        self.renameGroupsBtn = QPushButton("Rename legend groups\u2026")
+        self.renameGroupsBtn.setToolTip(
+            "Rename or hide group headings shown in the PDF legend "
+            "(e.g. rename \"SAE GIS Shapefiles\" to \"Assets\", or "
+            "blank-out a name to flatten the group)."
+        )
+        self.renameGroupsBtn.clicked.connect(self._open_group_rename_dialog)
+        lay_map.addRow("", self.renameGroupsBtn)
+
         left.addWidget(gb_map)
 
         left_wrap = QtWidgets.QWidget()
@@ -393,7 +421,10 @@ class PdfExportDialog(QDialog):
         self.cbNorth.setChecked(s.value(_QS_PREFIX + "show_north", True, type=bool))
         self.cbScale.setChecked(s.value(_QS_PREFIX + "show_scale", True, type=bool))
         self.cbLegend.setChecked(s.value(_QS_PREFIX + "show_legend", True, type=bool))
-        self.cbGrid.setChecked(s.value(_QS_PREFIX + "show_grid", True, type=bool))
+        grid_style = s.value(_QS_PREFIX + "grid_style", "light", type=str)
+        idx = self.gridStyleCombo.findData(grid_style)
+        if idx >= 0:
+            self.gridStyleCombo.setCurrentIndex(idx)
 
     def _save_per_export_settings(self):
         s = _settings()
@@ -401,7 +432,8 @@ class PdfExportDialog(QDialog):
         s.setValue(_QS_PREFIX + "show_north", self.cbNorth.isChecked())
         s.setValue(_QS_PREFIX + "show_scale", self.cbScale.isChecked())
         s.setValue(_QS_PREFIX + "show_legend", self.cbLegend.isChecked())
-        s.setValue(_QS_PREFIX + "show_grid", self.cbGrid.isChecked())
+        s.setValue(_QS_PREFIX + "grid_style",
+                   self.gridStyleCombo.currentData() or "light")
 
     # --- Layers + canvas --------------------------------------------------
 
@@ -418,7 +450,12 @@ class PdfExportDialog(QDialog):
             override = s.value(
                 _QS_PREFIX + "display_names/" + lid, "", type=str
             )
-            item = QTreeWidgetItem([layer.name(), override or ""])
+            # Default: show in legend if visible on map. Persisted
+            # per-layer: an empty/missing value means "show in legend".
+            hide_in_legend = s.value(
+                _QS_PREFIX + "hidden_from_legend/" + lid, False, type=bool
+            )
+            item = QTreeWidgetItem([layer.name(), override or "", ""])
             item.setFlags(
                 item.flags()
                 | Qt.ItemIsUserCheckable
@@ -428,16 +465,46 @@ class PdfExportDialog(QDialog):
             node = layer_tree.findLayer(lid)
             visible = True if node is None else bool(node.isVisible())
             item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
+            item.setCheckState(
+                2, Qt.Unchecked if hide_in_legend else Qt.Checked
+            )
             item.setData(0, Qt.UserRole, lid)
             self.layerTree.addTopLevelItem(item)
         self.layerTree.blockSignals(False)
+
+    # ---------------- Per-project fit-layer helpers ----------------------
+
+    def _project_scope_key(self) -> str:
+        """Return a short stable key for the current project suitable
+        for QSettings subgrouping. Falls back to 'default' for
+        untitled projects."""
+        try:
+            path = self._project.fileName() or ""
+        except Exception:  # noqa: BLE001
+            path = ""
+        if not path:
+            return "default"
+        base = os.path.basename(path)
+        # Strip extension, collapse non-word chars, cap length.
+        name, _ext = os.path.splitext(base)
+        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
+        return safe[:60] or "default"
+
+    def _fit_layer_settings_key(self) -> str:
+        """Per-project QSettings key. Scoped on the project's basename
+        so each survey remembers its own fit layer independently."""
+        return f"{_QS_PREFIX}fit_layer/{self._project_scope_key()}"
 
     def _populate_fit_layer_combo(self):
         self.fitLayerCombo.blockSignals(True)
         self.fitLayerCombo.clear()
         for layer in self._all_project_layers():
             self.fitLayerCombo.addItem(layer.name(), layer.id())
-        remembered = _settings().value(_QS_PREFIX + "fit_layer_id", "", type=str)
+        s = _settings()
+        # Per-project first, then global fallback.
+        remembered = s.value(self._fit_layer_settings_key(), "", type=str)
+        if not remembered:
+            remembered = s.value(_QS_PREFIX + "fit_layer_id", "", type=str)
         if remembered:
             idx = self.fitLayerCombo.findData(remembered)
             if idx >= 0:
@@ -468,7 +535,7 @@ class PdfExportDialog(QDialog):
         return overrides
 
     def _on_layer_item_changed(self, item, column):
-        """Handle checkbox toggles (col 0) and display-name edits (col 1)."""
+        """Handle checkbox toggles (col 0, col 2) and display-name edits (col 1)."""
         if column == 1:
             lid = item.data(0, Qt.UserRole)
             if lid:
@@ -477,8 +544,107 @@ class PdfExportDialog(QDialog):
                     _QS_PREFIX + "display_names/" + lid, new_name
                 )
             return
+        if column == 2:
+            lid = item.data(0, Qt.UserRole)
+            if lid:
+                hidden = item.checkState(2) != Qt.Checked
+                _settings().setValue(
+                    _QS_PREFIX + "hidden_from_legend/" + lid, hidden
+                )
+            return
         # Column 0: checkbox changed -> resync canvas.
         self._sync_canvas_to_selection()
+
+    def _legend_hidden_set(self) -> set:
+        """Layer IDs where column 2 ('In legend') is UNCHECKED."""
+        hidden = set()
+        for i in range(self.layerTree.topLevelItemCount()):
+            item = self.layerTree.topLevelItem(i)
+            if item.checkState(2) != Qt.Checked:
+                lid = item.data(0, Qt.UserRole)
+                if lid:
+                    hidden.add(lid)
+        return hidden
+
+    def _group_display_overrides(self) -> dict:
+        """Load all {group_name: display_name_or_empty} overrides from
+        QSettings. Empty value == flatten (hide heading, keep children)."""
+        s = _settings()
+        overrides = {}
+        s.beginGroup(_QS_PREFIX + "group_names")
+        try:
+            for key in s.childKeys():
+                overrides[key] = s.value(key, "", type=str)
+        finally:
+            s.endGroup()
+        return overrides
+
+    def _all_layer_tree_groups(self):
+        """Walk the project layer tree and yield every group node."""
+        root = self._project.layerTreeRoot()
+        stack = [root]
+        groups = []
+        while stack:
+            node = stack.pop()
+            try:
+                children = list(node.children())
+            except AttributeError:
+                children = []
+            for child in children:
+                if hasattr(child, "findGroups"):
+                    groups.append(child)
+                    stack.append(child)
+        return groups
+
+    def _open_group_rename_dialog(self):
+        groups = self._all_layer_tree_groups()
+        if not groups:
+            QMessageBox.information(
+                self, "No groups",
+                "The current project's layer tree has no groups.",
+            )
+            return
+        existing = self._group_display_overrides()
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Rename legend groups")
+        dlg.setModal(True)
+        dlg.resize(520, 320)
+
+        form = QFormLayout()
+        line_edits = {}
+        hint = QLabel(
+            "Empty value = hide the group heading (children still appear "
+            "flat in the legend)."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #555;")
+
+        for grp in groups:
+            name = grp.name()
+            edit = QLineEdit(existing.get(name, ""))
+            edit.setPlaceholderText(name)
+            form.addRow(f"{name}:", edit)
+            line_edits[name] = edit
+
+        btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+
+        root = QVBoxLayout(dlg)
+        root.addWidget(hint)
+        root.addLayout(form)
+        root.addStretch(1)
+        root.addWidget(btns)
+
+        if dlg.exec_() == QDialog.Accepted:
+            s = _settings()
+            s.beginGroup(_QS_PREFIX + "group_names")
+            try:
+                for name, edit in line_edits.items():
+                    s.setValue(name, (edit.text() or "").strip())
+            finally:
+                s.endGroup()
 
     def _sync_canvas_to_selection(self, *_):
         layers = self._selected_layers()
@@ -490,7 +656,12 @@ class PdfExportDialog(QDialog):
     def _on_fit_layer_changed(self, _index: int):
         lid = self.fitLayerCombo.currentData()
         if lid:
-            _settings().setValue(_QS_PREFIX + "fit_layer_id", lid)
+            s = _settings()
+            # Write BOTH the per-project key (primary) and the global
+            # key (legacy fallback for future projects that lack their
+            # own per-project key).
+            s.setValue(self._fit_layer_settings_key(), lid)
+            s.setValue(_QS_PREFIX + "fit_layer_id", lid)
         self._fit_to_selected_layer()
 
     def _fit_to_selected_layer(self):
@@ -539,9 +710,12 @@ class PdfExportDialog(QDialog):
             show_north_arrow=self.cbNorth.isChecked(),
             show_scale_bar=self.cbScale.isChecked(),
             show_legend=self.cbLegend.isChecked(),
-            show_coord_grid=self.cbGrid.isChecked(),
+            show_coord_grid=True,  # gated by grid_style below
+            grid_style=(self.gridStyleCombo.currentData() or "light"),
             start_sequence_number=self._start_seq,
             layer_display_names=self._layer_display_overrides(),
+            group_display_names=self._group_display_overrides(),
+            hidden_from_legend=self._legend_hidden_set(),
         )
 
     def _on_render_clicked(self):
