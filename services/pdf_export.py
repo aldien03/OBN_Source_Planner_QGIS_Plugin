@@ -911,46 +911,53 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
                             pass
                         node.setName(name_overrides[lid])
 
-                # Step 1.5 (Phase 17d.5/.6): reorder top-level nodes —
-                # BOTH groups AND standalone layers — to match the
-                # user's explicit legend order. Keys in legend_order
-                # are prefixed "l:<layer_id>" for layer nodes and
-                # "g:<group_name>" for group nodes. Legacy bare
-                # layer_ids (pre-17d.6) are still accepted.
+                # Step 1.5 (Phase 17d.5/.6/.7): reorder top-level nodes
+                # — BOTH groups AND standalone layers — to match the
+                # user's explicit legend order.
+                #
+                # IMPORTANT: QgsLayerTreeGroup.removeChildNode() DELETES
+                # the node (destructor runs). Re-adding the same Python
+                # wrapper afterwards yields a dangling pointer and
+                # QGIS silently drops it — that's what emptied the
+                # legend in 17d.6. Fix: build a fresh tree with deep
+                # clones, then swap it in as the new custom_tree.
+                #
+                # Keys in legend_order are prefixed "l:<layer_id>" or
+                # "g:<group_name>". Legacy bare layer_ids (pre-17d.6)
+                # are still accepted.
                 legend_order = list(getattr(config, "legend_order", []) or [])
                 if legend_order:
-                    root = custom_tree
+                    from qgis.core import (
+                        QgsLayerTree,
+                        QgsLayerTreeGroup,
+                        QgsLayerTreeLayer,
+                    )
                     top_by_key = {}
-                    for ch in root.children():
-                        if hasattr(ch, "layerId"):
+                    for ch in custom_tree.children():
+                        if isinstance(ch, QgsLayerTreeLayer):
                             top_by_key["l:" + ch.layerId()] = ch
-                        elif hasattr(ch, "children"):
+                        elif isinstance(ch, QgsLayerTreeGroup):
                             top_by_key["g:" + ch.name()] = ch
                     ordered = []
                     for key in legend_order:
                         candidates = [key]
                         if not (key.startswith("l:") or key.startswith("g:")):
                             candidates = ["l:" + key]
-                        found = None
                         for k in candidates:
                             node = top_by_key.pop(k, None)
                             if node is not None:
-                                found = node
+                                ordered.append(node)
                                 break
-                        if found is not None:
-                            ordered.append(found)
-                    # Any unclassified nodes stay in their original order.
+                    # Remaining nodes keep their natural order.
                     ordered.extend(top_by_key.values())
+
+                    new_tree = QgsLayerTree()
                     for node in ordered:
                         try:
-                            root.removeChildNode(node)
+                            new_tree.addChildNode(node.clone())
                         except Exception:  # noqa: BLE001
                             pass
-                    for node in ordered:
-                        try:
-                            root.addChildNode(node)
-                        except Exception:  # noqa: BLE001
-                            pass
+                    custom_tree = new_tree
 
                 # Step 2: for each group node, either rename (non-empty
                 # override) or flatten (empty override). Flattening:
