@@ -10887,6 +10887,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             fields.append(QgsField("Heading", QVariant.Double, len=6, prec=1))
             fields.append(QgsField("Deviated", QVariant.Bool))
             fields.append(QgsField("DeviationFailed", QVariant.Bool))
+            # Phase 17a: SubLineId preserves the (line_num, sub_line_id)
+            # composite key from the simulation so Phase 17 PDF export can
+            # join Generated_Survey_Lines by (LineNum, SubLineId). NULL for
+            # turns/run-ins and for single-run parent lines from a
+            # simulation that pre-dates 16d-2 tuple keys.
+            fields.append(QgsField("SubLineId", QVariant.Int))
 
             # Create URI and layer
             uri = f"LineString?crs={source_crs.authid()}&index=yes"
@@ -10944,10 +10950,13 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     # Phase 16d-2a: line_num may be a (line_num, sub_line_id)
                     # tuple when the path came from a tuple-keyed simulation.
                     # Optimized_Path's LineNum field is int — unpack to parent.
+                    # Phase 17a: also capture SubLineId into the new field.
                     if isinstance(line_num, tuple) and len(line_num) >= 1:
                         disp_line_num = line_num[0]
+                        disp_sub_line_id = line_num[1] if len(line_num) >= 2 else NULL
                     else:
                         disp_line_num = line_num if line_num is not None else NULL
+                        disp_sub_line_id = NULL
                     disp_heading = round(heading, 1) if heading is not None else NULL
 
                     # Format duration as hh:mm
@@ -10981,7 +10990,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                         q_end,              # EndTime
                         disp_heading,       # Heading
                         is_deviated,        # Deviated
-                        is_failed           # DeviationFailed
+                        is_failed,          # DeviationFailed
+                        disp_sub_line_id    # SubLineId (Phase 17a)
                     ])
 
                     # Add feature to layer
