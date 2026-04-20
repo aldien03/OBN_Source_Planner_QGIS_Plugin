@@ -163,6 +163,9 @@ class PdfExportConfig:
     # Phase 17d.3: per-layer opt-out from the legend (while staying
     # visible on the map). Set of layer_id strings.
     hidden_from_legend: set = field(default_factory=set)
+    # Phase 17d.5: explicit legend row order as a list of layer_ids.
+    # Empty list = use the project layer tree's native order.
+    legend_order: list = field(default_factory=list)
 
 
 # --- QGIS-dependent helpers -------------------------------------------------
@@ -698,18 +701,51 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
                 grid.setAnnotationPrecision(0 if step >= 10 else 2)
             except AttributeError:
                 pass
+            # Phase 17d.5: smaller, softer annotation font, and
+            # restrict label placement to bottom + left only (matches
+            # the reference Petrobras PDF and the user's request).
+            try:
+                from qgis.PyQt.QtGui import QColor, QFont
+                ann_font = QFont()
+                ann_font.setPointSizeF(7.0)
+                # setAnnotationFont(QFont) -> QGIS 3.x; fall back to
+                # setAnnotationTextFormat via QgsTextFormat if needed.
+                try:
+                    grid.setAnnotationFont(ann_font)
+                except AttributeError:
+                    try:
+                        from qgis.core import QgsTextFormat
+                        fmt = QgsTextFormat()
+                        fmt.setFont(ann_font)
+                        fmt.setSize(7.0)
+                        fmt.setColor(QColor(100, 100, 100))
+                        grid.setAnnotationTextFormat(fmt)
+                    except Exception:  # noqa: BLE001
+                        pass
+                try:
+                    grid.setAnnotationFontColor(QColor(100, 100, 100))
+                except AttributeError:
+                    pass
+                # Hide top + right annotations; keep bottom + left.
+                Mg = qc.QgsLayoutItemMapGrid
+                hide_all = getattr(Mg, "HideAll", 3)
+                show_all = getattr(Mg, "ShowAll", 0)
+                try:
+                    grid.setAnnotationDisplay(hide_all, Mg.Top)
+                    grid.setAnnotationDisplay(hide_all, Mg.Right)
+                    grid.setAnnotationDisplay(show_all, Mg.Bottom)
+                    grid.setAnnotationDisplay(show_all, Mg.Left)
+                except Exception:  # noqa: BLE001
+                    pass
+            except Exception:  # noqa: BLE001
+                pass
+            # Line style: light grey vs normal grey.
             try:
                 from qgis.PyQt.QtGui import QColor
                 if grid_style == "light":
-                    # Light: thin grey lines, high transparency so the
-                    # survey plan reads through the grid.
-                    grid.setStyle(qc.QgsLayoutItemMapGrid.FrameLineBorder
-                                  if hasattr(qc.QgsLayoutItemMapGrid,
-                                             "FrameLineBorder") else 0)
                     grid.setGridLineColor(QColor(180, 180, 180, 180))
                     grid.setGridLineWidth(0.1)
                 else:
-                    # Normal: standard solid grid.
                     grid.setGridLineColor(QColor(80, 80, 80))
                     grid.setGridLineWidth(0.2)
             except Exception:  # noqa: BLE001
@@ -747,13 +783,20 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
 
     if config.show_scale_bar:
         scale = qc.QgsLayoutItemScaleBar(layout)
+        # Link the map BEFORE units / segments / applyDefaultSize so
+        # the scale bar has a scale source when those methods fire.
+        scale.setLinkedMap(map_item)
         try:
             scale.setStyle("Single Box")
         except Exception:  # noqa: BLE001
             pass
-        scale.setLinkedMap(map_item)
-        # Phase 17d.2: force kilometres (UTM metres produce
-        # "0 1000,000 m" style labels which read poorly).
+        # Phase 17d.2 (fixed 17d.5): force kilometres. Order matters —
+        # applyDefaultSize() resets many derived properties, so it
+        # must come BEFORE our segment-count + units overrides.
+        try:
+            scale.applyDefaultSize()
+        except Exception:  # noqa: BLE001
+            pass
         try:
             scale.setUnits(qc.QgsUnitTypes.DistanceKilometers)
             scale.setUnitLabel("km")
@@ -765,8 +808,20 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
         except AttributeError:
             pass
         try:
-            scale.applyDefaultSize()
+            # Pick a reasonable segment width given the map scale.
+            if fitted is not None and fitted.width() > 0:
+                km_total = fitted.width() / 1000.0
+                # aim for roughly km_total / 6 per segment, rounded nice
+                raw = max(1.0, km_total / 6.0)
+                scale.setUnitsPerSegment(_round_grid_step(raw))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             scale.setHeight(3.0)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            scale.update()
         except Exception:  # noqa: BLE001
             pass
         layout.addLayoutItem(scale)
@@ -807,9 +862,13 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
 
                 # Step 1: remove layer nodes that aren't on the map OR
                 # are opted out of the legend, and rename the rest.
-                # Phase 17d.2: also hide style subclasses by setting
-                # the "legend/layer-expression" / node legend policy so
-                # each layer contributes a single entry.
+                # Phase 17d.5: DO NOT collapse style subclasses — the
+                # Optimized_Path direction colors (Line Low->High,
+                # Line High->Low, Turn, Run-In) are the core
+                # information on the 48-hr shooting plan. Let each
+                # layer contribute its natural per-style legend rows.
+                # If a layer is too noisy, use col-2 in the dialog to
+                # hide the whole layer from the legend.
                 for node in list(custom_tree.findLayers()):
                     lid = node.layerId()
                     keep_on_map = (not visible_ids) or (lid in visible_ids)
@@ -825,21 +884,41 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
                         except AttributeError:
                             pass
                         node.setName(name_overrides[lid])
-                    # Collapse style subclasses: show only the layer's
-                    # own legend entry, not per-symbology class rows.
-                    try:
-                        node.setCustomProperty("showFeatureCount", False)
-                    except AttributeError:
-                        pass
-                    try:
-                        # QGIS 3.x: embed-widgets-in-legend off, and
-                        # expression-filter cleared. Also explicitly
-                        # limit the legend node order to only index 0
-                        # via QgsMapLayerLegendUtils.
-                        from qgis.core import QgsMapLayerLegendUtils
-                        QgsMapLayerLegendUtils.setLegendNodeOrder(node, [0])
-                    except Exception:  # noqa: BLE001
-                        pass
+
+                # Step 1.5 (Phase 17d.5): reorder top-level layer
+                # nodes to match the user's explicit legend order. We
+                # skip group-nested layers to keep group integrity —
+                # only the top-level layout is reshuffled. Layers not
+                # in legend_order keep their relative order after the
+                # ordered ones.
+                legend_order = list(getattr(config, "legend_order", []) or [])
+                if legend_order:
+                    root = custom_tree
+                    # Take snapshot of top-level children that are layers.
+                    top_children = list(root.children())
+                    top_layer_by_id = {}
+                    for ch in top_children:
+                        if hasattr(ch, "layerId"):
+                            top_layer_by_id[ch.layerId()] = ch
+                    ordered_layers = []
+                    for lid in legend_order:
+                        node = top_layer_by_id.pop(lid, None)
+                        if node is not None:
+                            ordered_layers.append(node)
+                    # Remaining layers keep their original order.
+                    ordered_layers.extend(top_layer_by_id.values())
+                    # Removed + re-added in the desired order; groups
+                    # and other non-layer children are left alone.
+                    for node in ordered_layers:
+                        try:
+                            root.removeChildNode(node)
+                        except Exception:  # noqa: BLE001
+                            pass
+                    for node in ordered_layers:
+                        try:
+                            root.addChildNode(node)
+                        except Exception:  # noqa: BLE001
+                            pass
 
                 # Step 2: for each group node, either rename (non-empty
                 # override) or flatten (empty override). Flattening:
@@ -891,9 +970,29 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
             legend.setResizeToContents(True)
         except AttributeError:
             pass
+        # Phase 17d.5: "Legend" headline, bold 11pt. Cartographic
+        # convention is singular "Legend". Gives the legend block a
+        # clear anchor header.
         try:
-            legend.setTitle("")  # the big title band already carries context
+            legend.setTitle("Legend")
+            legend.setTitleAlignment(0x04)  # Qt.AlignHCenter
         except AttributeError:
+            pass
+        try:
+            from qgis.PyQt.QtGui import QFont
+            title_font = QFont()
+            title_font.setPointSizeF(11.0)
+            title_font.setBold(True)
+            try:
+                legend.setTitleFont(title_font)
+            except AttributeError:
+                # QGIS 3.x later versions use setStyleFont with LegendStyle.Title
+                try:
+                    from qgis.core import QgsLegendStyle
+                    legend.setStyleFont(QgsLegendStyle.Title, title_font)
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
             pass
 
         layout.addLayoutItem(legend)

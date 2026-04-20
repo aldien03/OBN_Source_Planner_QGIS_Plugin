@@ -283,10 +283,12 @@ class PdfExportDialog(QDialog):
         left.addWidget(gb_export)
 
         # Layers panel — 2 columns: [checkbox + real name] | display name
-        # Phase 17d.3: three-column layer tree:
-        #   col 0: checkbox (show on map)  + layer name
+        # Phase 17d.3/.5: three-column reorderable layer tree.
+        #   col 0: checkbox (show on map) + layer name
         #   col 1: editable display name for the legend
         #   col 2: checkbox (show in legend)
+        # Row order controls the order layers appear in the PDF
+        # legend; chief can drag-drop rows OR use the ↑ / ↓ buttons.
         gb_layers = QGroupBox("Layers to include in map")
         lay_layers = QVBoxLayout(gb_layers)
         self.layerTree = QTreeWidget()
@@ -298,6 +300,12 @@ class PdfExportDialog(QDialog):
             QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
             | QAbstractItemView.SelectedClicked
         )
+        # Drag-drop reordering within the tree.
+        self.layerTree.setDragEnabled(True)
+        self.layerTree.setAcceptDrops(True)
+        self.layerTree.setDropIndicatorShown(True)
+        self.layerTree.setDragDropMode(QAbstractItemView.InternalMove)
+        self.layerTree.setSelectionMode(QAbstractItemView.SingleSelection)
         hdr = self.layerTree.header()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -305,9 +313,24 @@ class PdfExportDialog(QDialog):
         self.layerTree.setToolTip(
             "Col 1: tick = show on map. Col 2: rename how a layer appears "
             "in the PDF legend (double-click to edit). Col 3: tick = "
-            "include in legend. The main QGIS project is not affected."
+            "include in legend. Drag rows or use the arrow buttons to "
+            "reorder legend entries. The main QGIS project is not affected."
         )
         lay_layers.addWidget(self.layerTree)
+
+        # Reorder toolbar: ↑ / ↓ buttons.
+        reorder_row = QHBoxLayout()
+        self.moveUpBtn = QPushButton("\u25b2 Up")
+        self.moveDownBtn = QPushButton("\u25bc Down")
+        self.moveUpBtn.setToolTip("Move the selected layer up in the legend order.")
+        self.moveDownBtn.setToolTip("Move the selected layer down in the legend order.")
+        self.moveUpBtn.clicked.connect(lambda: self._move_selected_layer(-1))
+        self.moveDownBtn.clicked.connect(lambda: self._move_selected_layer(+1))
+        reorder_row.addStretch(1)
+        reorder_row.addWidget(self.moveUpBtn)
+        reorder_row.addWidget(self.moveDownBtn)
+        lay_layers.addLayout(reorder_row)
+
         left.addWidget(gb_layers, stretch=1)
 
         # Map controls
@@ -388,6 +411,10 @@ class PdfExportDialog(QDialog):
         self.renderBtn.clicked.connect(self._on_render_clicked)
         self.layerTree.itemChanged.connect(self._on_layer_item_changed)
         self.fitLayerCombo.currentIndexChanged.connect(self._on_fit_layer_changed)
+        # Persist order after drag-drop reordering.
+        self.layerTree.model().rowsMoved.connect(
+            lambda *_args: self._persist_layer_order()
+        )
 
     # --- Setup summary ----------------------------------------------------
 
@@ -445,7 +472,23 @@ class PdfExportDialog(QDialog):
         self.layerTree.clear()
         s = _settings()
         layer_tree = self._project.layerTreeRoot()
-        for layer in self._all_project_layers():
+
+        # Phase 17d.5: restore the user's saved legend order when
+        # present. Fall back to the project's layer-tree order.
+        saved_order = self._load_layer_order()
+        all_layers = self._all_project_layers()
+        all_by_id = {l.id(): l for l in all_layers}
+        ordered = []
+        if saved_order:
+            for lid in saved_order:
+                if lid in all_by_id:
+                    ordered.append(all_by_id.pop(lid))
+            # Any layers added since the order was saved come after.
+            ordered.extend(all_by_id.values())
+        else:
+            ordered = all_layers
+
+        for layer in ordered:
             lid = layer.id()
             override = s.value(
                 _QS_PREFIX + "display_names/" + lid, "", type=str
@@ -456,11 +499,16 @@ class PdfExportDialog(QDialog):
                 _QS_PREFIX + "hidden_from_legend/" + lid, False, type=bool
             )
             item = QTreeWidgetItem([layer.name(), override or "", ""])
+            # Rows are draggable; drops go between rows (the
+            # QTreeWidget-level setAcceptDrops + DragDropMode.InternalMove
+            # handles the target).
             item.setFlags(
-                item.flags()
-                | Qt.ItemIsUserCheckable
-                | Qt.ItemIsEditable
-                | Qt.ItemIsSelectable
+                (item.flags()
+                 | Qt.ItemIsUserCheckable
+                 | Qt.ItemIsEditable
+                 | Qt.ItemIsSelectable
+                 | Qt.ItemIsDragEnabled)
+                & ~Qt.ItemIsDropEnabled
             )
             node = layer_tree.findLayer(lid)
             visible = True if node is None else bool(node.isVisible())
@@ -554,6 +602,51 @@ class PdfExportDialog(QDialog):
             return
         # Column 0: checkbox changed -> resync canvas.
         self._sync_canvas_to_selection()
+
+    def _move_selected_layer(self, direction: int):
+        """Move the currently-selected tree row up (-1) or down (+1).
+        Persists the new order per-project on success."""
+        items = self.layerTree.selectedItems()
+        if not items:
+            return
+        item = items[0]
+        index = self.layerTree.indexOfTopLevelItem(item)
+        if index < 0:
+            return
+        new_index = index + direction
+        if new_index < 0 or new_index >= self.layerTree.topLevelItemCount():
+            return
+        # Remove and reinsert. Re-check state is preserved by QTreeWidget.
+        self.layerTree.blockSignals(True)
+        taken = self.layerTree.takeTopLevelItem(index)
+        self.layerTree.insertTopLevelItem(new_index, taken)
+        self.layerTree.setCurrentItem(taken)
+        self.layerTree.blockSignals(False)
+        self._persist_layer_order()
+
+    def _persist_layer_order(self):
+        """Save the current layer-tree order under the per-project key."""
+        order = []
+        for i in range(self.layerTree.topLevelItemCount()):
+            item = self.layerTree.topLevelItem(i)
+            lid = item.data(0, Qt.UserRole)
+            if lid:
+                order.append(lid)
+        s = _settings()
+        # Qt can round-trip lists through QSettings as QStringList.
+        s.setValue(f"{_QS_PREFIX}layer_order/{self._project_scope_key()}",
+                   order)
+
+    def _load_layer_order(self):
+        """Return persisted order as a list of layer_ids, or None."""
+        raw = _settings().value(
+            f"{_QS_PREFIX}layer_order/{self._project_scope_key()}", None
+        )
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            return [raw] if raw else None
+        return list(raw)
 
     def _legend_hidden_set(self) -> set:
         """Layer IDs where column 2 ('In legend') is UNCHECKED."""
@@ -716,7 +809,18 @@ class PdfExportDialog(QDialog):
             layer_display_names=self._layer_display_overrides(),
             group_display_names=self._group_display_overrides(),
             hidden_from_legend=self._legend_hidden_set(),
+            legend_order=self._current_legend_order(),
         )
+
+    def _current_legend_order(self) -> list:
+        """Return the current on-screen row order as a list of layer_ids."""
+        order = []
+        for i in range(self.layerTree.topLevelItemCount()):
+            item = self.layerTree.topLevelItem(i)
+            lid = item.data(0, Qt.UserRole)
+            if lid:
+                order.append(lid)
+        return order
 
     def _on_render_clicked(self):
         self._save_per_export_settings()
