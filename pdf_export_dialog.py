@@ -2,51 +2,59 @@
 """
 48-hour Lookahead preview dialog (Phase 17b).
 
-A custom dialog that gives the Chief Navigator an "export workspace":
-settings + layer visibility + map canvas + Render PDF button, all in
-one modal. Mirrors QGIS's own Print Layout in spirit but scoped to
-the one output this plugin produces.
+Two dialogs in this module:
 
-Why this exists instead of a fully-automated one-click export: the
-user explicitly rejected 100% automation. Chiefs need to pan/zoom the
-map and toggle layers case-by-case (SIMOPS changes daily, bathymetry
-sometimes clutters, etc.).
+- `ReportSetupDialog`: one-time setup for the rarely-changed defaults
+  (vessel name, project/client, default hours, header template, 3
+  logo paths). Persists to QSettings under the "obn_planner/pdf/*"
+  namespace. The chief fills this once per vessel and effectively
+  never again.
+
+- `PdfExportDialog`: the per-report workspace. Shows survey name +
+  layer checkboxes + embedded map canvas + Render PDF button. The
+  chief adjusts layers and extent, clicks Render, and a PDF is
+  written. Opens ReportSetupDialog on "Report setup..." button if
+  the defaults need editing.
+
+Why split: the user explicitly asked for a one-time setup separate
+from the per-export flow. Report details (vessel/logos/etc.) rarely
+change; layers and survey-name change every export.
 """
 from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
 
-from qgis.core import (
-    QgsProject,
-    QgsMapLayer,
-)
+from qgis.core import QgsProject
 from qgis.gui import QgsMapCanvas, QgsMapToolPan
 from qgis.PyQt import QtCore, QtWidgets
 from qgis.PyQt.QtCore import QDate, QSettings, Qt
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
 )
 
 try:
     from .services.pdf_export import (
         PdfExportConfig,
+        _expand_extent_to_aspect,
         build_lookahead_layout,
         compute_output_filename,
         export_pdf,
@@ -55,16 +63,160 @@ try:
 except ImportError:  # pragma: no cover
     from services.pdf_export import (  # type: ignore
         PdfExportConfig,
+        _expand_extent_to_aspect,
         build_lookahead_layout,
         compute_output_filename,
         export_pdf,
         rows_from_optimized_path_layer,
     )
 
+# Mirror the PDF map body aspect so the preview canvas shows what the
+# PDF will actually render. See services/pdf_export.py for the body
+# geometry: width 249mm (297 - 10 - 18 - 60 - 10) by height 172mm
+# (210 - 26 - 2 - 10) -> aspect ~1.45 when the legend is enabled.
+_PDF_BODY_ASPECT = (297.0 - 10.0 - 18.0 - 60.0 - 10.0) / \
+                   (210.0 - 26.0 - 2.0 - 10.0)
+
 log = logging.getLogger("obn_planner")
 
 _QS_PREFIX = "pdf/"
 _DEFAULT_HEADER = "{vessel} {hours}Hrs Look Ahead \u2014 {project}"
+
+
+def _settings() -> QSettings:
+    """Single QSettings instance for all PDF-related persistence."""
+    return QSettings("obn_planner", "pdf_export")
+
+
+# ---------------------------------------------------------------------------
+# Setup dialog — one-time defaults
+# ---------------------------------------------------------------------------
+
+
+class ReportSetupDialog(QDialog):
+    """Modal for editing the rarely-changed report defaults.
+
+    Saves to QSettings on OK, discards on Cancel. The dialog reads the
+    current values on open so edits are additive, not overwrites from
+    empty state.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Report setup (defaults)")
+        self.setModal(True)
+        self.resize(520, 360)
+
+        form = QFormLayout()
+
+        self.vesselEdit = QLineEdit()
+        self.vesselEdit.setPlaceholderText("e.g. Sanco Star")
+        self.projectEdit = QLineEdit()
+        self.projectEdit.setPlaceholderText("e.g. Petrobras MMBC \u2014 3D OBN")
+        self.hoursSpin = QSpinBox()
+        self.hoursSpin.setRange(1, 999)
+        self.hoursSpin.setSuffix(" hrs")
+        self.headerEdit = QLineEdit()
+        self.headerEdit.setPlaceholderText(_DEFAULT_HEADER)
+        self.headerEdit.setToolTip(
+            "Placeholders: {vessel}, {project}, {hours}, {date}, {survey}"
+        )
+
+        form.addRow("Vessel name:", self.vesselEdit)
+        form.addRow("Project / client:", self.projectEdit)
+        form.addRow("Default hours:", self.hoursSpin)
+        form.addRow("Header template:", self.headerEdit)
+
+        self.logoVesselEdit,  btnLV = self._logo_row("Vessel logo")
+        self.logoCompanyEdit, btnLC = self._logo_row("Company logo")
+        self.logoClientEdit,  btnLX = self._logo_row("Client logo")
+        form.addRow("Vessel logo:", self._bundle(self.logoVesselEdit, btnLV))
+        form.addRow("Company logo:", self._bundle(self.logoCompanyEdit, btnLC))
+        form.addRow("Client logo:", self._bundle(self.logoClientEdit, btnLX))
+
+        hint = QLabel(
+            "These values are saved once and re-used for every report. "
+            "Only the Survey name changes per export."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #555;")
+
+        btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        btns.button(QDialogButtonBox.Save).setText("Save defaults")
+        btns.accepted.connect(self._on_accept)
+        btns.rejected.connect(self.reject)
+
+        root = QVBoxLayout(self)
+        root.addLayout(form)
+        root.addWidget(hint)
+        root.addStretch(1)
+        root.addWidget(btns)
+
+        self._load()
+
+    def _logo_row(self, label: str):
+        edit = QLineEdit()
+        edit.setPlaceholderText("(no logo)")
+        edit.setReadOnly(True)
+        btn = QPushButton("Browse\u2026")
+        btn.clicked.connect(lambda _=False, e=edit, l=label: self._pick_logo(e, l))
+        return edit, btn
+
+    def _bundle(self, edit, btn):
+        wrap = QtWidgets.QWidget()
+        lay = QHBoxLayout(wrap)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(edit, stretch=1)
+        lay.addWidget(btn)
+        return wrap
+
+    def _pick_logo(self, edit: QLineEdit, label: str):
+        s = _settings()
+        last = edit.text() or s.value(_QS_PREFIX + "last_logo_dir", "", type=str)
+        start_dir = os.path.dirname(last) if last else ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Pick {label}", start_dir,
+            "Images (*.png *.jpg *.jpeg *.svg)",
+        )
+        if path:
+            edit.setText(path)
+            s.setValue(_QS_PREFIX + "last_logo_dir", os.path.dirname(path))
+
+    def _load(self):
+        s = _settings()
+        self.vesselEdit.setText(s.value(_QS_PREFIX + "vessel_name", "", type=str))
+        self.projectEdit.setText(s.value(_QS_PREFIX + "project_name", "", type=str))
+        self.hoursSpin.setValue(int(s.value(_QS_PREFIX + "hours", 48, type=int)))
+        self.headerEdit.setText(
+            s.value(_QS_PREFIX + "header_template", _DEFAULT_HEADER, type=str)
+        )
+        self.logoVesselEdit.setText(
+            s.value(_QS_PREFIX + "logo_vessel", "", type=str)
+        )
+        self.logoCompanyEdit.setText(
+            s.value(_QS_PREFIX + "logo_company", "", type=str)
+        )
+        self.logoClientEdit.setText(
+            s.value(_QS_PREFIX + "logo_client", "", type=str)
+        )
+
+    def _on_accept(self):
+        s = _settings()
+        s.setValue(_QS_PREFIX + "vessel_name", self.vesselEdit.text().strip())
+        s.setValue(_QS_PREFIX + "project_name", self.projectEdit.text().strip())
+        s.setValue(_QS_PREFIX + "hours", self.hoursSpin.value())
+        s.setValue(_QS_PREFIX + "header_template",
+                   self.headerEdit.text().strip() or _DEFAULT_HEADER)
+        s.setValue(_QS_PREFIX + "logo_vessel", self.logoVesselEdit.text().strip())
+        s.setValue(_QS_PREFIX + "logo_company", self.logoCompanyEdit.text().strip())
+        s.setValue(_QS_PREFIX + "logo_client", self.logoClientEdit.text().strip())
+        s.sync()
+        self.accept()
+
+
+# ---------------------------------------------------------------------------
+# Per-export preview + render dialog
+# ---------------------------------------------------------------------------
 
 
 class PdfExportDialog(QDialog):
@@ -78,7 +230,7 @@ class PdfExportDialog(QDialog):
     """
 
     def __init__(self, parent, project, optimized_path_layer,
-                 generated_lines_layer):
+                 generated_lines_layer, start_sequence_number: int = 1):
         super().__init__(parent)
         self.setWindowTitle("Create 48-hour Lookahead Report")
         self.setModal(True)
@@ -87,62 +239,72 @@ class PdfExportDialog(QDialog):
         self._project = project
         self._opt_layer = optimized_path_layer
         self._gen_layer = generated_lines_layer
-        self._settings = QSettings("obn_planner", "pdf_export")
+        self._start_seq = int(start_sequence_number or 1)
 
         self._build_ui()
-        self._load_settings()
+        self._load_per_export_settings()
+        self._refresh_setup_summary()
         self._populate_layers_panel()
         self._populate_fit_layer_combo()
         self._sync_canvas_to_selection()
 
-    # --- UI construction ---------------------------------------------------
+    # --- UI ---------------------------------------------------------------
 
     def _build_ui(self):
         root = QHBoxLayout(self)
 
-        # --- Left column: settings + layers + decorations ---
         left = QVBoxLayout()
         left.setSpacing(6)
 
-        # Settings group
-        gb_settings = QGroupBox("Report details")
-        form = QFormLayout(gb_settings)
+        # Setup summary at top — shows current defaults + edit button
+        gb_setup = QGroupBox("Report defaults")
+        setup_lay = QHBoxLayout(gb_setup)
+        self.setupSummaryLabel = QLabel("\u2014")
+        self.setupSummaryLabel.setWordWrap(True)
+        self.setupSummaryLabel.setStyleSheet("color: #333;")
+        self.setupBtn = QPushButton("Setup\u2026")
+        self.setupBtn.setToolTip(
+            "Edit the one-time report defaults (vessel, project, logos, "
+            "header template). Saved for future reports."
+        )
+        self.setupBtn.clicked.connect(self._open_setup_dialog)
+        setup_lay.addWidget(self.setupSummaryLabel, stretch=1)
+        setup_lay.addWidget(self.setupBtn)
+        left.addWidget(gb_setup)
+
+        # Per-export: survey name only (everything else is saved defaults)
+        gb_export = QGroupBox("This report")
+        form = QFormLayout(gb_export)
         self.surveyEdit = QLineEdit()
         self.surveyEdit.setPlaceholderText("e.g. 4D TVD")
-        self.vesselEdit = QLineEdit()
-        self.vesselEdit.setPlaceholderText("Vessel name")
-        self.projectEdit = QLineEdit()
-        self.projectEdit.setPlaceholderText("Project / client")
-        self.hoursSpin = QSpinBox()
-        self.hoursSpin.setRange(1, 999)
-        self.hoursSpin.setValue(48)
-        self.hoursSpin.setSuffix(" hrs")
-        self.headerEdit = QLineEdit()
-        self.headerEdit.setPlaceholderText(_DEFAULT_HEADER)
-        form.addRow("Survey:", self.surveyEdit)
-        form.addRow("Vessel:", self.vesselEdit)
-        form.addRow("Project:", self.projectEdit)
-        form.addRow("Hours:", self.hoursSpin)
-        form.addRow("Header:", self.headerEdit)
+        form.addRow("Survey name:", self.surveyEdit)
+        self.surveyEdit.editingFinished.connect(self._save_per_export_settings)
+        left.addWidget(gb_export)
 
-        self.logoVesselEdit, btnLV = self._make_logo_row("Vessel logo")
-        self.logoCompanyEdit, btnLC = self._make_logo_row("Company logo")
-        self.logoClientEdit, btnLX = self._make_logo_row("Client logo")
-        form.addRow("Vessel logo:", self._logo_row_layout(self.logoVesselEdit, btnLV))
-        form.addRow("Company logo:", self._logo_row_layout(self.logoCompanyEdit, btnLC))
-        form.addRow("Client logo:", self._logo_row_layout(self.logoClientEdit, btnLX))
-
-        left.addWidget(gb_settings)
-
-        # Layers group
+        # Layers panel — 2 columns: [checkbox + real name] | display name
         gb_layers = QGroupBox("Layers to include in map")
         lay_layers = QVBoxLayout(gb_layers)
-        self.layerList = QListWidget()
-        self.layerList.setToolTip("Tick which layers to draw on the map page.")
-        lay_layers.addWidget(self.layerList)
+        self.layerTree = QTreeWidget()
+        self.layerTree.setColumnCount(2)
+        self.layerTree.setHeaderLabels(["Layer", "Display as (legend)"])
+        self.layerTree.setRootIsDecorated(False)
+        self.layerTree.setAlternatingRowColors(True)
+        self.layerTree.setEditTriggers(
+            QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
+            | QAbstractItemView.SelectedClicked
+        )
+        hdr = self.layerTree.header()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.Stretch)
+        self.layerTree.setToolTip(
+            "Tick which layers to draw. Double-click the right column to "
+            "rename how a layer appears in the PDF legend — the main "
+            "QGIS project is not affected."
+        )
+        lay_layers.addWidget(self.layerTree)
         left.addWidget(gb_layers, stretch=1)
 
-        # Map controls group
+        # Map controls
         gb_map = QGroupBox("Map controls")
         lay_map = QFormLayout(gb_map)
         self.fitLayerCombo = QComboBox()
@@ -155,6 +317,7 @@ class PdfExportDialog(QDialog):
         self.cbGrid = QCheckBox("Coord grid")
         for cb in (self.cbNorth, self.cbScale, self.cbLegend, self.cbGrid):
             cb.setChecked(True)
+            cb.toggled.connect(lambda _v: self._save_per_export_settings())
         deco = QHBoxLayout()
         deco.addWidget(self.cbNorth)
         deco.addWidget(self.cbScale)
@@ -166,16 +329,17 @@ class PdfExportDialog(QDialog):
         lay_map.addRow("Decorations:", deco_wrap)
         left.addWidget(gb_map)
 
-        # --- Right column: map canvas ---
-        right = QVBoxLayout()
+        left_wrap = QtWidgets.QWidget()
+        left_wrap.setLayout(left)
+        left_wrap.setMaximumWidth(420)
+
+        # Map canvas
         self.mapCanvas = QgsMapCanvas()
         self.mapCanvas.setCanvasColor(Qt.white)
         self.mapCanvas.enableAntiAliasing(True)
         self._panTool = QgsMapToolPan(self.mapCanvas)
         self.mapCanvas.setMapTool(self._panTool)
-        right.addWidget(self.mapCanvas, stretch=1)
 
-        # --- Bottom button row ---
         btnRow = QHBoxLayout()
         btnRow.addStretch(1)
         self.renderBtn = QPushButton("Render PDF\u2026")
@@ -184,133 +348,96 @@ class PdfExportDialog(QDialog):
         btnRow.addWidget(self.cancelBtn)
         btnRow.addWidget(self.renderBtn)
 
-        full_left = QVBoxLayout()
-        full_left.addLayout(left, stretch=1)
-
-        left_wrap = QtWidgets.QWidget()
-        left_wrap.setLayout(full_left)
-        left_wrap.setMaximumWidth(420)
-
         right_wrap = QtWidgets.QWidget()
         right_lay = QVBoxLayout(right_wrap)
-        right_lay.addLayout(right, stretch=1)
+        right_lay.addWidget(self.mapCanvas, stretch=1)
         right_lay.addLayout(btnRow)
 
         root.addWidget(left_wrap)
         root.addWidget(right_wrap, stretch=1)
 
-        # --- Wiring ---
         self.cancelBtn.clicked.connect(self.reject)
         self.renderBtn.clicked.connect(self._on_render_clicked)
-        self.layerList.itemChanged.connect(self._sync_canvas_to_selection)
+        self.layerTree.itemChanged.connect(self._on_layer_item_changed)
         self.fitLayerCombo.currentIndexChanged.connect(self._on_fit_layer_changed)
 
-        # Persist-on-change for every settings field
-        for edit in (self.surveyEdit, self.vesselEdit, self.projectEdit,
-                     self.headerEdit, self.logoVesselEdit,
-                     self.logoCompanyEdit, self.logoClientEdit):
-            edit.editingFinished.connect(self._save_settings)
-        self.hoursSpin.valueChanged.connect(lambda _v: self._save_settings())
-        for cb in (self.cbNorth, self.cbScale, self.cbLegend, self.cbGrid):
-            cb.toggled.connect(lambda _v: self._save_settings())
+    # --- Setup summary ----------------------------------------------------
 
-    def _make_logo_row(self, label: str):
-        edit = QLineEdit()
-        edit.setPlaceholderText("(no logo)")
-        edit.setReadOnly(True)
-        btn = QPushButton("Browse\u2026")
-        btn.clicked.connect(lambda _=False, e=edit, l=label: self._pick_logo(e, l))
-        return edit, btn
+    def _open_setup_dialog(self):
+        dlg = ReportSetupDialog(self)
+        if dlg.exec_() == QDialog.Accepted:
+            self._refresh_setup_summary()
 
-    def _logo_row_layout(self, edit, btn):
-        wrap = QtWidgets.QWidget()
-        lay = QHBoxLayout(wrap)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(edit, stretch=1)
-        lay.addWidget(btn)
-        return wrap
-
-    def _pick_logo(self, edit: QLineEdit, label: str):
-        last = edit.text() or self._settings.value(_QS_PREFIX + "last_logo_dir", "")
-        start_dir = os.path.dirname(last) if last else ""
-        path, _ = QFileDialog.getOpenFileName(
-            self, f"Pick {label}", start_dir,
-            "Images (*.png *.jpg *.jpeg *.svg)",
+    def _refresh_setup_summary(self):
+        s = _settings()
+        vessel = s.value(_QS_PREFIX + "vessel_name", "", type=str) or "(no vessel)"
+        project = s.value(_QS_PREFIX + "project_name", "", type=str) or "(no project)"
+        hours = int(s.value(_QS_PREFIX + "hours", 48, type=int))
+        logos_configured = sum(
+            1 for key in ("logo_vessel", "logo_company", "logo_client")
+            if (s.value(_QS_PREFIX + key, "", type=str) or "").strip()
         )
-        if path:
-            edit.setText(path)
-            self._settings.setValue(_QS_PREFIX + "last_logo_dir",
-                                    os.path.dirname(path))
-            self._save_settings()
+        text = (
+            f"Vessel: <b>{vessel}</b> &middot; "
+            f"Project: <b>{project}</b> &middot; "
+            f"Hours: <b>{hours}</b> &middot; "
+            f"Logos: <b>{logos_configured}/3</b>"
+        )
+        self.setupSummaryLabel.setText(text)
 
-    # --- Settings persistence ---------------------------------------------
+    # --- Per-export persistence (survey name + map controls) --------------
 
-    def _load_settings(self):
-        s = self._settings
+    def _load_per_export_settings(self):
+        s = _settings()
         self.surveyEdit.setText(s.value(_QS_PREFIX + "survey_name", "", type=str))
-        self.vesselEdit.setText(s.value(_QS_PREFIX + "vessel_name", "", type=str))
-        self.projectEdit.setText(s.value(_QS_PREFIX + "project_name", "", type=str))
-        self.hoursSpin.setValue(int(s.value(_QS_PREFIX + "hours", 48, type=int)))
-        self.headerEdit.setText(
-            s.value(_QS_PREFIX + "header_template", _DEFAULT_HEADER, type=str)
-        )
-        self.logoVesselEdit.setText(s.value(_QS_PREFIX + "logo_vessel", "", type=str))
-        self.logoCompanyEdit.setText(s.value(_QS_PREFIX + "logo_company", "", type=str))
-        self.logoClientEdit.setText(s.value(_QS_PREFIX + "logo_client", "", type=str))
-        self.cbNorth.setChecked(
-            s.value(_QS_PREFIX + "show_north", True, type=bool)
-        )
-        self.cbScale.setChecked(
-            s.value(_QS_PREFIX + "show_scale", True, type=bool)
-        )
-        self.cbLegend.setChecked(
-            s.value(_QS_PREFIX + "show_legend", True, type=bool)
-        )
-        self.cbGrid.setChecked(
-            s.value(_QS_PREFIX + "show_grid", True, type=bool)
-        )
+        self.cbNorth.setChecked(s.value(_QS_PREFIX + "show_north", True, type=bool))
+        self.cbScale.setChecked(s.value(_QS_PREFIX + "show_scale", True, type=bool))
+        self.cbLegend.setChecked(s.value(_QS_PREFIX + "show_legend", True, type=bool))
+        self.cbGrid.setChecked(s.value(_QS_PREFIX + "show_grid", True, type=bool))
 
-    def _save_settings(self):
-        s = self._settings
-        s.setValue(_QS_PREFIX + "survey_name", self.surveyEdit.text())
-        s.setValue(_QS_PREFIX + "vessel_name", self.vesselEdit.text())
-        s.setValue(_QS_PREFIX + "project_name", self.projectEdit.text())
-        s.setValue(_QS_PREFIX + "hours", self.hoursSpin.value())
-        s.setValue(_QS_PREFIX + "header_template",
-                   self.headerEdit.text() or _DEFAULT_HEADER)
-        s.setValue(_QS_PREFIX + "logo_vessel", self.logoVesselEdit.text())
-        s.setValue(_QS_PREFIX + "logo_company", self.logoCompanyEdit.text())
-        s.setValue(_QS_PREFIX + "logo_client", self.logoClientEdit.text())
+    def _save_per_export_settings(self):
+        s = _settings()
+        s.setValue(_QS_PREFIX + "survey_name", self.surveyEdit.text().strip())
         s.setValue(_QS_PREFIX + "show_north", self.cbNorth.isChecked())
         s.setValue(_QS_PREFIX + "show_scale", self.cbScale.isChecked())
         s.setValue(_QS_PREFIX + "show_legend", self.cbLegend.isChecked())
         s.setValue(_QS_PREFIX + "show_grid", self.cbGrid.isChecked())
 
-    # --- Layers panel ------------------------------------------------------
+    # --- Layers + canvas --------------------------------------------------
 
     def _all_project_layers(self):
         return list(self._project.mapLayers().values())
 
     def _populate_layers_panel(self):
-        self.layerList.blockSignals(True)
-        self.layerList.clear()
+        self.layerTree.blockSignals(True)
+        self.layerTree.clear()
+        s = _settings()
         layer_tree = self._project.layerTreeRoot()
         for layer in self._all_project_layers():
-            item = QListWidgetItem(layer.name())
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            node = layer_tree.findLayer(layer.id())
+            lid = layer.id()
+            override = s.value(
+                _QS_PREFIX + "display_names/" + lid, "", type=str
+            )
+            item = QTreeWidgetItem([layer.name(), override or ""])
+            item.setFlags(
+                item.flags()
+                | Qt.ItemIsUserCheckable
+                | Qt.ItemIsEditable
+                | Qt.ItemIsSelectable
+            )
+            node = layer_tree.findLayer(lid)
             visible = True if node is None else bool(node.isVisible())
-            item.setCheckState(Qt.Checked if visible else Qt.Unchecked)
-            item.setData(Qt.UserRole, layer.id())
-            self.layerList.addItem(item)
-        self.layerList.blockSignals(False)
+            item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
+            item.setData(0, Qt.UserRole, lid)
+            self.layerTree.addTopLevelItem(item)
+        self.layerTree.blockSignals(False)
 
     def _populate_fit_layer_combo(self):
         self.fitLayerCombo.blockSignals(True)
         self.fitLayerCombo.clear()
         for layer in self._all_project_layers():
             self.fitLayerCombo.addItem(layer.name(), layer.id())
-        remembered = self._settings.value(_QS_PREFIX + "fit_layer_id", "", type=str)
+        remembered = _settings().value(_QS_PREFIX + "fit_layer_id", "", type=str)
         if remembered:
             idx = self.fitLayerCombo.findData(remembered)
             if idx >= 0:
@@ -319,16 +446,39 @@ class PdfExportDialog(QDialog):
 
     def _selected_layers(self):
         layers = []
-        for i in range(self.layerList.count()):
-            item = self.layerList.item(i)
-            if item.checkState() == Qt.Checked:
-                lid = item.data(Qt.UserRole)
+        for i in range(self.layerTree.topLevelItemCount()):
+            item = self.layerTree.topLevelItem(i)
+            if item.checkState(0) == Qt.Checked:
+                lid = item.data(0, Qt.UserRole)
                 layer = self._project.mapLayer(lid)
                 if layer is not None:
                     layers.append(layer)
         return layers
 
-    # --- Canvas synchronization -------------------------------------------
+    def _layer_display_overrides(self) -> dict:
+        """Return {layer_id: display_name} for layers that have a
+        non-empty override typed into the second column."""
+        overrides = {}
+        for i in range(self.layerTree.topLevelItemCount()):
+            item = self.layerTree.topLevelItem(i)
+            lid = item.data(0, Qt.UserRole)
+            name = (item.text(1) or "").strip()
+            if lid and name:
+                overrides[lid] = name
+        return overrides
+
+    def _on_layer_item_changed(self, item, column):
+        """Handle checkbox toggles (col 0) and display-name edits (col 1)."""
+        if column == 1:
+            lid = item.data(0, Qt.UserRole)
+            if lid:
+                new_name = (item.text(1) or "").strip()
+                _settings().setValue(
+                    _QS_PREFIX + "display_names/" + lid, new_name
+                )
+            return
+        # Column 0: checkbox changed -> resync canvas.
+        self._sync_canvas_to_selection()
 
     def _sync_canvas_to_selection(self, *_):
         layers = self._selected_layers()
@@ -340,7 +490,7 @@ class PdfExportDialog(QDialog):
     def _on_fit_layer_changed(self, _index: int):
         lid = self.fitLayerCombo.currentData()
         if lid:
-            self._settings.setValue(_QS_PREFIX + "fit_layer_id", lid)
+            _settings().setValue(_QS_PREFIX + "fit_layer_id", lid)
         self._fit_to_selected_layer()
 
     def _fit_to_selected_layer(self):
@@ -363,45 +513,59 @@ class PdfExportDialog(QDialog):
         extent.setXMaximum(extent.xMaximum() + w)
         extent.setYMinimum(extent.yMinimum() - h)
         extent.setYMaximum(extent.yMaximum() + h)
+        # WYSIWYG: expand to match the PDF map frame aspect so the
+        # preview shows the same area the PDF will render.
+        _expand_extent_to_aspect(extent, _PDF_BODY_ASPECT)
         self.mapCanvas.setExtent(extent)
         self.mapCanvas.refresh()
 
-    # --- Render ------------------------------------------------------------
+    # --- Render -----------------------------------------------------------
 
     def _current_config(self) -> PdfExportConfig:
+        s = _settings()
         return PdfExportConfig(
             survey_name=self.surveyEdit.text().strip() or "Survey",
-            vessel_name=self.vesselEdit.text().strip(),
-            project_name=self.projectEdit.text().strip(),
-            hours=self.hoursSpin.value(),
-            header_template=self.headerEdit.text().strip() or _DEFAULT_HEADER,
-            logo_vessel_path=self.logoVesselEdit.text().strip() or None,
-            logo_company_path=self.logoCompanyEdit.text().strip() or None,
-            logo_client_path=self.logoClientEdit.text().strip() or None,
+            vessel_name=s.value(_QS_PREFIX + "vessel_name", "", type=str),
+            project_name=s.value(_QS_PREFIX + "project_name", "", type=str),
+            hours=int(s.value(_QS_PREFIX + "hours", 48, type=int)),
+            header_template=s.value(_QS_PREFIX + "header_template",
+                                    _DEFAULT_HEADER, type=str) or _DEFAULT_HEADER,
+            logo_vessel_path=(s.value(_QS_PREFIX + "logo_vessel", "", type=str)
+                              or None),
+            logo_company_path=(s.value(_QS_PREFIX + "logo_company", "", type=str)
+                               or None),
+            logo_client_path=(s.value(_QS_PREFIX + "logo_client", "", type=str)
+                              or None),
             show_north_arrow=self.cbNorth.isChecked(),
             show_scale_bar=self.cbScale.isChecked(),
             show_legend=self.cbLegend.isChecked(),
             show_coord_grid=self.cbGrid.isChecked(),
+            start_sequence_number=self._start_seq,
+            layer_display_names=self._layer_display_overrides(),
         )
 
     def _on_render_clicked(self):
-        self._save_settings()
+        self._save_per_export_settings()
         cfg = self._current_config()
 
-        last_dir = self._settings.value(_QS_PREFIX + "export_dir", "", type=str)
+        s = _settings()
+        last_dir = s.value(_QS_PREFIX + "export_dir", "", type=str)
         out_dir = QFileDialog.getExistingDirectory(
             self, "Pick folder for the PDF", last_dir or os.path.expanduser("~"),
         )
         if not out_dir:
             return
-        self._settings.setValue(_QS_PREFIX + "export_dir", out_dir)
+        s.setValue(_QS_PREFIX + "export_dir", out_dir)
 
         date_str = QDate.currentDate().toString("yyyy_MM_dd")
         filename = compute_output_filename(date_str, cfg.survey_name, out_dir)
         full_path = os.path.join(out_dir, filename)
 
         try:
-            rows = rows_from_optimized_path_layer(self._opt_layer, self._gen_layer)
+            rows = rows_from_optimized_path_layer(
+                self._opt_layer, self._gen_layer,
+                start_sequence_number=self._start_seq,
+            )
         except Exception as e:
             log.exception("Failed to build rows from Optimized_Path")
             QMessageBox.critical(self, "PDF export failed",
@@ -418,6 +582,10 @@ class PdfExportDialog(QDialog):
 
         visible_layers = self._selected_layers()
         map_extent = self.mapCanvas.extent()
+        try:
+            map_crs = self.mapCanvas.mapSettings().destinationCrs()
+        except Exception:  # noqa: BLE001
+            map_crs = None
 
         try:
             layout = build_lookahead_layout(
@@ -427,6 +595,7 @@ class PdfExportDialog(QDialog):
                 rows=rows,
                 config=cfg,
                 date_str=date_str,
+                map_crs=map_crs,
             )
             ok, err = export_pdf(layout, full_path)
         except Exception as e:

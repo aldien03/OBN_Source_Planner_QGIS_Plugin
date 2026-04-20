@@ -115,11 +115,10 @@ def render_header_text(
 class LookaheadRow:
     """One row of the sequence-table on the PDF, representing a single
     line or sub-line in acquisition order."""
-    seq_order: int
+    seq_order: int          # raw SeqOrder from Optimized_Path (includes turns)
+    line_seq: int           # 1-based line-only acquisition counter (1,2,3,...)
     line_num: int
     sub_line_id: Optional[int]
-    shoot_as: str           # v1: str(line_num) when sub_line_id is None,
-                            #     else f"{line_num}-{sub_line_id}".
     operation: str          # Production / Test / Reshoot / Infill
     fgsp: int
     lgsp: int
@@ -145,6 +144,13 @@ class PdfExportConfig:
     show_scale_bar: bool = True
     show_legend: bool = True
     show_coord_grid: bool = True
+    # Start value for the PDF table's Seq column; matches the dock's
+    # "First Line Seq." spinbox so the PDF aligns with the Edit Plan
+    # dialog's sequence numbers (e.g. 1000, 1001, 1002, ...).
+    start_sequence_number: int = 1
+    # {layer_id: display_name} — applied to the legend on the map page
+    # without mutating the main project's layer tree.
+    layer_display_names: dict = field(default_factory=dict)
 
 
 # --- QGIS-dependent helpers -------------------------------------------------
@@ -156,6 +162,18 @@ class PdfExportConfig:
 def _qgis_core():
     from qgis import core as qgis_core  # type: ignore
     return qgis_core
+
+
+def _place(item, qc, x_mm: float, y_mm: float, w_mm: float, h_mm: float):
+    """Move+resize a layout item in millimetres.
+
+    Avoids QgsLayoutRect (not exposed in all PyQGIS builds) by using
+    attemptMove(QgsLayoutPoint) + attemptResize(QgsLayoutSize) — the
+    stable public API across QGIS 3.x.
+    """
+    mm = qc.QgsUnitTypes.LayoutMillimeters
+    item.attemptMove(qc.QgsLayoutPoint(x_mm, y_mm, mm))
+    item.attemptResize(qc.QgsLayoutSize(w_mm, h_mm, mm))
 
 
 _MONTH_ABBR_EN = (
@@ -220,10 +238,15 @@ def _read_float(feature, field_name):
 def rows_from_optimized_path_layer(
     optimized_path_layer,
     generated_lines_layer,
+    start_sequence_number: int = 1,
 ) -> List[LookaheadRow]:
     """Read Optimized_Path line-features in SeqOrder and join
     Generated_Survey_Lines on (LineNum, SubLineId) to pull
     Operation/FGSP/LGSP.
+
+    `start_sequence_number` sets the first value of the line_seq field
+    (matches the dock's First Line Seq. spinbox and the Edit Plan
+    dialog's seq numbering).
 
     Fallback rules when a join misses:
     - If SubLineId is NULL on the Optimized_Path feature, look up by
@@ -255,6 +278,7 @@ def rows_from_optimized_path_layer(
     opt_features.sort(key=lambda f: _read_int(f, "SeqOrder") or 0)
 
     rows: List[LookaheadRow] = []
+    line_counter = int(start_sequence_number) - 1
     for f in opt_features:
         ln = _read_int(f, "LineNum")
         sl = _read_int(f, "SubLineId")
@@ -278,16 +302,12 @@ def rows_from_optimized_path_layer(
         if eta_sol is None or eta_eol is None:
             continue
 
-        if sl is not None and sl != 0:
-            shoot_as = f"{ln}-{sl}"
-        else:
-            shoot_as = str(ln)
-
+        line_counter += 1
         rows.append(LookaheadRow(
             seq_order=_read_int(f, "SeqOrder") or 0,
+            line_seq=line_counter,
             line_num=ln,
             sub_line_id=sl,
-            shoot_as=shoot_as,
             operation=op,
             fgsp=fg,
             lgsp=lg,
@@ -304,24 +324,37 @@ def rows_from_optimized_path_layer(
 
 _A4_LANDSCAPE_W_MM = 297.0
 _A4_LANDSCAPE_H_MM = 210.0
-_TITLE_BAND_H_MM = 22.0
+_TITLE_BAND_H_MM = 26.0
 _MARGIN_MM = 10.0
+_LEFT_LOGO_W_MM = 32.0
+_RIGHT_LOGO_W_MM = 28.0
+_LEFT_MAP_GUTTER_MM = 18.0  # extra room for grid annotations on the left
+_RIGHT_LEGEND_GUTTER_MM = 60.0
 
+# (display_name, row_attribute, width_mm, align) — align: 'L' left, 'C' center, 'R' right
 _TABLE_COLUMNS = (
-    ("Line",        "line_num",    14.0),
-    ("Shoot As",    "shoot_as",    28.0),
-    ("Operation",   "operation",   28.0),
-    ("FGSP",        "fgsp",        20.0),
-    ("LGSP",        "lgsp",        20.0),
-    ("HDG\u00b0",   "heading_deg", 18.0),
-    ("ETA SOL",     "eta_sol",     28.0),
-    ("ETA EOL",     "eta_eol",     28.0),
-    ("Day/Month",   "day_month",   24.0),
+    ("Seq",         "line_seq",    16.0, "C"),
+    ("Line",        "line_num",    22.0, "C"),
+    ("Operation",   "operation",   30.0, "C"),
+    ("FGSP",        "fgsp",        22.0, "R"),
+    ("LGSP",        "lgsp",        22.0, "R"),
+    ("HDG\u00b0",   "heading_deg", 20.0, "R"),
+    ("ETA SOL",     "eta_sol",     28.0, "C"),
+    ("ETA EOL",     "eta_eol",     28.0, "C"),
+    ("Day/Month",   "day_month",   26.0, "C"),
 )
 
 
+_HALIGN = {"L": 0x01, "R": 0x02, "C": 0x04}   # Qt.AlignLeft/Right/HCenter
+_VALIGN_CENTER = 0x80                          # Qt.AlignVCenter
+
+
 def _cell_text(row: LookaheadRow, key: str) -> str:
+    if key == "line_seq":
+        return str(row.line_seq)
     if key == "line_num":
+        if row.sub_line_id:
+            return f"{row.line_num}-{row.sub_line_id}"
         return str(row.line_num)
     if key == "heading_deg":
         return f"{row.heading_deg:.0f}"
@@ -338,6 +371,7 @@ def build_lookahead_layout(
     rows: List[LookaheadRow],
     config: PdfExportConfig,
     date_str: str,
+    map_crs=None,
 ):
     """Build a QgsPrintLayout for the 48h lookahead PDF.
 
@@ -352,11 +386,12 @@ def build_lookahead_layout(
 
     layout = qc.QgsPrintLayout(project)
     layout.initializeDefaults()
-    layout.setName("OBN Planner — 48h Lookahead")
+    layout.setName("OBN Planner \u2014 48h Lookahead")
 
+    mm = qc.QgsUnitTypes.LayoutMillimeters
     page_collection = layout.pageCollection()
     page_collection.page(0).setPageSize(
-        qc.QgsLayoutSize(_A4_LANDSCAPE_W_MM, _A4_LANDSCAPE_H_MM, qc.QgsUnitTypes.LayoutMillimeters)
+        qc.QgsLayoutSize(_A4_LANDSCAPE_W_MM, _A4_LANDSCAPE_H_MM, mm)
     )
 
     header_text = render_header_text(
@@ -371,19 +406,70 @@ def build_lookahead_layout(
     _add_title_band(layout, page_index=0, header_text=header_text,
                     date_str=date_str, config=config)
     _add_map_item(layout, page_index=0, layers=visible_layers,
-                  extent=map_extent, config=config)
+                  extent=map_extent, config=config, map_crs=map_crs)
 
     _add_table_pages(layout, rows=rows, header_text=header_text,
                      date_str=date_str, config=config)
 
+    # Add a footer to every page — includes any pages auto-created by
+    # the manual-table's ExtendToNextPage. Uses layout-scope expressions
+    # `@layout_page` / `@layout_pagecount` so the page counter is
+    # resolved at render time (works even for auto-created pages).
+    try:
+        total_pages = layout.pageCollection().pageCount()
+    except Exception:  # noqa: BLE001
+        total_pages = 0
+    for page_idx in range(total_pages):
+        try:
+            _add_footer(layout, page_index=page_idx, date_str=date_str)
+        except Exception:  # noqa: BLE001
+            pass
+
     return layout
+
+
+def _page_y_offset(layout, page_index: int) -> float:
+    """Absolute y-offset (mm) of a given page in the layout scene.
+
+    Uses the page's own scene position rather than summing heights,
+    because QGIS inserts a 10mm gap between pages. Summing heights
+    puts items into the inter-page gap instead of on-page.
+    """
+    try:
+        page = layout.pageCollection().page(page_index)
+        return float(page.pos().y())
+    except Exception:  # noqa: BLE001
+        return page_index * (_A4_LANDSCAPE_H_MM + 10.0)
 
 
 def _add_title_band(layout, *, page_index: int, header_text: str,
                     date_str: str, config: PdfExportConfig):
+    """Header layout (26mm band):
+      - Vessel logo: top-left, 32×22mm
+      - Title: centered, between the left logo and the right logos
+      - Date: top-right, 50×5mm above the company/client logos
+      - Company logo: right column, 28×8mm below date
+      - Client logo: far-right column, 28×8mm below date
+    """
     qc = _qgis_core()
-    page_y = layout.pageCollection().page(page_index).pos().y() \
-        if hasattr(layout.pageCollection().page(page_index), "pos") else 0.0
+    page_y = _page_y_offset(layout, page_index)
+
+    # Vessel logo (left)
+    if config.logo_vessel_path and os.path.isfile(config.logo_vessel_path):
+        pic = qc.QgsLayoutItemPicture(layout)
+        pic.setPicturePath(config.logo_vessel_path)
+        try:
+            pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
+        except AttributeError:
+            pass
+        layout.addLayoutItem(pic)
+        _place(pic, qc, _MARGIN_MM, page_y + 2.0,
+               _LEFT_LOGO_W_MM, _TITLE_BAND_H_MM - 4.0)
+
+    # Title centered between the left logo column and the right column
+    title_x = _MARGIN_MM + _LEFT_LOGO_W_MM + 4.0
+    right_col_x = _A4_LANDSCAPE_W_MM - _MARGIN_MM - 2 * _RIGHT_LOGO_W_MM - 4.0
+    title_w = max(20.0, right_col_x - title_x - 4.0)
 
     title = qc.QgsLayoutItemLabel(layout)
     title.setText(header_text)
@@ -394,193 +480,669 @@ def _add_title_band(layout, *, page_index: int, header_text: str,
         title.setFont(font)
     except AttributeError:
         pass
-    title.attemptSetSceneRect(qc.QgsLayoutRect(
-        _MARGIN_MM, page_y + 4.0,
-        _A4_LANDSCAPE_W_MM - 2 * _MARGIN_MM, _TITLE_BAND_H_MM - 6.0,
-        qc.QgsUnitTypes.LayoutMillimeters,
-    ))
+    try:
+        title.setHAlign(0x04)  # Qt.AlignHCenter
+        title.setVAlign(0x80)  # Qt.AlignVCenter
+    except AttributeError:
+        pass
     layout.addLayoutItem(title)
+    _place(title, qc, title_x, page_y + 2.0, title_w, _TITLE_BAND_H_MM - 4.0)
 
+    # Date top-right of the right column
     date_label = qc.QgsLayoutItemLabel(layout)
     date_label.setText(date_str.replace("_", "-"))
     try:
         font = date_label.font()
-        font.setPointSize(10)
+        font.setPointSize(9)
         date_label.setFont(font)
     except AttributeError:
         pass
-    date_label.attemptSetSceneRect(qc.QgsLayoutRect(
-        _A4_LANDSCAPE_W_MM - 60.0, page_y + 4.0, 50.0, 6.0,
-        qc.QgsUnitTypes.LayoutMillimeters,
-    ))
     try:
         date_label.setHAlign(0x02)  # Qt.AlignRight
     except AttributeError:
         pass
     layout.addLayoutItem(date_label)
+    _place(date_label, qc,
+           right_col_x, page_y + 2.0,
+           2 * _RIGHT_LOGO_W_MM + 4.0, 5.0)
 
-    _add_logos(layout, page_index=page_index, config=config)
-
-
-def _add_logos(layout, *, page_index: int, config: PdfExportConfig):
-    qc = _qgis_core()
-    slots = [
-        (config.logo_vessel_path,  _MARGIN_MM),
-        (config.logo_company_path, _A4_LANDSCAPE_W_MM / 2 - 15.0),
-        (config.logo_client_path,  _A4_LANDSCAPE_W_MM - 40.0),
-    ]
-    page_y = 0.0
-    for path, x in slots:
-        if not path or not os.path.isfile(path):
-            continue
+    # Company + client logos in the right column, below the date
+    logo_y = page_y + 8.0
+    logo_h = _TITLE_BAND_H_MM - 12.0
+    if config.logo_company_path and os.path.isfile(config.logo_company_path):
         pic = qc.QgsLayoutItemPicture(layout)
-        pic.setPicturePath(path)
-        pic.attemptSetSceneRect(qc.QgsLayoutRect(
-            x, page_y + 2.0, 30.0, _TITLE_BAND_H_MM - 4.0,
-            qc.QgsUnitTypes.LayoutMillimeters,
-        ))
+        pic.setPicturePath(config.logo_company_path)
+        try:
+            pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
+        except AttributeError:
+            pass
         layout.addLayoutItem(pic)
+        _place(pic, qc, right_col_x, logo_y, _RIGHT_LOGO_W_MM, logo_h)
+    if config.logo_client_path and os.path.isfile(config.logo_client_path):
+        pic = qc.QgsLayoutItemPicture(layout)
+        pic.setPicturePath(config.logo_client_path)
+        try:
+            pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
+        except AttributeError:
+            pass
+        layout.addLayoutItem(pic)
+        _place(pic, qc,
+               right_col_x + _RIGHT_LOGO_W_MM + 4.0, logo_y,
+               _RIGHT_LOGO_W_MM, logo_h)
+
+    # Thin horizontal rule at the bottom of the header band — built
+    # from a QgsLayoutItemShape rectangle with a grey fill and no stroke.
+    try:
+        from qgis.PyQt.QtGui import QColor
+        rule = qc.QgsLayoutItemShape(layout)
+        try:
+            rule.setShapeType(qc.QgsLayoutItemShape.Rectangle)
+        except AttributeError:
+            pass
+        try:
+            from qgis.core import QgsSimpleFillSymbolLayer, QgsFillSymbol
+            fill = QgsSimpleFillSymbolLayer()
+            fill.setColor(QColor(140, 140, 140))
+            fill.setStrokeStyle(0)  # Qt.NoPen
+            rule.setSymbol(QgsFillSymbol([fill]))
+        except Exception:  # noqa: BLE001
+            pass
+        layout.addLayoutItem(rule)
+        _place(rule, qc, _MARGIN_MM, page_y + _TITLE_BAND_H_MM - 0.4,
+               _A4_LANDSCAPE_W_MM - 2 * _MARGIN_MM, 0.4)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _add_footer(layout, *, page_index: int, date_str: str):
+    """Small footer with generation date + page number, centered.
+
+    Uses QGIS layout-scope expressions so the page counter resolves
+    at render time even when the manual table auto-creates new pages
+    after this footer is placed.
+    """
+    qc = _qgis_core()
+    page_y = _page_y_offset(layout, page_index)
+    footer_y = page_y + _A4_LANDSCAPE_H_MM - 7.0
+
+    label = qc.QgsLayoutItemLabel(layout)
+    label.setText(
+        f"Generated {date_str.replace('_', '-')}  \u2022  "
+        f"Page [% @layout_page %] of [% @layout_pagecount %]"
+    )
+    try:
+        label.setMode(qc.QgsLayoutItemLabel.ModeHtml if False
+                      else qc.QgsLayoutItemLabel.ModeFont)
+    except AttributeError:
+        pass
+    try:
+        font = label.font()
+        font.setPointSize(8)
+        label.setFont(font)
+        label.setHAlign(_HALIGN["C"])
+        label.setVAlign(_VALIGN_CENTER)
+    except AttributeError:
+        pass
+    layout.addLayoutItem(label)
+    _place(label, qc,
+           _MARGIN_MM, footer_y,
+           _A4_LANDSCAPE_W_MM - 2 * _MARGIN_MM, 5.0)
+
+
+def _expand_extent_to_aspect(extent, target_aspect: float):
+    """Expand (never crop) the extent so its aspect matches target.
+
+    Preserves the center point. If target is wider than current, widen
+    horizontally; if taller, extend vertically. Keeps the user's chosen
+    framing fully visible in the PDF.
+    """
+    if extent is None or extent.width() <= 0 or extent.height() <= 0 \
+            or target_aspect <= 0:
+        return extent
+    cur_aspect = extent.width() / extent.height()
+    # QgsRectangle is mutable; mutate in place (caller expects same object).
+    if cur_aspect < target_aspect:
+        needed_w = extent.height() * target_aspect
+        dx = (needed_w - extent.width()) / 2.0
+        extent.setXMinimum(extent.xMinimum() - dx)
+        extent.setXMaximum(extent.xMaximum() + dx)
+    elif cur_aspect > target_aspect:
+        needed_h = extent.width() / target_aspect
+        dy = (needed_h - extent.height()) / 2.0
+        extent.setYMinimum(extent.yMinimum() - dy)
+        extent.setYMaximum(extent.yMaximum() + dy)
+    return extent
 
 
 def _add_map_item(layout, *, page_index: int, layers, extent,
-                  config: PdfExportConfig):
+                  config: PdfExportConfig, map_crs=None):
     qc = _qgis_core()
-    body_y = _TITLE_BAND_H_MM + 2.0
-    body_h = _A4_LANDSCAPE_H_MM - body_y - _MARGIN_MM
-    body_x = _MARGIN_MM
-    body_w = _A4_LANDSCAPE_W_MM - 2 * _MARGIN_MM
+    mm = qc.QgsUnitTypes.LayoutMillimeters
+    page_y = _page_y_offset(layout, page_index)
+    body_y = page_y + _TITLE_BAND_H_MM + 2.0
+    body_h = _A4_LANDSCAPE_H_MM - _TITLE_BAND_H_MM - 2.0 - _MARGIN_MM
+    body_x = _MARGIN_MM + _LEFT_MAP_GUTTER_MM
+    # Reserve right gutter for legend so they don't overlap the map.
+    right_reserve = _RIGHT_LEGEND_GUTTER_MM if config.show_legend else 0.0
+    body_w = (_A4_LANDSCAPE_W_MM - _MARGIN_MM - right_reserve) - body_x
+
+    # Match the extent's aspect ratio to the map frame BEFORE assigning so
+    # QgsLayoutItemMap.setExtent does not silently extend it further and
+    # zoom out beyond what the user framed in the preview canvas.
+    if extent is not None and body_w > 0 and body_h > 0:
+        from qgis.core import QgsRectangle
+        fitted = QgsRectangle(extent)
+        _expand_extent_to_aspect(fitted, body_w / body_h)
+    else:
+        fitted = extent
 
     map_item = qc.QgsLayoutItemMap(layout)
-    map_item.attemptSetSceneRect(qc.QgsLayoutRect(
-        body_x, body_y, body_w, body_h,
-        qc.QgsUnitTypes.LayoutMillimeters,
-    ))
-    if extent is not None:
-        map_item.setExtent(extent)
-    if layers:
-        map_item.setLayers(list(layers))
     layout.addLayoutItem(map_item)
+    _place(map_item, qc, body_x, body_y, body_w, body_h)
 
-    if config.show_coord_grid:
+    # CRS must be set BEFORE setExtent so the extent values are
+    # interpreted in the same coordinate system as the preview canvas.
+    # Without this the map item defaults to the project CRS and, if the
+    # two differ, the UTM-metre extent gets reinterpreted as degrees
+    # (or vice versa) and the map zooms to a wildly wrong area.
+    if map_crs is not None:
         try:
-            grid = map_item.grid()
-            grid.setEnabled(True)
-            grid.setIntervalX(0.1)
-            grid.setIntervalY(0.1)
-            grid.setAnnotationEnabled(True)
+            map_item.setCrs(map_crs)
         except AttributeError:
             pass
 
+    if fitted is not None:
+        map_item.setExtent(fitted)
+    if layers:
+        map_item.setLayers(list(layers))
+
+    if config.show_coord_grid and fitted is not None and fitted.width() > 0:
+        try:
+            grid = map_item.grid()
+            grid.setEnabled(True)
+            # Auto-pick an interval that yields ~6 grid lines across the
+            # shorter axis. Works for both metric (UTM) and geographic CRS.
+            short = min(fitted.width(), fitted.height())
+            step = _round_grid_step(short / 6.0)
+            grid.setIntervalX(step)
+            grid.setIntervalY(step)
+            grid.setAnnotationEnabled(True)
+            # Show integer eastings/northings for UTM; fall back to 2 dp.
+            try:
+                grid.setAnnotationPrecision(0 if step >= 10 else 2)
+            except AttributeError:
+                pass
+        except Exception:  # noqa: BLE001
+            pass
+
+    if config.show_north_arrow:
+        # Try to use a built-in QGIS north-arrow SVG; fall back to a
+        # text label "N \u25b2" so the arrow is always present even
+        # when no system SVG is resolvable.
+        arrow_w, arrow_h = 16.0, 16.0
+        arrow_x = body_x + body_w - arrow_w - 2.0
+        arrow_y = body_y + 2.0
+        svg_path = _resolve_north_arrow_svg(qc)
+        if svg_path:
+            try:
+                pic = qc.QgsLayoutItemPicture(layout)
+                pic.setPicturePath(svg_path)
+                try:
+                    pic.setNorthMode(qc.QgsLayoutItemPicture.GridNorth)
+                    pic.setLinkedMap(map_item)
+                except AttributeError:
+                    pass
+                try:
+                    pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
+                except AttributeError:
+                    pass
+                layout.addLayoutItem(pic)
+                _place(pic, qc, arrow_x, arrow_y, arrow_w, arrow_h)
+            except Exception:  # noqa: BLE001
+                _add_text_north(layout, qc, arrow_x, arrow_y, arrow_w, arrow_h)
+        else:
+            _add_text_north(layout, qc, arrow_x, arrow_y, arrow_w, arrow_h)
+
     if config.show_scale_bar:
         scale = qc.QgsLayoutItemScaleBar(layout)
-        scale.setStyle("Single Box")
+        try:
+            scale.setStyle("Single Box")
+        except Exception:  # noqa: BLE001
+            pass
         scale.setLinkedMap(map_item)
-        scale.applyDefaultSize()
-        scale.attemptMove(qc.QgsLayoutPoint(
-            body_x + 2.0, body_y + body_h - 12.0,
-            qc.QgsUnitTypes.LayoutMillimeters,
-        ))
+        try:
+            scale.applyDefaultSize()
+        except Exception:  # noqa: BLE001
+            pass
         layout.addLayoutItem(scale)
+        try:
+            scale.attemptMove(qc.QgsLayoutPoint(
+                body_x + 2.0, body_y + body_h - 12.0, mm))
+        except Exception:  # noqa: BLE001
+            pass
 
     if config.show_legend:
         legend = qc.QgsLayoutItemLegend(layout)
         legend.setLinkedMap(map_item)
-        legend.setAutoUpdateModel(True)
-        legend.attemptMove(qc.QgsLayoutPoint(
-            body_x + body_w - 60.0, body_y + 2.0,
-            qc.QgsUnitTypes.LayoutMillimeters,
-        ))
+
+        # filter-by-map invokes a code path that crashed in 3.40.5 when
+        # combined with a custom layer tree. Our visible_layers list
+        # already filters correctly via the cloned tree below, so we
+        # turn off the Qt-side filter explicitly.
+        try:
+            legend.setLegendFilterByMapEnabled(False)
+        except AttributeError:
+            pass
+
+        overrides = {
+            k: v for k, v in (config.layer_display_names or {}).items() if v
+        }
+        try:
+            project = layout.project()
+        except AttributeError:
+            project = None
+
+        applied_custom_tree = False
+        if project is not None and (overrides or (layers is not None)):
+            try:
+                custom_tree = project.layerTreeRoot().clone()
+                visible_ids = {l.id() for l in (layers or [])}
+                for node in list(custom_tree.findLayers()):
+                    lid = node.layerId()
+                    if layers is not None and visible_ids and lid not in visible_ids:
+                        parent = node.parent()
+                        if parent is not None:
+                            parent.removeChildNode(node)
+                        continue
+                    if lid in overrides:
+                        try:
+                            node.setUseLayerName(False)
+                        except AttributeError:
+                            pass
+                        node.setName(overrides[lid])
+
+                # Ownership hand-off: setCustomLayerTree claims ownership
+                # in the C++ API, but the PyQGIS binding's /Transfer/
+                # annotation is inconsistent across versions. Pin the
+                # object on the layout so Python's GC never frees it
+                # while the layout is alive.
+                try:
+                    layout._pdf_export_custom_tree = custom_tree
+                except Exception:  # noqa: BLE001
+                    pass
+
+                legend.setAutoUpdateModel(False)
+                set_custom = getattr(legend, "setCustomLayerTree", None)
+                if set_custom is not None:
+                    set_custom(custom_tree)
+                else:
+                    legend.model().setRootGroup(custom_tree)
+                applied_custom_tree = True
+            except Exception:  # noqa: BLE001
+                applied_custom_tree = False
+
+        if not applied_custom_tree:
+            legend.setAutoUpdateModel(True)
+
+        try:
+            legend.setResizeToContents(True)
+        except AttributeError:
+            pass
+        try:
+            legend.setTitle("")  # the big title band already carries context
+        except AttributeError:
+            pass
+
         layout.addLayoutItem(legend)
+        try:
+            legend_x = body_x + body_w + 2.0
+            legend_w = max(20.0, _A4_LANDSCAPE_W_MM - _MARGIN_MM - legend_x)
+            _place(legend, qc, legend_x, body_y, legend_w, body_h)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _resolve_north_arrow_svg(qc):
+    """Return a usable path to a built-in north-arrow SVG, or None.
+
+    Scans QGIS's configured SVG search paths for the common arrow
+    names that ship with the installation (`NorthArrow_0X.svg`,
+    `arrow_NN.svg`, `Arrow_NN.svg`).
+    """
+    try:
+        from qgis.core import QgsApplication
+        svg_paths = QgsApplication.svgPaths() or []
+    except Exception:  # noqa: BLE001
+        svg_paths = []
+    candidates = (
+        "arrows/NorthArrow_02.svg",
+        "arrows/NorthArrow_01.svg",
+        "arrows/NorthArrow_03.svg",
+        "arrows/Arrow_02.svg",
+        "arrows/Arrow_01.svg",
+    )
+    for base in svg_paths:
+        for rel in candidates:
+            full = os.path.join(base, rel)
+            if os.path.isfile(full):
+                return full
+    return None
+
+
+def _add_text_north(layout, qc, x: float, y: float, w: float, h: float):
+    label = qc.QgsLayoutItemLabel(layout)
+    label.setText("N\n\u25b2")
+    try:
+        font = label.font()
+        font.setPointSize(14)
+        font.setBold(True)
+        label.setFont(font)
+        label.setHAlign(_HALIGN["C"])
+        label.setVAlign(_VALIGN_CENTER)
+        label.setBackgroundEnabled(True)
+        from qgis.PyQt.QtGui import QColor
+        label.setBackgroundColor(QColor(255, 255, 255))
+        label.setFrameEnabled(True)
+        label.setFrameStrokeColor(QColor(60, 60, 60))
+        label.setFrameStrokeWidth(qc.QgsLayoutMeasurement(
+            0.3, qc.QgsUnitTypes.LayoutMillimeters))
+    except Exception:  # noqa: BLE001
+        pass
+    layout.addLayoutItem(label)
+    _place(label, qc, x, y, w, h)
+
+
+def _round_grid_step(raw: float) -> float:
+    """Round a grid step up to a 'nice' number (1/2/5 × 10^n).
+
+    Works for both meters (UTM) and degrees. Input zero/negative returns 1.
+    """
+    if raw is None or raw <= 0:
+        return 1.0
+    import math
+    exp = math.floor(math.log10(raw))
+    base = 10.0 ** exp
+    normalized = raw / base
+    if normalized < 1.5:
+        nice = 1.0
+    elif normalized < 3.5:
+        nice = 2.0
+    elif normalized < 7.5:
+        nice = 5.0
+    else:
+        nice = 10.0
+    return nice * base
+
+
+def _draw_table_fallback(layout, *, rows: List[LookaheadRow],
+                         header_text: str, date_str: str,
+                         config: PdfExportConfig):
+    """Label-grid fallback when QgsLayoutItemManualTable cannot be
+    instantiated (abstract in some PyQGIS builds).
+
+    Paginates manually: fixed rows-per-page, title band + column
+    header on every page. Not as crisp as the manual-table path but
+    always works.
+    """
+    qc = _qgis_core()
+    mm = qc.QgsUnitTypes.LayoutMillimeters
+
+    try:
+        from qgis.PyQt.QtGui import QColor
+        header_bg = QColor(255, 248, 168)
+        alt_bg = QColor(245, 245, 245)
+        white = QColor(255, 255, 255)
+        border = QColor(160, 160, 160)
+    except Exception:  # noqa: BLE001
+        header_bg = alt_bg = white = border = None
+
+    total_w = sum(col_w for _n, _k, col_w, _a in _TABLE_COLUMNS)
+    table_left = (_A4_LANDSCAPE_W_MM - total_w) / 2.0
+    row_h = 6.5
+    header_h = 8.0
+    usable_h = _A4_LANDSCAPE_H_MM - _TITLE_BAND_H_MM - 4.0 - _MARGIN_MM - header_h
+    rows_per_page = max(1, int(usable_h // row_h))
+    n_pages = max(1, (len(rows) + rows_per_page - 1) // rows_per_page) if rows else 1
+
+    page_collection = layout.pageCollection()
+    for i in range(n_pages):
+        page = qc.QgsLayoutItemPage(layout)
+        page.setPageSize(
+            qc.QgsLayoutSize(_A4_LANDSCAPE_W_MM, _A4_LANDSCAPE_H_MM, mm)
+        )
+        page_collection.addPage(page)
+        page_idx = page_collection.pageCount() - 1
+        _add_title_band(layout, page_index=page_idx,
+                        header_text=header_text, date_str=date_str,
+                        config=config)
+
+        page_y = _page_y_offset(layout, page_idx)
+        y0 = page_y + _TITLE_BAND_H_MM + 4.0
+
+        # Column header row (repeats on every page).
+        x_cursor = table_left
+        for col_name, _key, col_w, align in _TABLE_COLUMNS:
+            label = qc.QgsLayoutItemLabel(layout)
+            label.setText(col_name)
+            try:
+                font = label.font()
+                font.setBold(True)
+                font.setPointSize(9)
+                label.setFont(font)
+                label.setHAlign(_HALIGN[align])
+                label.setVAlign(_VALIGN_CENTER)
+                label.setMarginX(1.2)
+                if header_bg is not None:
+                    label.setBackgroundEnabled(True)
+                    label.setBackgroundColor(header_bg)
+                if border is not None:
+                    label.setFrameEnabled(True)
+                    label.setFrameStrokeColor(border)
+                    label.setFrameStrokeWidth(qc.QgsLayoutMeasurement(0.15, mm))
+            except Exception:  # noqa: BLE001
+                pass
+            layout.addLayoutItem(label)
+            _place(label, qc, x_cursor, y0, col_w, header_h)
+            x_cursor += col_w
+
+        # Data rows for this page.
+        chunk = rows[i * rows_per_page:(i + 1) * rows_per_page]
+        for row_idx, row in enumerate(chunk):
+            x_cursor = table_left
+            y_cursor = y0 + header_h + row_idx * row_h
+            bg = alt_bg if (row_idx % 2 == 1) else white
+            for _col_name, key, col_w, align in _TABLE_COLUMNS:
+                cell = qc.QgsLayoutItemLabel(layout)
+                cell.setText(_cell_text(row, key))
+                try:
+                    font = cell.font()
+                    font.setPointSize(8)
+                    cell.setFont(font)
+                    cell.setHAlign(_HALIGN[align])
+                    cell.setVAlign(_VALIGN_CENTER)
+                    cell.setMarginX(1.2)
+                    if bg is not None:
+                        cell.setBackgroundEnabled(True)
+                        cell.setBackgroundColor(bg)
+                    if border is not None:
+                        cell.setFrameEnabled(True)
+                        cell.setFrameStrokeColor(border)
+                        cell.setFrameStrokeWidth(qc.QgsLayoutMeasurement(0.1, mm))
+                except Exception:  # noqa: BLE001
+                    pass
+                layout.addLayoutItem(cell)
+                _place(cell, qc, x_cursor, y_cursor, col_w, row_h)
+                x_cursor += col_w
 
 
 def _add_table_pages(layout, *, rows: List[LookaheadRow],
                      header_text: str, date_str: str,
                      config: PdfExportConfig):
-    """Render the sequence table onto new pages. Uses fixed-height rows
-    and splices manually to sidestep QgsLayoutItemManualTable quirks on
-    large datasets; empirical tuning may happen in 17b on Martin Linge.
+    """Render the sequence table using QgsLayoutItemManualTable.
+
+    The table auto-paginates: one frame per page, column headers repeat
+    on every page (QgsLayoutTable.AllFrames), rows split cleanly on row
+    boundaries, and new pages are added automatically as needed. First
+    table page gets the same big title band as the map page; subsequent
+    table pages repeat only the column header, matching how daily plan
+    reports normally look.
     """
     qc = _qgis_core()
-    page_collection = layout.pageCollection()
+    mm = qc.QgsUnitTypes.LayoutMillimeters
 
-    rows_per_page = 30
-    n_pages = max(1, (len(rows) + rows_per_page - 1) // rows_per_page) if rows else 1
+    try:
+        from qgis.PyQt.QtGui import QColor
+        header_bg = QColor(255, 248, 168)   # yellow
+        alt_bg = QColor(245, 245, 245)
+        border = QColor(160, 160, 160)
+    except Exception:  # noqa: BLE001
+        header_bg = alt_bg = border = None
 
-    for i in range(n_pages):
-        page = qc.QgsLayoutItemPage(layout)
-        page.setPageSize(
-            qc.QgsLayoutSize(_A4_LANDSCAPE_W_MM, _A4_LANDSCAPE_H_MM,
-                             qc.QgsUnitTypes.LayoutMillimeters)
+    try:
+        _add_manual_table(
+            layout, qc=qc, rows=rows, header_text=header_text,
+            date_str=date_str, config=config,
+            header_bg=header_bg, alt_bg=alt_bg, border=border,
         )
-        page_collection.addPage(page)
-        page_index = page_collection.pageCount() - 1
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger("obn_planner").exception(
+            "Manual-table render failed; falling back to label grid")
+        _draw_table_fallback(
+            layout, rows=rows, header_text=header_text,
+            date_str=date_str, config=config,
+        )
+    return
 
-        _add_title_band(layout, page_index=page_index,
-                        header_text=header_text, date_str=date_str,
-                        config=config)
 
-        chunk = rows[i * rows_per_page:(i + 1) * rows_per_page]
-        _draw_table_block(layout, page_index=page_index, rows=chunk)
+def _add_manual_table(layout, *, qc, rows, header_text, date_str, config,
+                     header_bg, alt_bg, border):
+    """Render the table via QgsLayoutItemManualTable (factory-created).
 
+    In PyQGIS, QgsLayoutItemManualTable is exposed as abstract — we
+    construct it via the layout-item registry factory. Any exception
+    here is caught by the caller which falls back to the label grid.
+    """
+    mm = qc.QgsUnitTypes.LayoutMillimeters
 
-def _draw_table_block(layout, *, page_index: int, rows: List[LookaheadRow]):
-    """Draw a simple table as a grid of QgsLayoutItemLabels. This is
-    deliberately low-tech — QgsLayoutItemManualTable has known quirks
-    with very tall tables and we prefer determinism over richness for
-    v1. Tune cell heights and fonts in 17b smoke testing."""
-    qc = _qgis_core()
+    # Instantiate via registry; the Python constructor is abstract.
+    table = None
+    from qgis.core import QgsApplication, QgsLayoutItemRegistry
+    reg = QgsApplication.layoutItemRegistry()
+    mf_id = getattr(QgsLayoutItemRegistry, "LayoutManualTable", None)
+    if mf_id is not None:
+        table = reg.createMultiFrame(int(mf_id), layout)
+    if table is None:
+        create_fn = getattr(qc.QgsLayoutItemManualTable, "create", None)
+        if create_fn is not None:
+            table = create_fn(layout)
+    if table is None:
+        raise RuntimeError("QgsLayoutItemManualTable could not be created")
+    layout.addMultiFrame(table)
 
-    page_y_offset = sum(
-        _A4_LANDSCAPE_H_MM
-        for _ in range(page_index)
-    )
-
-    x0 = _MARGIN_MM
-    y0 = page_y_offset + _TITLE_BAND_H_MM + 2.0
-    row_h = 6.0
-    header_h = 7.0
-
-    # Header row
-    x_cursor = x0
-    for col_name, _, col_w in _TABLE_COLUMNS:
-        label = qc.QgsLayoutItemLabel(layout)
-        label.setText(col_name)
+    # Columns: widths + default alignment.
+    columns = []
+    for col_name, _k, col_w, align in _TABLE_COLUMNS:
+        col = qc.QgsLayoutTableColumn(col_name)
+        col.setWidth(col_w)
         try:
-            font = label.font()
-            font.setBold(True)
-            font.setPointSize(9)
-            label.setFont(font)
-            label.setBackgroundEnabled(True)
-            from qgis.PyQt.QtGui import QColor  # local import to keep top clean
-            label.setBackgroundColor(QColor(255, 248, 168))
-        except Exception:
+            col.setHAlignment(_HALIGN[align])
+            col.setVAlignment(_VALIGN_CENTER)
+        except AttributeError:
             pass
-        label.attemptSetSceneRect(qc.QgsLayoutRect(
-            x_cursor, y0, col_w, header_h,
-            qc.QgsUnitTypes.LayoutMillimeters,
-        ))
-        layout.addLayoutItem(label)
-        x_cursor += col_w
+        columns.append(col)
+    table.setColumns(columns)
 
-    # Data rows
+    # Headers (yellow background, bold).
+    header_cells = []
+    for col_name, _k, _w, align in _TABLE_COLUMNS:
+        c = qc.QgsTableCell(col_name)
+        try:
+            if header_bg is not None:
+                c.setBackgroundColor(header_bg)
+            c.setHorizontalAlignment(_HALIGN[align])
+            c.setVerticalAlignment(_VALIGN_CENTER)
+        except AttributeError:
+            pass
+        header_cells.append(c)
+    try:
+        table.setHeaders(header_cells)
+        table.setHeaderMode(qc.QgsLayoutTable.AllFrames)  # repeat each page
+    except AttributeError:
+        pass
+
+    # Data cells with alternating row backgrounds.
+    contents = []
     for row_idx, row in enumerate(rows):
-        x_cursor = x0
-        y_cursor = y0 + header_h + row_idx * row_h
-        for _col_name, key, col_w in _TABLE_COLUMNS:
-            cell = qc.QgsLayoutItemLabel(layout)
-            cell.setText(_cell_text(row, key))
+        row_cells = []
+        bg = alt_bg if (row_idx % 2 == 1) else None
+        for col_name, key, _w, align in _TABLE_COLUMNS:
+            c = qc.QgsTableCell(_cell_text(row, key))
             try:
-                font = cell.font()
-                font.setPointSize(8)
-                cell.setFont(font)
+                if bg is not None:
+                    c.setBackgroundColor(bg)
+                c.setHorizontalAlignment(_HALIGN[align])
+                c.setVerticalAlignment(_VALIGN_CENTER)
             except AttributeError:
                 pass
-            cell.attemptSetSceneRect(qc.QgsLayoutRect(
-                x_cursor, y_cursor, col_w, row_h,
-                qc.QgsUnitTypes.LayoutMillimeters,
-            ))
-            layout.addLayoutItem(cell)
-            x_cursor += col_w
+            row_cells.append(c)
+        contents.append(row_cells)
+    table.setTableContents(contents)
+
+    # Visual styling: grid lines, padding, font.
+    try:
+        table.setShowGrid(True)
+        if border is not None:
+            table.setGridColor(border)
+        table.setGridStrokeWidth(0.15)
+        table.setCellMargin(1.2)
+    except AttributeError:
+        pass
+    try:
+        from qgis.PyQt.QtGui import QFont
+        content_font = QFont()
+        content_font.setPointSize(9)
+        table.setContentFont(content_font)
+        header_font = QFont()
+        header_font.setPointSize(9)
+        header_font.setBold(True)
+        table.setHeaderFont(header_font)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Add first page for the table + its big title band.
+    page_collection = layout.pageCollection()
+    page = qc.QgsLayoutItemPage(layout)
+    page.setPageSize(
+        qc.QgsLayoutSize(_A4_LANDSCAPE_W_MM, _A4_LANDSCAPE_H_MM, mm)
+    )
+    page_collection.addPage(page)
+    first_table_page = page_collection.pageCount() - 1
+    _add_title_band(layout, page_index=first_table_page,
+                    header_text=header_text, date_str=date_str,
+                    config=config)
+
+    # First frame for the table on the first table page.
+    total_w = sum(col_w for _n, _k, col_w, _a in _TABLE_COLUMNS)
+    table_left = (_A4_LANDSCAPE_W_MM - total_w) / 2.0
+    page_y = _page_y_offset(layout, first_table_page)
+    body_y = page_y + _TITLE_BAND_H_MM + 4.0
+    body_h = _A4_LANDSCAPE_H_MM - _TITLE_BAND_H_MM - 4.0 - _MARGIN_MM
+
+    frame = qc.QgsLayoutFrame(layout, table)
+    layout.addLayoutItem(frame)
+    _place(frame, qc, table_left, body_y, total_w, body_h)
+    table.addFrame(frame)
+
+    # Auto-extend onto new pages as needed.
+    try:
+        table.setResizeMode(qc.QgsLayoutMultiFrame.ExtendToNextPage)
+    except AttributeError:
+        pass
+    try:
+        table.recalculateFrameSizes()
+    except AttributeError:
+        pass
 
 
 def export_pdf(layout, output_path: str) -> Tuple[bool, Optional[str]]:

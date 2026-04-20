@@ -9314,11 +9314,18 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         except ImportError:
             from pdf_export_dialog import PdfExportDialog  # type: ignore
 
+        start_seq = 1
+        if hasattr(self, "firstSeqComboBox"):
+            try:
+                start_seq = int(self.firstSeqComboBox.value())
+            except Exception:  # noqa: BLE001
+                start_seq = 1
         dlg = PdfExportDialog(
             parent=self,
             project=QgsProject.instance(),
             optimized_path_layer=self.optimized_path_layer,
             generated_lines_layer=gen_layer,
+            start_sequence_number=start_seq,
         )
         dlg.exec_()
 
