@@ -682,11 +682,28 @@
      </widget>
     </item>
     <item>
-     <widget class="QPushButton" name="editFinalizeButton">
-      <property name="text">
-       <string>Finalize Lookahead Plan</string>
-      </property>
-     </widget>
+     <layout class="QHBoxLayout" name="postSimulationButtonRow">
+      <item>
+       <widget class="QPushButton" name="editFinalizeButton">
+        <property name="text">
+         <string>Edit Plan</string>
+        </property>
+        <property name="toolTip">
+         <string>Review and adjust the simulated sequence (operation, FGSP/LGSP, order).</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="exportPdfButton">
+        <property name="text">
+         <string>Create Report</string>
+        </property>
+        <property name="toolTip">
+         <string>Open the 48-hour Lookahead preview dialog and render the PDF report.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>

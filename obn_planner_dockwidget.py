@@ -349,6 +349,12 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             self.editFinalizeButton.clicked.connect(self.show_edit_sequence_dialog)
             #  self.editFinalizeButton.setEnabled(False) # Initially disabled
         else: log.warning("UI Warning: editFinalizeButton not found.")
+        # Phase 17b: Create Report (PDF export) button on the same row
+        # as Edit Plan. Enabled/disabled mirrors editFinalizeButton.
+        if hasattr(self, 'exportPdfButton'):
+            self.exportPdfButton.clicked.connect(self.handle_export_pdf)
+        else:
+            log.warning("UI Warning: exportPdfButton not found.")
         if hasattr(self, 'deviationClearanceDoubleSpinBox'):
             self.deviationClearanceDoubleSpinBox.setValue(100.0)
             log.debug("Set default deviation clearance to 100.0")
@@ -7292,6 +7298,7 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
         self.last_line_data = None; self.last_required_layers = None
         self.last_turn_cache = {}
         if hasattr(self, 'editFinalizeButton'): self.editFinalizeButton.setEnabled(False)
+        if hasattr(self, 'exportPdfButton'): self.exportPdfButton.setEnabled(False)
 
         # Phase 13a-3: SIMULATION_SUMMARY accounting. Initialized pre-try so
         # the finally block can always emit a summary, even if preparation
@@ -7799,6 +7806,8 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
                     log.debug("Enabling Edit/Finalize button.")
                     self.editFinalizeButton.setEnabled(True)
                 else: log.warning("Edit/Finalize button not found, cannot enable.")
+                if hasattr(self, 'exportPdfButton'):
+                    self.exportPdfButton.setEnabled(True)
 
                 log.info(f"Algorithm {selected_mode} finished.")
                 log.info(f"Final Sequence: {final_sequence}")
@@ -9273,6 +9282,45 @@ class OBNPlannerDockWidget(QtWidgets.QDockWidget, Ui_OBNPlannerDockWidgetBase):
             return False
         log.info(f"Committed Operation/FGSP/LGSP edits for {len(edits)} lines")
         return True
+
+    def handle_export_pdf(self):
+        """Phase 17b: open the 48-hour Lookahead preview dialog.
+
+        Guards on the same post-simulation state as show_edit_sequence_dialog:
+        last_simulation_result, optimized_path_layer, and the Generated
+        Survey Lines layer (needed to join Operation/FGSP/LGSP)."""
+        if not self.last_simulation_result:
+            QMessageBox.warning(
+                self, "No simulation",
+                "Run a simulation first to produce a sequence.",
+            )
+            return
+        if not self.optimized_path_layer:
+            QMessageBox.warning(
+                self, "No Optimized_Path",
+                "The Optimized_Path layer is missing. Re-run the simulation.",
+            )
+            return
+        gen_layer = getattr(self, "generated_lines_layer", None)
+        if gen_layer is None or not gen_layer.isValid():
+            QMessageBox.warning(
+                self, "No Generated Lines",
+                "The Generated_Survey_Lines layer is missing. Regenerate lookahead lines first.",
+            )
+            return
+
+        try:
+            from .pdf_export_dialog import PdfExportDialog
+        except ImportError:
+            from pdf_export_dialog import PdfExportDialog  # type: ignore
+
+        dlg = PdfExportDialog(
+            parent=self,
+            project=QgsProject.instance(),
+            optimized_path_layer=self.optimized_path_layer,
+            generated_lines_layer=gen_layer,
+        )
+        dlg.exec_()
 
     def show_edit_sequence_dialog(self):
         """
