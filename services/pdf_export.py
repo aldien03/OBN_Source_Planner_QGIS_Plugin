@@ -143,10 +143,6 @@ class PdfExportConfig:
     show_north_arrow: bool = True
     show_scale_bar: bool = True
     show_legend: bool = True
-    # Phase 17d.7: overlay each survey line's LineNum at the line's
-    # midpoint so the map is self-sufficient against the table (the
-    # chief can point to any line and know immediately what it is).
-    show_line_numbers: bool = True
     # Phase 17d.2: grid_style supersedes the bool show_coord_grid.
     # One of "off", "light" (default), "normal". Kept show_coord_grid
     # alongside for back-compat with 17b code paths that haven't been
@@ -647,146 +643,6 @@ def _expand_extent_to_aspect(extent, target_aspect: float):
     return extent
 
 
-def _map_to_layout_mm(map_item, map_x: float, map_y: float):
-    """Convert a (map-CRS-x, map-CRS-y) point to (layout-mm-x,
-    layout-mm-y) coordinates on the layout scene.
-
-    Used by Phase 17d.7 line-number overlays. The map item's rect is
-    in layout mm; its extent is in map CRS. Linear interpolation
-    between the two gives us absolute layout scene coordinates.
-    """
-    try:
-        extent = map_item.extent()
-        item_pos = map_item.pos()
-        item_rect = map_item.rect()
-    except Exception:  # noqa: BLE001
-        return None
-    if extent.width() <= 0 or extent.height() <= 0:
-        return None
-    rel_x = (map_x - extent.xMinimum()) / extent.width()
-    rel_y = 1.0 - (map_y - extent.yMinimum()) / extent.height()
-    if not (0.0 <= rel_x <= 1.0 and 0.0 <= rel_y <= 1.0):
-        return None  # point is outside the visible map
-    return (float(item_pos.x()) + rel_x * float(item_rect.width()),
-            float(item_pos.y()) + rel_y * float(item_rect.height()))
-
-
-def _add_line_number_labels(layout, *, map_item, visible_layers):
-    """Overlay each Optimized_Path line feature's LineNum along the
-    line with a bordered white background so the label reads over
-    any line color.
-
-    Phase 17d.7/.8: labels are DISTRIBUTED along the line's length
-    (not all at midpoint) so adjacent parallel lines don't pile up
-    vertically. Each line's label position cycles through 5 fractions
-    (0.12, 0.31, 0.50, 0.69, 0.88) in order of acquisition sequence.
-
-    Label is 9 pt bold, solid white background, thin grey border.
-    Highest-impact improvement per field analysis — lets the chief
-    identify any line on the map without flipping to the sequence
-    table.
-    """
-    qc = _qgis_core()
-    opt_layer = None
-    for layer in (visible_layers or []):
-        try:
-            if layer.name() == "Optimized_Path":
-                opt_layer = layer
-                break
-        except Exception:  # noqa: BLE001
-            continue
-    if opt_layer is None:
-        return
-
-    try:
-        from qgis.PyQt.QtGui import QColor
-        bg_color = QColor(255, 255, 255)
-        border_color = QColor(60, 60, 60)
-    except Exception:  # noqa: BLE001
-        bg_color = border_color = None
-
-    mm = qc.QgsUnitTypes.LayoutMillimeters
-    label_w_mm = 12.0
-    label_h_mm = 4.5
-    # Five positions along the line; adjacent lines (by SeqOrder) get
-    # different fractions so their labels don't stack vertically on
-    # parallel survey tracks.
-    frac_positions = (0.12, 0.31, 0.50, 0.69, 0.88)
-
-    # Collect + sort so fraction assignment respects acquisition order.
-    line_features = []
-    for feat in opt_layer.getFeatures():
-        try:
-            seg_type = feat["SegmentType"]
-        except (KeyError, IndexError):
-            continue
-        if seg_type != "Line":
-            continue
-        try:
-            seq_order = feat["SeqOrder"]
-        except (KeyError, IndexError):
-            seq_order = 0
-        line_features.append((seq_order or 0, feat))
-    line_features.sort(key=lambda t: t[0])
-
-    for i, (_seq, feat) in enumerate(line_features):
-        try:
-            line_num = feat["LineNum"]
-        except (KeyError, IndexError):
-            continue
-        if line_num is None or line_num == "" or str(line_num) == "NULL":
-            continue
-        geom = feat.geometry()
-        if geom is None or geom.isEmpty():
-            continue
-        try:
-            length = float(geom.length())
-        except Exception:  # noqa: BLE001
-            continue
-        if length <= 0:
-            continue
-
-        frac = frac_positions[i % len(frac_positions)]
-        try:
-            pt_geom = geom.interpolate(length * frac)
-            mp = pt_geom.asPoint()
-            mx, my = float(mp.x()), float(mp.y())
-        except Exception:  # noqa: BLE001
-            continue
-
-        pt = _map_to_layout_mm(map_item, mx, my)
-        if pt is None:
-            continue
-        lx, ly = pt
-
-        label = qc.QgsLayoutItemLabel(layout)
-        label.setText(str(line_num))
-        try:
-            font = label.font()
-            font.setPointSizeF(9.0)
-            font.setBold(True)
-            label.setFont(font)
-            label.setHAlign(_HALIGN["C"])
-            label.setVAlign(_VALIGN_CENTER)
-            label.setMarginX(1.0)
-            label.setMarginY(0.4)
-            if bg_color is not None:
-                label.setBackgroundEnabled(True)
-                label.setBackgroundColor(bg_color)
-            if border_color is not None:
-                label.setFrameEnabled(True)
-                label.setFrameStrokeColor(border_color)
-                label.setFrameStrokeWidth(
-                    qc.QgsLayoutMeasurement(0.2, mm)
-                )
-        except Exception:  # noqa: BLE001
-            pass
-        layout.addLayoutItem(label)
-        _place(label, qc,
-               lx - label_w_mm / 2.0, ly - label_h_mm / 2.0,
-               label_w_mm, label_h_mm)
-
-
 def _add_map_item(layout, *, page_index: int, layers, extent,
                   config: PdfExportConfig, map_crs=None):
     qc = _qgis_core()
@@ -1212,14 +1068,6 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
         except Exception:  # noqa: BLE001
             pass
 
-    # Phase 17d.7: line-number overlays on top of the map.
-    if getattr(config, "show_line_numbers", True):
-        try:
-            _add_line_number_labels(
-                layout, map_item=map_item, visible_layers=layers,
-            )
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def _resolve_north_arrow_svg(qc):
