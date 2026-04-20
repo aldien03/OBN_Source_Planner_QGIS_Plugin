@@ -143,7 +143,12 @@ class PdfExportConfig:
     show_north_arrow: bool = True
     show_scale_bar: bool = True
     show_legend: bool = True
+    # Phase 17d.2: grid_style supersedes the bool show_coord_grid.
+    # One of "off", "light" (default), "normal". Kept show_coord_grid
+    # alongside for back-compat with 17b code paths that haven't been
+    # migrated; when grid_style != "off" it overrides show_coord_grid.
     show_coord_grid: bool = True
+    grid_style: str = "light"
     # Start value for the PDF table's Seq column; matches the dock's
     # "First Line Seq." spinbox so the PDF aligns with the Edit Plan
     # dialog's sequence numbers (e.g. 1000, 1001, 1002, ...).
@@ -151,6 +156,13 @@ class PdfExportConfig:
     # {layer_id: display_name} — applied to the legend on the map page
     # without mutating the main project's layer tree.
     layer_display_names: dict = field(default_factory=dict)
+    # Phase 17d.2: legend group-heading overrides.
+    # {group_node_name: display_name_or_empty}. Empty-string value
+    # flattens the group (drops the heading, keeps children).
+    group_display_names: dict = field(default_factory=dict)
+    # Phase 17d.3: per-layer opt-out from the legend (while staying
+    # visible on the map). Set of layer_id strings.
+    hidden_from_legend: set = field(default_factory=set)
 
 
 # --- QGIS-dependent helpers -------------------------------------------------
@@ -174,6 +186,34 @@ def _place(item, qc, x_mm: float, y_mm: float, w_mm: float, h_mm: float):
     mm = qc.QgsUnitTypes.LayoutMillimeters
     item.attemptMove(qc.QgsLayoutPoint(x_mm, y_mm, mm))
     item.attemptResize(qc.QgsLayoutSize(w_mm, h_mm, mm))
+
+
+def _place_logo_centered(layout, qc, path, *, slot_x: float, slot_y: float,
+                         slot_w: float, slot_h: float):
+    """Place a logo image centered in its slot, preserving aspect ratio.
+
+    Phase 17d.2: all logos go through this helper so the three brand
+    slots (vessel / company / client) share a single sizing policy.
+    QgsLayoutItemPicture.Zoom preserves the image's aspect ratio and
+    fits it inside the slot — narrower images appear centered
+    horizontally, shorter images appear centered vertically. No
+    stretching. Missing / invalid paths silently skip.
+    """
+    if not path or not os.path.isfile(path):
+        return None
+    pic = qc.QgsLayoutItemPicture(layout)
+    pic.setPicturePath(path)
+    try:
+        pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
+    except AttributeError:
+        pass
+    try:
+        pic.setPictureAnchor(qc.QgsLayoutItemPicture.MiddleFrame)
+    except AttributeError:
+        pass
+    layout.addLayoutItem(pic)
+    _place(pic, qc, slot_x, slot_y, slot_w, slot_h)
+    return pic
 
 
 _MONTH_ABBR_EN = (
@@ -324,11 +364,15 @@ def rows_from_optimized_path_layer(
 
 _A4_LANDSCAPE_W_MM = 297.0
 _A4_LANDSCAPE_H_MM = 210.0
-_TITLE_BAND_H_MM = 26.0
+# Phase 17d.2: title band shrunk 26 -> 18 so ~8 mm returns to the
+# map body. Date moves out of the header into the footer (already
+# says "Generated <date>"), avoiding the need for a header-row date
+# slot that competed with the logos.
+_TITLE_BAND_H_MM = 18.0
 _MARGIN_MM = 10.0
-_LEFT_LOGO_W_MM = 32.0
-_RIGHT_LOGO_W_MM = 28.0
-_LEFT_MAP_GUTTER_MM = 18.0  # extra room for grid annotations on the left
+_LOGO_SLOT_W_MM = 28.0
+_LOGO_SLOT_H_MM = 14.0   # 14 mm slot inside an 18 mm band leaves 2 mm top + 2 mm bottom
+_LEFT_MAP_GUTTER_MM = 18.0   # room for grid annotations on the left
 _RIGHT_LEGEND_GUTTER_MM = 60.0
 
 # (display_name, row_attribute, width_mm, align) — align: 'L' left, 'C' center, 'R' right.
@@ -447,38 +491,54 @@ def _page_y_offset(layout, page_index: int) -> float:
 
 def _add_title_band(layout, *, page_index: int, header_text: str,
                     date_str: str, config: PdfExportConfig):
-    """Header layout (26mm band):
-      - Vessel logo: top-left, 32×22mm
-      - Title: centered, between the left logo and the right logos
-      - Date: top-right, 50×5mm above the company/client logos
-      - Company logo: right column, 28×8mm below date
-      - Client logo: far-right column, 28×8mm below date
+    """Header layout (18 mm band).
+
+    Slots from left to right:
+      - Vessel logo:  (_MARGIN_MM .. +_LOGO_SLOT_W_MM)
+      - Title:        centered between vessel logo and company+client
+                      logos, 14 pt bold, both axes centered
+      - Company logo: right column, below title-row top
+      - Client logo:  far-right column
+
+    Date is NOT on the header — it lives in the footer ("Generated
+    <date> • Page N of M") to avoid competing with the logos inside
+    an 18 mm band.
     """
     qc = _qgis_core()
     page_y = _page_y_offset(layout, page_index)
 
-    # Vessel logo (left)
-    if config.logo_vessel_path and os.path.isfile(config.logo_vessel_path):
-        pic = qc.QgsLayoutItemPicture(layout)
-        pic.setPicturePath(config.logo_vessel_path)
-        try:
-            pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
-        except AttributeError:
-            pass
-        layout.addLayoutItem(pic)
-        _place(pic, qc, _MARGIN_MM, page_y + 2.0,
-               _LEFT_LOGO_W_MM, _TITLE_BAND_H_MM - 4.0)
+    logo_y = page_y + (_TITLE_BAND_H_MM - _LOGO_SLOT_H_MM) / 2.0
 
-    # Title centered between the left logo column and the right column
-    title_x = _MARGIN_MM + _LEFT_LOGO_W_MM + 4.0
-    right_col_x = _A4_LANDSCAPE_W_MM - _MARGIN_MM - 2 * _RIGHT_LOGO_W_MM - 4.0
-    title_w = max(20.0, right_col_x - title_x - 4.0)
+    # Vessel logo (left)
+    _place_logo_centered(
+        layout, qc, config.logo_vessel_path,
+        slot_x=_MARGIN_MM, slot_y=logo_y,
+        slot_w=_LOGO_SLOT_W_MM, slot_h=_LOGO_SLOT_H_MM,
+    )
+
+    # Right column: client (far-right) + company (just left of client)
+    client_x = _A4_LANDSCAPE_W_MM - _MARGIN_MM - _LOGO_SLOT_W_MM
+    company_x = client_x - _LOGO_SLOT_W_MM - 4.0
+    _place_logo_centered(
+        layout, qc, config.logo_company_path,
+        slot_x=company_x, slot_y=logo_y,
+        slot_w=_LOGO_SLOT_W_MM, slot_h=_LOGO_SLOT_H_MM,
+    )
+    _place_logo_centered(
+        layout, qc, config.logo_client_path,
+        slot_x=client_x, slot_y=logo_y,
+        slot_w=_LOGO_SLOT_W_MM, slot_h=_LOGO_SLOT_H_MM,
+    )
+
+    # Title centered between the left-logo column and the right-logo column
+    title_x = _MARGIN_MM + _LOGO_SLOT_W_MM + 6.0
+    title_w = max(20.0, company_x - title_x - 6.0)
 
     title = qc.QgsLayoutItemLabel(layout)
     title.setText(header_text)
     try:
         font = title.font()
-        font.setPointSize(14)
+        font.setPointSizeF(14.0)
         font.setBold(True)
         title.setFont(font)
     except AttributeError:
@@ -489,49 +549,7 @@ def _add_title_band(layout, *, page_index: int, header_text: str,
     except AttributeError:
         pass
     layout.addLayoutItem(title)
-    _place(title, qc, title_x, page_y + 2.0, title_w, _TITLE_BAND_H_MM - 4.0)
-
-    # Date top-right of the right column
-    date_label = qc.QgsLayoutItemLabel(layout)
-    date_label.setText(date_str.replace("_", "-"))
-    try:
-        font = date_label.font()
-        font.setPointSize(9)
-        date_label.setFont(font)
-    except AttributeError:
-        pass
-    try:
-        date_label.setHAlign(0x02)  # Qt.AlignRight
-    except AttributeError:
-        pass
-    layout.addLayoutItem(date_label)
-    _place(date_label, qc,
-           right_col_x, page_y + 2.0,
-           2 * _RIGHT_LOGO_W_MM + 4.0, 5.0)
-
-    # Company + client logos in the right column, below the date
-    logo_y = page_y + 8.0
-    logo_h = _TITLE_BAND_H_MM - 12.0
-    if config.logo_company_path and os.path.isfile(config.logo_company_path):
-        pic = qc.QgsLayoutItemPicture(layout)
-        pic.setPicturePath(config.logo_company_path)
-        try:
-            pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
-        except AttributeError:
-            pass
-        layout.addLayoutItem(pic)
-        _place(pic, qc, right_col_x, logo_y, _RIGHT_LOGO_W_MM, logo_h)
-    if config.logo_client_path and os.path.isfile(config.logo_client_path):
-        pic = qc.QgsLayoutItemPicture(layout)
-        pic.setPicturePath(config.logo_client_path)
-        try:
-            pic.setResizeMode(qc.QgsLayoutItemPicture.Zoom)
-        except AttributeError:
-            pass
-        layout.addLayoutItem(pic)
-        _place(pic, qc,
-               right_col_x + _RIGHT_LOGO_W_MM + 4.0, logo_y,
-               _RIGHT_LOGO_W_MM, logo_h)
+    _place(title, qc, title_x, page_y, title_w, _TITLE_BAND_H_MM)
 
     # Thin horizontal rule at the bottom of the header band — built
     # from a QgsLayoutItemShape rectangle with a grey fill and no stroke.
@@ -659,21 +677,42 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
     if layers:
         map_item.setLayers(list(layers))
 
-    if config.show_coord_grid and fitted is not None and fitted.width() > 0:
+    # Phase 17d.2: grid style (off / light / normal). grid_style
+    # overrides show_coord_grid when present; "off" disables the grid
+    # entirely, "light" draws a faint grey reference, "normal" draws
+    # a standard cartographic grid.
+    grid_style = getattr(config, "grid_style", "light")
+    grid_on = (grid_style != "off") and (
+        config.show_coord_grid if grid_style == "light" else True
+    )
+    if grid_on and fitted is not None and fitted.width() > 0:
         try:
             grid = map_item.grid()
             grid.setEnabled(True)
-            # Auto-pick an interval that yields ~6 grid lines across the
-            # shorter axis. Works for both metric (UTM) and geographic CRS.
             short = min(fitted.width(), fitted.height())
             step = _round_grid_step(short / 6.0)
             grid.setIntervalX(step)
             grid.setIntervalY(step)
             grid.setAnnotationEnabled(True)
-            # Show integer eastings/northings for UTM; fall back to 2 dp.
             try:
                 grid.setAnnotationPrecision(0 if step >= 10 else 2)
             except AttributeError:
+                pass
+            try:
+                from qgis.PyQt.QtGui import QColor
+                if grid_style == "light":
+                    # Light: thin grey lines, high transparency so the
+                    # survey plan reads through the grid.
+                    grid.setStyle(qc.QgsLayoutItemMapGrid.FrameLineBorder
+                                  if hasattr(qc.QgsLayoutItemMapGrid,
+                                             "FrameLineBorder") else 0)
+                    grid.setGridLineColor(QColor(180, 180, 180, 180))
+                    grid.setGridLineWidth(0.1)
+                else:
+                    # Normal: standard solid grid.
+                    grid.setGridLineColor(QColor(80, 80, 80))
+                    grid.setGridLineWidth(0.2)
+            except Exception:  # noqa: BLE001
                 pass
         except Exception:  # noqa: BLE001
             pass
@@ -713,14 +752,27 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
         except Exception:  # noqa: BLE001
             pass
         scale.setLinkedMap(map_item)
+        # Phase 17d.2: force kilometres (UTM metres produce
+        # "0 1000,000 m" style labels which read poorly).
+        try:
+            scale.setUnits(qc.QgsUnitTypes.DistanceKilometers)
+            scale.setUnitLabel("km")
+        except AttributeError:
+            pass
+        try:
+            scale.setNumberOfSegments(4)
+            scale.setNumberOfSegmentsLeft(0)
+        except AttributeError:
+            pass
         try:
             scale.applyDefaultSize()
+            scale.setHeight(3.0)
         except Exception:  # noqa: BLE001
             pass
         layout.addLayoutItem(scale)
         try:
             scale.attemptMove(qc.QgsLayoutPoint(
-                body_x + 2.0, body_y + body_h - 12.0, mm))
+                body_x + 2.0, body_y + body_h - 10.0, mm))
         except Exception:  # noqa: BLE001
             pass
 
@@ -737,38 +789,86 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
         except AttributeError:
             pass
 
-        overrides = {
+        name_overrides = {
             k: v for k, v in (config.layer_display_names or {}).items() if v
         }
+        group_overrides = config.group_display_names or {}
+        hidden_from_legend = set(config.hidden_from_legend or ())
         try:
             project = layout.project()
         except AttributeError:
             project = None
 
         applied_custom_tree = False
-        if project is not None and (overrides or (layers is not None)):
+        if project is not None:
             try:
                 custom_tree = project.layerTreeRoot().clone()
                 visible_ids = {l.id() for l in (layers or [])}
+
+                # Step 1: remove layer nodes that aren't on the map OR
+                # are opted out of the legend, and rename the rest.
+                # Phase 17d.2: also hide style subclasses by setting
+                # the "legend/layer-expression" / node legend policy so
+                # each layer contributes a single entry.
                 for node in list(custom_tree.findLayers()):
                     lid = node.layerId()
-                    if layers is not None and visible_ids and lid not in visible_ids:
+                    keep_on_map = (not visible_ids) or (lid in visible_ids)
+                    keep_in_legend = keep_on_map and (lid not in hidden_from_legend)
+                    if not keep_in_legend:
                         parent = node.parent()
                         if parent is not None:
                             parent.removeChildNode(node)
                         continue
-                    if lid in overrides:
+                    if lid in name_overrides:
                         try:
                             node.setUseLayerName(False)
                         except AttributeError:
                             pass
-                        node.setName(overrides[lid])
+                        node.setName(name_overrides[lid])
+                    # Collapse style subclasses: show only the layer's
+                    # own legend entry, not per-symbology class rows.
+                    try:
+                        node.setCustomProperty("showFeatureCount", False)
+                    except AttributeError:
+                        pass
+                    try:
+                        # QGIS 3.x: embed-widgets-in-legend off, and
+                        # expression-filter cleared. Also explicitly
+                        # limit the legend node order to only index 0
+                        # via QgsMapLayerLegendUtils.
+                        from qgis.core import QgsMapLayerLegendUtils
+                        QgsMapLayerLegendUtils.setLegendNodeOrder(node, [0])
+                    except Exception:  # noqa: BLE001
+                        pass
 
-                # Ownership hand-off: setCustomLayerTree claims ownership
-                # in the C++ API, but the PyQGIS binding's /Transfer/
-                # annotation is inconsistent across versions. Pin the
-                # object on the layout so Python's GC never frees it
-                # while the layout is alive.
+                # Step 2: for each group node, either rename (non-empty
+                # override) or flatten (empty override). Flattening:
+                # move children up to the parent and remove the group.
+                try:
+                    groups = list(custom_tree.findGroups())
+                except AttributeError:
+                    groups = []
+                for grp in groups:
+                    name = grp.name()
+                    if name not in group_overrides:
+                        continue
+                    new_name = group_overrides[name]
+                    if new_name == "":
+                        # Flatten: reparent children, drop the group.
+                        parent = grp.parent()
+                        if parent is None:
+                            continue
+                        for child in list(grp.children()):
+                            grp.removeChildNode(child)
+                            parent.addChildNode(child)
+                        parent.removeChildNode(grp)
+                    else:
+                        grp.setName(new_name)
+
+                # Ownership hand-off: setCustomLayerTree claims
+                # ownership in C++ but PyQGIS /Transfer/ annotations
+                # vary across versions. Pin on the layout so Python's
+                # GC never frees it during render.
                 try:
                     layout._pdf_export_custom_tree = custom_tree
                 except Exception:  # noqa: BLE001
