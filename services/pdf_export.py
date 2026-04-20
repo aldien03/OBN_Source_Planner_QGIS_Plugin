@@ -462,16 +462,19 @@ def build_lookahead_layout(
                      date_str=date_str, config=config)
 
     # Add a footer to every page — includes any pages auto-created by
-    # the manual-table's ExtendToNextPage. Uses layout-scope expressions
-    # `@layout_page` / `@layout_pagecount` so the page counter is
-    # resolved at render time (works even for auto-created pages).
+    # the manual-table's ExtendToNextPage. Phase 17d.6: hardcode the
+    # page count directly in each footer text instead of relying on
+    # [% @layout_pagecount %] — the expression rendered literally in
+    # 3.34 / 3.40 live tests, leaving "Page 1 of" truncated.
     try:
         total_pages = layout.pageCollection().pageCount()
     except Exception:  # noqa: BLE001
         total_pages = 0
     for page_idx in range(total_pages):
         try:
-            _add_footer(layout, page_index=page_idx, date_str=date_str)
+            _add_footer(layout, page_index=page_idx,
+                        date_str=date_str,
+                        page_num=page_idx + 1, total_pages=total_pages)
         except Exception:  # noqa: BLE001
             pass
 
@@ -578,12 +581,15 @@ def _add_title_band(layout, *, page_index: int, header_text: str,
         pass
 
 
-def _add_footer(layout, *, page_index: int, date_str: str):
+def _add_footer(layout, *, page_index: int, date_str: str,
+                page_num: int, total_pages: int):
     """Small footer with generation date + page number, centered.
 
-    Uses QGIS layout-scope expressions so the page counter resolves
-    at render time even when the manual table auto-creates new pages
-    after this footer is placed.
+    Phase 17d.6: page count is hardcoded (not an expression) because
+    `[% @layout_pagecount %]` rendered literally in QGIS 3.34 / 3.40
+    when used on a raw QgsLayoutItemLabel — "Page 1 of" would come
+    out with "?? " or a blank instead of the total count. Caller is
+    responsible for passing the right total.
     """
     qc = _qgis_core()
     page_y = _page_y_offset(layout, page_index)
@@ -592,11 +598,10 @@ def _add_footer(layout, *, page_index: int, date_str: str):
     label = qc.QgsLayoutItemLabel(layout)
     label.setText(
         f"Generated {date_str.replace('_', '-')}  \u2022  "
-        f"Page [% @layout_page %] of [% @layout_pagecount %]"
+        f"Page {page_num} of {total_pages}"
     )
     try:
-        label.setMode(qc.QgsLayoutItemLabel.ModeHtml if False
-                      else qc.QgsLayoutItemLabel.ModeFont)
+        label.setMode(qc.QgsLayoutItemLabel.ModeFont)
     except AttributeError:
         pass
     try:
@@ -816,8 +821,29 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
                 scale.setUnitsPerSegment(_round_grid_step(raw))
         except Exception:  # noqa: BLE001
             pass
+        # Phase 17d.6: compact scale bar — user feedback: previous
+        # 4.5 mm + 8 pt was "too big and too distracting". Revert to
+        # a slim reference strip.
         try:
-            scale.setHeight(3.0)
+            scale.setHeight(2.2)
+            scale.setBoxContentSpace(0.5)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from qgis.PyQt.QtGui import QFont
+            sb_font = QFont()
+            sb_font.setPointSizeF(6.5)
+            try:
+                scale.setFont(sb_font)
+            except AttributeError:
+                try:
+                    from qgis.core import QgsTextFormat
+                    fmt = QgsTextFormat()
+                    fmt.setFont(sb_font)
+                    fmt.setSize(6.5)
+                    scale.setTextFormat(fmt)
+                except Exception:  # noqa: BLE001
+                    pass
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -885,36 +911,42 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
                             pass
                         node.setName(name_overrides[lid])
 
-                # Step 1.5 (Phase 17d.5): reorder top-level layer
-                # nodes to match the user's explicit legend order. We
-                # skip group-nested layers to keep group integrity —
-                # only the top-level layout is reshuffled. Layers not
-                # in legend_order keep their relative order after the
-                # ordered ones.
+                # Step 1.5 (Phase 17d.5/.6): reorder top-level nodes —
+                # BOTH groups AND standalone layers — to match the
+                # user's explicit legend order. Keys in legend_order
+                # are prefixed "l:<layer_id>" for layer nodes and
+                # "g:<group_name>" for group nodes. Legacy bare
+                # layer_ids (pre-17d.6) are still accepted.
                 legend_order = list(getattr(config, "legend_order", []) or [])
                 if legend_order:
                     root = custom_tree
-                    # Take snapshot of top-level children that are layers.
-                    top_children = list(root.children())
-                    top_layer_by_id = {}
-                    for ch in top_children:
+                    top_by_key = {}
+                    for ch in root.children():
                         if hasattr(ch, "layerId"):
-                            top_layer_by_id[ch.layerId()] = ch
-                    ordered_layers = []
-                    for lid in legend_order:
-                        node = top_layer_by_id.pop(lid, None)
-                        if node is not None:
-                            ordered_layers.append(node)
-                    # Remaining layers keep their original order.
-                    ordered_layers.extend(top_layer_by_id.values())
-                    # Removed + re-added in the desired order; groups
-                    # and other non-layer children are left alone.
-                    for node in ordered_layers:
+                            top_by_key["l:" + ch.layerId()] = ch
+                        elif hasattr(ch, "children"):
+                            top_by_key["g:" + ch.name()] = ch
+                    ordered = []
+                    for key in legend_order:
+                        candidates = [key]
+                        if not (key.startswith("l:") or key.startswith("g:")):
+                            candidates = ["l:" + key]
+                        found = None
+                        for k in candidates:
+                            node = top_by_key.pop(k, None)
+                            if node is not None:
+                                found = node
+                                break
+                        if found is not None:
+                            ordered.append(found)
+                    # Any unclassified nodes stay in their original order.
+                    ordered.extend(top_by_key.values())
+                    for node in ordered:
                         try:
                             root.removeChildNode(node)
                         except Exception:  # noqa: BLE001
                             pass
-                    for node in ordered_layers:
+                    for node in ordered:
                         try:
                             root.addChildNode(node)
                         except Exception:  # noqa: BLE001
@@ -970,9 +1002,15 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
             legend.setResizeToContents(True)
         except AttributeError:
             pass
-        # Phase 17d.5: "Legend" headline, bold 11pt. Cartographic
-        # convention is singular "Legend". Gives the legend block a
-        # clear anchor header.
+        # Phase 17d.6: "Legend" headline + compact entry fonts.
+        # User feedback: the LAYER entries in the legend were too big.
+        # Target sizes (tuned against the Petrobras reference PDF):
+        #   Title        10 pt bold
+        #   Group         7.5 pt bold
+        #   Subgroup      7 pt bold
+        #   SymbolLabel   6.5 pt
+        # Also shrink the symbol swatches and tighten spacing so the
+        # whole block reads as a reference strip, not a second panel.
         try:
             legend.setTitle("Legend")
             legend.setTitleAlignment(0x04)  # Qt.AlignHCenter
@@ -980,18 +1018,46 @@ def _add_map_item(layout, *, page_index: int, layers, extent,
             pass
         try:
             from qgis.PyQt.QtGui import QFont
+            from qgis.core import QgsLegendStyle
             title_font = QFont()
-            title_font.setPointSizeF(11.0)
+            title_font.setPointSizeF(10.0)
             title_font.setBold(True)
+            group_font = QFont()
+            group_font.setPointSizeF(7.5)
+            group_font.setBold(True)
+            subgroup_font = QFont()
+            subgroup_font.setPointSizeF(7.0)
+            subgroup_font.setBold(True)
+            item_font = QFont()
+            item_font.setPointSizeF(6.5)
             try:
                 legend.setTitleFont(title_font)
             except AttributeError:
-                # QGIS 3.x later versions use setStyleFont with LegendStyle.Title
-                try:
-                    from qgis.core import QgsLegendStyle
-                    legend.setStyleFont(QgsLegendStyle.Title, title_font)
-                except Exception:  # noqa: BLE001
-                    pass
+                pass
+            try:
+                legend.setStyleFont(QgsLegendStyle.Title, title_font)
+                legend.setStyleFont(QgsLegendStyle.Group, group_font)
+                legend.setStyleFont(QgsLegendStyle.Subgroup, subgroup_font)
+                legend.setStyleFont(QgsLegendStyle.SymbolLabel, item_font)
+            except Exception:  # noqa: BLE001
+                pass
+            # Smaller symbol swatches (default is ~7 mm square).
+            try:
+                legend.setSymbolWidth(4.0)
+                legend.setSymbolHeight(2.8)
+            except AttributeError:
+                pass
+            # Tighter spacing between rows / between symbol + label.
+            try:
+                legend.setWmsLegendWidth(25.0)
+                legend.setWmsLegendHeight(14.0)
+            except AttributeError:
+                pass
+            try:
+                legend.setBoxSpace(1.0)
+                legend.setColumnSpace(1.5)
+            except AttributeError:
+                pass
         except Exception:  # noqa: BLE001
             pass
 

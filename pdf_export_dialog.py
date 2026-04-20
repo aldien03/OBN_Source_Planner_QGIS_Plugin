@@ -294,7 +294,10 @@ class PdfExportDialog(QDialog):
         self.layerTree = QTreeWidget()
         self.layerTree.setColumnCount(3)
         self.layerTree.setHeaderLabels(["Layer", "Display as (legend)", "In legend"])
-        self.layerTree.setRootIsDecorated(False)
+        # Phase 17d.6: groups are top-level rows, member layers are
+        # indented children. setRootIsDecorated(True) shows expand
+        # arrows so the chief can collapse large groups.
+        self.layerTree.setRootIsDecorated(True)
         self.layerTree.setAlternatingRowColors(True)
         self.layerTree.setEditTriggers(
             QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
@@ -470,55 +473,109 @@ class PdfExportDialog(QDialog):
     def _populate_layers_panel(self):
         self.layerTree.blockSignals(True)
         self.layerTree.clear()
-        s = _settings()
         layer_tree = self._project.layerTreeRoot()
 
-        # Phase 17d.5: restore the user's saved legend order when
-        # present. Fall back to the project's layer-tree order.
-        saved_order = self._load_layer_order()
-        all_layers = self._all_project_layers()
-        all_by_id = {l.id(): l for l in all_layers}
-        ordered = []
-        if saved_order:
-            for lid in saved_order:
-                if lid in all_by_id:
-                    ordered.append(all_by_id.pop(lid))
-            # Any layers added since the order was saved come after.
-            ordered.extend(all_by_id.values())
-        else:
-            ordered = all_layers
+        # Phase 17d.6: enumerate top-level children of the project
+        # layer tree. Each top-level node is either a QgsLayerTreeGroup
+        # or a QgsLayerTreeLayer; both become reorderable top-level
+        # rows in our QTreeWidget. Groups expand to show their member
+        # layers (indented, non-draggable; their own checkboxes + display
+        # name still work).
+        top_entries = []  # list of (key, kind, node)
+        for child in layer_tree.children():
+            if hasattr(child, "layerId"):
+                top_entries.append(("l:" + child.layerId(), "layer", child))
+            elif hasattr(child, "children"):
+                top_entries.append(("g:" + child.name(), "group", child))
 
-        for layer in ordered:
-            lid = layer.id()
-            override = s.value(
-                _QS_PREFIX + "display_names/" + lid, "", type=str
-            )
-            # Default: show in legend if visible on map. Persisted
-            # per-layer: an empty/missing value means "show in legend".
-            hide_in_legend = s.value(
-                _QS_PREFIX + "hidden_from_legend/" + lid, False, type=bool
-            )
-            item = QTreeWidgetItem([layer.name(), override or "", ""])
-            # Rows are draggable; drops go between rows (the
-            # QTreeWidget-level setAcceptDrops + DragDropMode.InternalMove
-            # handles the target).
-            item.setFlags(
-                (item.flags()
-                 | Qt.ItemIsUserCheckable
-                 | Qt.ItemIsEditable
-                 | Qt.ItemIsSelectable
-                 | Qt.ItemIsDragEnabled)
-                & ~Qt.ItemIsDropEnabled
-            )
-            node = layer_tree.findLayer(lid)
-            visible = True if node is None else bool(node.isVisible())
-            item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
-            item.setCheckState(
-                2, Qt.Unchecked if hide_in_legend else Qt.Checked
-            )
-            item.setData(0, Qt.UserRole, lid)
-            self.layerTree.addTopLevelItem(item)
+        # Apply saved legend order to the top-level entries.
+        saved_order = self._load_layer_order()
+        if saved_order:
+            by_key = {e[0]: e for e in top_entries}
+            ordered = []
+            for key in saved_order:
+                # Legacy support: pre-17d.6 saved bare layer_ids.
+                candidates = [key]
+                if not key.startswith(("l:", "g:")):
+                    candidates = ["l:" + key]
+                for k in candidates:
+                    if k in by_key:
+                        ordered.append(by_key.pop(k))
+                        break
+            ordered.extend(by_key.values())
+            top_entries = ordered
+
+        for key, kind, node in top_entries:
+            if kind == "layer":
+                layer = self._project.mapLayer(node.layerId())
+                if layer is None:
+                    continue
+                item = self._build_layer_row(layer, key, draggable=True)
+                self.layerTree.addTopLevelItem(item)
+            else:  # group
+                item = self._build_group_row(node, key)
+                self.layerTree.addTopLevelItem(item)
+                # Add member layers as children, non-draggable.
+                for child in node.children():
+                    if not hasattr(child, "layerId"):
+                        continue
+                    lyr = self._project.mapLayer(child.layerId())
+                    if lyr is None:
+                        continue
+                    sub = self._build_layer_row(
+                        lyr, "l:" + lyr.id(), draggable=False
+                    )
+                    item.addChild(sub)
+                item.setExpanded(True)
+
         self.layerTree.blockSignals(False)
+
+    def _build_layer_row(self, layer, key: str, *, draggable: bool):
+        """QTreeWidgetItem for an individual layer row."""
+        s = _settings()
+        lid = layer.id()
+        override = s.value(
+            _QS_PREFIX + "display_names/" + lid, "", type=str
+        )
+        hide_in_legend = s.value(
+            _QS_PREFIX + "hidden_from_legend/" + lid, False, type=bool
+        )
+        item = QTreeWidgetItem([layer.name(), override or "", ""])
+        flags = (Qt.ItemIsEnabled | Qt.ItemIsSelectable
+                 | Qt.ItemIsUserCheckable | Qt.ItemIsEditable)
+        if draggable:
+            flags |= Qt.ItemIsDragEnabled
+        item.setFlags(flags)
+        layer_tree = self._project.layerTreeRoot()
+        node = layer_tree.findLayer(lid)
+        visible = True if node is None else bool(node.isVisible())
+        item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
+        item.setCheckState(
+            2, Qt.Unchecked if hide_in_legend else Qt.Checked
+        )
+        item.setData(0, Qt.UserRole, key)
+        return item
+
+    def _build_group_row(self, group_node, key: str):
+        """QTreeWidgetItem for a group row — reorderable, bold label,
+        no per-row on-map / in-legend checkboxes (use child rows)."""
+        name = group_node.name()
+        item = QTreeWidgetItem([f"[Group] {name}", "", ""])
+        # Group rows are draggable but not drop targets (drop goes
+        # between rows), and not editable — renaming happens in the
+        # dedicated 'Rename legend groups…' modal.
+        item.setFlags(
+            Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
+        )
+        # Visual distinction: bold font for the group name column.
+        try:
+            f = item.font(0)
+            f.setBold(True)
+            item.setFont(0, f)
+        except Exception:  # noqa: BLE001
+            pass
+        item.setData(0, Qt.UserRole, key)
+        return item
 
     # ---------------- Per-project fit-layer helpers ----------------------
 
@@ -604,22 +661,31 @@ class PdfExportDialog(QDialog):
         self._sync_canvas_to_selection()
 
     def _move_selected_layer(self, direction: int):
-        """Move the currently-selected tree row up (-1) or down (+1).
+        """Move the currently-selected TOP-LEVEL row up (-1) or down (+1).
+        Child rows (member layers inside groups) are not reorderable
+        individually; reorder the whole group instead.
         Persists the new order per-project on success."""
         items = self.layerTree.selectedItems()
         if not items:
             return
         item = items[0]
+        if item.parent() is not None:
+            # Child row — not reorderable on its own.
+            return
         index = self.layerTree.indexOfTopLevelItem(item)
         if index < 0:
             return
         new_index = index + direction
         if new_index < 0 or new_index >= self.layerTree.topLevelItemCount():
             return
-        # Remove and reinsert. Re-check state is preserved by QTreeWidget.
+        # Take + reinsert preserves children and check states.
         self.layerTree.blockSignals(True)
+        # Preserve expanded state of groups across take+insert.
+        was_expanded = item.isExpanded()
         taken = self.layerTree.takeTopLevelItem(index)
         self.layerTree.insertTopLevelItem(new_index, taken)
+        if was_expanded:
+            taken.setExpanded(True)
         self.layerTree.setCurrentItem(taken)
         self.layerTree.blockSignals(False)
         self._persist_layer_order()
