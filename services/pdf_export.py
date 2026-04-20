@@ -672,13 +672,19 @@ def _map_to_layout_mm(map_item, map_x: float, map_y: float):
 
 
 def _add_line_number_labels(layout, *, map_item, visible_layers):
-    """Overlay each Optimized_Path line feature's LineNum at the
-    line's midpoint (or line START for short lines) with a small
-    white halo so the label reads over any line color.
+    """Overlay each Optimized_Path line feature's LineNum along the
+    line with a bordered white background so the label reads over
+    any line color.
 
-    Phase 17d.7: highest-impact map improvement per user feedback —
-    lets the chief identify any line on the map without flipping to
-    the sequence table.
+    Phase 17d.7/.8: labels are DISTRIBUTED along the line's length
+    (not all at midpoint) so adjacent parallel lines don't pile up
+    vertically. Each line's label position cycles through 5 fractions
+    (0.12, 0.31, 0.50, 0.69, 0.88) in order of acquisition sequence.
+
+    Label is 9 pt bold, solid white background, thin grey border.
+    Highest-impact improvement per field analysis — lets the chief
+    identify any line on the map without flipping to the sequence
+    table.
     """
     qc = _qgis_core()
     opt_layer = None
@@ -694,13 +700,21 @@ def _add_line_number_labels(layout, *, map_item, visible_layers):
 
     try:
         from qgis.PyQt.QtGui import QColor
-        halo_color = QColor(255, 255, 255, 220)
+        bg_color = QColor(255, 255, 255)
+        border_color = QColor(60, 60, 60)
     except Exception:  # noqa: BLE001
-        halo_color = None
+        bg_color = border_color = None
 
-    label_w_mm = 9.0
-    label_h_mm = 3.8
+    mm = qc.QgsUnitTypes.LayoutMillimeters
+    label_w_mm = 12.0
+    label_h_mm = 4.5
+    # Five positions along the line; adjacent lines (by SeqOrder) get
+    # different fractions so their labels don't stack vertically on
+    # parallel survey tracks.
+    frac_positions = (0.12, 0.31, 0.50, 0.69, 0.88)
 
+    # Collect + sort so fraction assignment respects acquisition order.
+    line_features = []
     for feat in opt_layer.getFeatures():
         try:
             seg_type = feat["SegmentType"]
@@ -708,6 +722,14 @@ def _add_line_number_labels(layout, *, map_item, visible_layers):
             continue
         if seg_type != "Line":
             continue
+        try:
+            seq_order = feat["SeqOrder"]
+        except (KeyError, IndexError):
+            seq_order = 0
+        line_features.append((seq_order or 0, feat))
+    line_features.sort(key=lambda t: t[0])
+
+    for i, (_seq, feat) in enumerate(line_features):
         try:
             line_num = feat["LineNum"]
         except (KeyError, IndexError):
@@ -723,9 +745,11 @@ def _add_line_number_labels(layout, *, map_item, visible_layers):
             continue
         if length <= 0:
             continue
+
+        frac = frac_positions[i % len(frac_positions)]
         try:
-            mid_geom = geom.interpolate(length / 2.0)
-            mp = mid_geom.asPoint()
+            pt_geom = geom.interpolate(length * frac)
+            mp = pt_geom.asPoint()
             mx, my = float(mp.x()), float(mp.y())
         except Exception:  # noqa: BLE001
             continue
@@ -739,16 +763,22 @@ def _add_line_number_labels(layout, *, map_item, visible_layers):
         label.setText(str(line_num))
         try:
             font = label.font()
-            font.setPointSizeF(7.5)
+            font.setPointSizeF(9.0)
             font.setBold(True)
             label.setFont(font)
             label.setHAlign(_HALIGN["C"])
             label.setVAlign(_VALIGN_CENTER)
-            label.setMarginX(0.4)
-            label.setMarginY(0.2)
-            if halo_color is not None:
+            label.setMarginX(1.0)
+            label.setMarginY(0.4)
+            if bg_color is not None:
                 label.setBackgroundEnabled(True)
-                label.setBackgroundColor(halo_color)
+                label.setBackgroundColor(bg_color)
+            if border_color is not None:
+                label.setFrameEnabled(True)
+                label.setFrameStrokeColor(border_color)
+                label.setFrameStrokeWidth(
+                    qc.QgsLayoutMeasurement(0.2, mm)
+                )
         except Exception:  # noqa: BLE001
             pass
         layout.addLayoutItem(label)
