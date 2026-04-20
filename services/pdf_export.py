@@ -331,14 +331,18 @@ _RIGHT_LOGO_W_MM = 28.0
 _LEFT_MAP_GUTTER_MM = 18.0  # extra room for grid annotations on the left
 _RIGHT_LEGEND_GUTTER_MM = 60.0
 
-# (display_name, row_attribute, width_mm, align) — align: 'L' left, 'C' center, 'R' right
+# (display_name, row_attribute, width_mm, align) — align: 'L' left, 'C' center, 'R' right.
+# Phase 17d.1: all columns center-aligned per user feedback ("Just
+# formatting. Make it center."). Sub-line identity is implicit in the
+# FGSP/LGSP pair — Line column stays a bare LineNum ("2495", not
+# "2495-1") so the chief does not see duplicated sub-line notation.
 _TABLE_COLUMNS = (
     ("Seq",         "line_seq",    16.0, "C"),
     ("Line",        "line_num",    22.0, "C"),
     ("Operation",   "operation",   30.0, "C"),
-    ("FGSP",        "fgsp",        22.0, "R"),
-    ("LGSP",        "lgsp",        22.0, "R"),
-    ("HDG\u00b0",   "heading_deg", 20.0, "R"),
+    ("FGSP",        "fgsp",        22.0, "C"),
+    ("LGSP",        "lgsp",        22.0, "C"),
+    ("HDG\u00b0",   "heading_deg", 20.0, "C"),
     ("ETA SOL",     "eta_sol",     28.0, "C"),
     ("ETA EOL",     "eta_eol",     28.0, "C"),
     ("Day/Month",   "day_month",   26.0, "C"),
@@ -353,8 +357,7 @@ def _cell_text(row: LookaheadRow, key: str) -> str:
     if key == "line_seq":
         return str(row.line_seq)
     if key == "line_num":
-        if row.sub_line_id:
-            return f"{row.line_num}-{row.sub_line_id}"
+        # Phase 17d.1: always bare LineNum. Do NOT append sub_line_id.
         return str(row.line_num)
     if key == "heading_deg":
         return f"{row.heading_deg:.0f}"
@@ -927,11 +930,12 @@ def _draw_table_fallback(layout, *, rows: List[LookaheadRow],
             try:
                 font = label.font()
                 font.setBold(True)
-                font.setPointSize(9)
+                font.setPointSizeF(9.5)
                 label.setFont(font)
                 label.setHAlign(_HALIGN[align])
                 label.setVAlign(_VALIGN_CENTER)
-                label.setMarginX(1.2)
+                label.setMarginX(1.5)
+                label.setMarginY(0.8)
                 if header_bg is not None:
                     label.setBackgroundEnabled(True)
                     label.setBackgroundColor(header_bg)
@@ -956,11 +960,12 @@ def _draw_table_fallback(layout, *, rows: List[LookaheadRow],
                 cell.setText(_cell_text(row, key))
                 try:
                     font = cell.font()
-                    font.setPointSize(8)
+                    font.setPointSizeF(9.0)
                     cell.setFont(font)
                     cell.setHAlign(_HALIGN[align])
                     cell.setVAlign(_VALIGN_CENTER)
-                    cell.setMarginX(1.2)
+                    cell.setMarginX(1.5)
+                    cell.setMarginY(0.5)
                     if bg is not None:
                         cell.setBackgroundEnabled(True)
                         cell.setBackgroundColor(bg)
@@ -1095,16 +1100,16 @@ def _add_manual_table(layout, *, qc, rows, header_text, date_str, config,
         if border is not None:
             table.setGridColor(border)
         table.setGridStrokeWidth(0.15)
-        table.setCellMargin(1.2)
+        table.setCellMargin(1.5)
     except AttributeError:
         pass
     try:
         from qgis.PyQt.QtGui import QFont
         content_font = QFont()
-        content_font.setPointSize(9)
+        content_font.setPointSizeF(9.0)
         table.setContentFont(content_font)
         header_font = QFont()
-        header_font.setPointSize(9)
+        header_font.setPointSizeF(9.5)
         header_font.setBold(True)
         table.setHeaderFont(header_font)
     except Exception:  # noqa: BLE001

@@ -17,10 +17,32 @@ if _plugin_root not in sys.path:
     sys.path.insert(0, _plugin_root)
 
 from services.pdf_export import (  # noqa: E402
+    LookaheadRow,
+    _cell_text,
     compute_output_filename,
     render_header_text,
     sanitize_filename_fragment,
 )
+from datetime import datetime  # noqa: E402
+
+
+def _row(*, line_num=2495, sub_line_id=None, line_seq=1000):
+    """Build a LookaheadRow for cell-rendering tests. Only fields
+    read by _cell_text need realistic values."""
+    t = datetime(2026, 4, 20, 13, 0)
+    return LookaheadRow(
+        seq_order=1,
+        line_seq=line_seq,
+        line_num=line_num,
+        sub_line_id=sub_line_id,
+        operation="Production",
+        fgsp=3428,
+        lgsp=3931,
+        heading_deg=77.0,
+        eta_sol=t,
+        eta_eol=t,
+        day_month="20-Apr",
+    )
 
 
 def _touch(dirpath, filename):
@@ -180,6 +202,38 @@ class RenderHeaderTextTests(unittest.TestCase):
             survey="4D TVD",
         )
         self.assertEqual(out, "4D TVD: 48h")
+
+
+class LineColumnCellTests(unittest.TestCase):
+    """Phase 17d.1: Line column is ALWAYS the bare LineNum, even when
+    the row has a SubLineId. The sub-line identity is already implicit
+    in the FGSP/LGSP values; duplicating it in the Line column confuses
+    the chief navigator."""
+
+    def test_line_column_with_no_sub_line(self):
+        self.assertEqual(
+            _cell_text(_row(line_num=2495, sub_line_id=None), "line_num"),
+            "2495",
+        )
+
+    def test_line_column_is_bare_line_num_even_with_sub_line_id(self):
+        self.assertEqual(
+            _cell_text(_row(line_num=2495, sub_line_id=2), "line_num"),
+            "2495",
+        )
+
+    def test_line_column_with_sub_line_id_10(self):
+        # Regression: previous code produced "2495-10" — confirm gone.
+        self.assertEqual(
+            _cell_text(_row(line_num=2495, sub_line_id=10), "line_num"),
+            "2495",
+        )
+
+    def test_seq_column_uses_line_seq(self):
+        self.assertEqual(
+            _cell_text(_row(line_seq=1000), "line_seq"),
+            "1000",
+        )
 
 
 if __name__ == "__main__":
